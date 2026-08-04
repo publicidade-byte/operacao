@@ -151,4 +151,5 @@ export type AdminUser = {
   email: string
   role: 'OPERACIONAL' | 'GESTOR'
   ativo: boolean
+  super_admin?: boolean
 }

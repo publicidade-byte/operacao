@@ -6,6 +6,7 @@ import Login from './pages/Login'
 import AdminLayout from './pages/admin/AdminLayout'
 import Lista from './pages/admin/Lista'
 import Detalhe from './pages/admin/Detalhe'
+import Usuarios from './pages/admin/Usuarios'
 import AprovacaoLayout from './pages/aprovacao/AprovacaoLayout'
 import Pendentes from './pages/aprovacao/Pendentes'
 import DetalheAprovacao from './pages/aprovacao/DetalheAprovacao'
@@ -26,6 +27,7 @@ export default function App() {
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Lista />} />
         <Route path="solicitacoes/:id" element={<Detalhe />} />
+        <Route path="usuarios" element={<Usuarios />} />
       </Route>
 
       {/* Diretores aprovadores */}

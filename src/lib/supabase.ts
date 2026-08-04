@@ -23,8 +23,32 @@ export async function invocar<T>(nome: string, body: unknown): Promise<T> {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      apikey: anonKey ?? '',
+      apikey: anonKey,
       Authorization: `Bearer ${anonKey}`,
+    },
+    body: JSON.stringify(body),
+  })
+  const json = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(json?.erro ?? `Falha na requisição (${res.status})`)
+  return json as T
+}
+
+/**
+ * Igual à `invocar`, mas manda o token do usuário logado em vez da chave
+ * pública. Necessário quando a função precisa saber QUEM está chamando —
+ * é assim que `gerir-usuarios` confirma que quem pediu é gestor.
+ */
+export async function invocarComoUsuario<T>(nome: string, body: unknown): Promise<T> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  if (!token) throw new Error('Sessão expirada. Entre novamente.')
+
+  const res = await fetch(`${url}/functions/v1/${nome}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: anonKey,
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(body),
   })

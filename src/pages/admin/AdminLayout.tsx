@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState } from 'react'
-import { Link, Navigate, Outlet, useNavigate } from 'react-router-dom'
+import { Link, Navigate, NavLink, Outlet, useNavigate } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { carregarPerfil } from '../Login'
 import type { AdminUser } from '../../lib/types'
@@ -80,9 +80,38 @@ export default function AdminLayout() {
       <div className="min-h-screen">
         <header className="sticky top-0 z-10 border-b border-neutral-200 bg-white/95 backdrop-blur">
           <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3">
-            <Link to="/admin">
-              <Marca sub="Painel operacional" />
-            </Link>
+            <div className="flex items-center gap-5">
+              <Link to="/admin">
+                <Marca sub="Painel operacional" />
+              </Link>
+              <nav className="flex items-center gap-1 text-xs font-semibold">
+                <NavLink
+                  to="/admin"
+                  end
+                  className={({ isActive }) =>
+                    'rounded px-2.5 py-1.5 transition ' +
+                    (isActive
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-600 hover:bg-neutral-100')
+                  }
+                >
+                  Solicitações
+                </NavLink>
+                {admin?.role === 'GESTOR' && (
+                  <NavLink
+                    to="/admin/usuarios"
+                    className={({ isActive }) =>
+                      'rounded px-2.5 py-1.5 transition ' +
+                      (isActive
+                        ? 'bg-neutral-900 text-white'
+                        : 'text-neutral-600 hover:bg-neutral-100')
+                    }
+                  >
+                    Usuários
+                  </NavLink>
+                )}
+              </nav>
+            </div>
             <div className="flex items-center gap-3">
               <span className="hidden text-xs text-neutral-500 sm:block">
                 {admin?.nome} · {admin?.role === 'GESTOR' ? 'Gestor' : 'Operacional'}
