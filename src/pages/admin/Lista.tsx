@@ -41,7 +41,7 @@ export default function Lista() {
       const { data } = await supabase
         .from('solicitacoes')
         .select(
-          '*, edicoes(*), diretores(*), colaboradores(id, nome_completo, cpf)',
+          '*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(*), colaboradores(id, nome_completo, cpf)',
         )
         .order('created_at', { ascending: false })
       setDados((data ?? []) as Linha[])

@@ -54,7 +54,7 @@ export default function Detalhe() {
   const carregar = useCallback(async () => {
     const { data } = await supabase
       .from('solicitacoes')
-      .select('*, edicoes(*), diretores(*), colaboradores(*)')
+      .select('*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(*), colaboradores(*)')
       .eq('id', id)
       .single()
     if (!data) return
