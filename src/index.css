@@ -1,0 +1,49 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Paleta da marca: branco, cinza, preto e amarelo.
+   Outras cores entram APENAS como sinal de interface (vermelho = erro/alerta,
+   verde = aprovado). Nunca como decoração.
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-marca-50: #fffdf0;
+  --color-marca-100: #fff7cc;
+  --color-marca-200: #ffee99;
+  --color-marca-300: #ffe14d;
+  --color-marca-400: #ffd21a;
+  --color-marca-500: #f5c400;
+  --color-marca-600: #d1a600;
+  --color-marca-700: #a38200;
+
+  --color-tinta: #111111;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-neutral-50 text-neutral-900 antialiased;
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Foco visível e consistente em toda navegação por teclado */
+:focus-visible {
+  @apply outline-2 outline-offset-2 outline-marca-500;
+}
+
+input[type='date']::-webkit-calendar-picker-indicator,
+input[type='datetime-local']::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+}
+
+/* Barra de rolagem discreta em áreas com scroll horizontal */
+.scroll-fino::-webkit-scrollbar {
+  height: 8px;
+}
+.scroll-fino::-webkit-scrollbar-thumb {
+  @apply rounded-full bg-neutral-300;
+}

@@ -1,0 +1,16 @@
+node_modules
+dist
+.env
+.env.local
+.env.*.local
+*.log
+.DS_Store
+.vscode
+.claude
+supabase/.temp
+supabase/.branches
+
+# Dados operacionais reais — calendário de operações e nomes de diretores.
+# Ficam só no banco (Supabase) e em backup local fora do repositório.
+supabase/seed.sql
+data/
