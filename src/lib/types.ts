@@ -97,6 +97,7 @@ export type Solicitacao = {
   token_acompanhamento: string
   edicao_id: string
   equipe: string
+  equipe_outro: string | null
   diretor_id: string
   solicitante_nome: string
   solicitante_email: string
@@ -108,6 +109,7 @@ export type Solicitacao = {
   modal: 'AEREO' | 'RODOVIARIO' | null
   aeroporto_saida: string | null
   aeroporto_chegada: string | null
+  precisa_bagagem: boolean | null
   obs_transporte: string
   precisa_locacao_carro: boolean
   obs_locacao_carro: string | null

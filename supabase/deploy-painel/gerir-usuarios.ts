@@ -58,6 +58,7 @@ export const EQUIPE_LABEL: Record<string, string> = {
   MONITORIA: 'Monitoria',
   SEGURANCA: 'Segurança',
   SALVA_VIDAS: 'Salva-Vidas',
+  OUTROS: 'Outros',
   DJ: 'DJ',
 }
 

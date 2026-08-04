@@ -16,6 +16,7 @@ type Publica = {
   data_entrada: string
   data_saida: string
   equipe: string
+  equipe_outro: string | null
   tipo_hospedagem: string
   precisa_transporte: boolean
   modal: string | null
@@ -139,7 +140,7 @@ export default function Acompanhar() {
           <Item t="Sua estadia">
             {dataBR(dados.data_entrada)} a {dataBR(dados.data_saida)}
           </Item>
-          <Item t="Equipe">{equipeLabel(dados.equipe)}</Item>
+          <Item t="Equipe">{equipeLabel(dados.equipe, dados.equipe_outro)}</Item>
           <Item t="Hospedagem">
             {dados.tipo_hospedagem === 'HOTEL_PAX' ? 'Hotel do pax' : 'Fora do hotel do pax'}
           </Item>

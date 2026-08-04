@@ -12,6 +12,7 @@ type Sol = LinhaAprovacao & {
   modal: string | null
   aeroporto_saida: string | null
   aeroporto_chegada: string | null
+  precisa_bagagem: boolean | null
   obs_transporte: string
   precisa_locacao_carro: boolean
   obs_locacao_carro: string | null
@@ -171,7 +172,7 @@ export default function DetalheAprovacao() {
             {s.destino} — {s.hotel}
           </h1>
           <p className="mt-0.5 text-sm text-neutral-600">
-            {equipeLabel(s.equipe)} · {s.qtd_pax} pax · solicitado por{' '}
+            {equipeLabel(s.equipe, s.equipe_outro)} · {s.qtd_pax} pax · solicitado por{' '}
             {s.solicitante_nome}
           </p>
         </div>
@@ -224,6 +225,15 @@ export default function DetalheAprovacao() {
                   ? `Aéreo · ${aeroportoLabel(s.aeroporto_saida)} → ${aeroportoLabel(s.aeroporto_chegada)}`
                   : 'Rodoviário'}
             </L>
+            {s.modal === 'AEREO' && (
+              <L t="Bagagem despachada">
+                {s.precisa_bagagem === null
+                  ? '—'
+                  : s.precisa_bagagem
+                    ? 'Sim'
+                    : 'Não, só bagagem de mão'}
+              </L>
+            )}
             <L t="Locação de carro">{s.precisa_locacao_carro ? 'Sim' : 'Não'}</L>
             <L t="Observações">
               <span className="whitespace-pre-wrap">{s.obs_transporte}</span>

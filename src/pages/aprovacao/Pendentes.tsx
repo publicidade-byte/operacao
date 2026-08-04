@@ -10,6 +10,7 @@ export type LinhaAprovacao = {
   protocolo: string
   status: string
   equipe: string
+  equipe_outro: string | null
   data_entrada: string
   data_saida: string
   destino: string
@@ -90,7 +91,7 @@ export default function Pendentes() {
                     {d.destino} — {d.hotel}
                   </p>
                   <p className="mt-0.5 text-sm text-neutral-600">
-                    {equipeLabel(d.equipe)} · {d.qtd_pax} pax ·{' '}
+                    {equipeLabel(d.equipe, d.equipe_outro)} · {d.qtd_pax} pax ·{' '}
                     {dataCurta(d.data_entrada)} a {dataCurta(d.data_saida)}
                   </p>
                   <p className="mt-0.5 text-xs text-neutral-500">
@@ -142,7 +143,7 @@ export default function Pendentes() {
                       </span>
                     </p>
                     <p className="text-xs text-neutral-500">
-                      {equipeLabel(d.equipe)} · {d.qtd_pax} pax ·{' '}
+                      {equipeLabel(d.equipe, d.equipe_outro)} · {d.qtd_pax} pax ·{' '}
                       {dataBR(d.data_entrada)}
                     </p>
                   </div>

@@ -39,10 +39,12 @@ type Form = {
   modal: string
   aeroporto_saida: string
   aeroporto_chegada: string
+  precisa_bagagem: string
   obs_transporte: string
   precisa_locacao_carro: string
   obs_locacao_carro: string
   equipe: string
+  equipe_outro: string
   colaboradores: ColabForm[]
   solicitante_nome: string
   solicitante_email: string
@@ -61,10 +63,12 @@ const VAZIO: Form = {
   modal: '',
   aeroporto_saida: '',
   aeroporto_chegada: '',
+  precisa_bagagem: '',
   obs_transporte: '',
   precisa_locacao_carro: '',
   obs_locacao_carro: '',
   equipe: '',
+  equipe_outro: '',
   colaboradores: [{ nome_completo: '', cpf: '', data_nascimento: '' }],
   solicitante_nome: '',
   solicitante_email: '',
@@ -261,6 +265,8 @@ export default function Solicitar() {
             e.aeroporto_chegada = 'Selecione o aeroporto de chegada.'
           if (form.aeroporto_saida && form.aeroporto_saida === form.aeroporto_chegada)
             e.aeroporto_chegada = 'Saída e chegada não podem ser o mesmo aeroporto.'
+          if (!form.precisa_bagagem)
+            e.precisa_bagagem = 'Informe se precisa de bagagem despachada.'
         }
         if (!form.obs_transporte.trim())
           e.obs_transporte = 'Descreva a necessidade de transporte.'
@@ -272,6 +278,8 @@ export default function Solicitar() {
     }
     if (p === 2) {
       if (!form.equipe) e.equipe = 'Selecione a equipe.'
+      if (form.equipe === 'OUTROS' && !form.equipe_outro.trim())
+        e.equipe_outro = 'Informe qual é a sua área ou departamento.'
       const cpfs = new Set<string>()
       form.colaboradores.forEach((c, i) => {
         if (c.nome_completo.trim().split(/\s+/).length < 2)
@@ -336,6 +344,7 @@ export default function Solicitar() {
           website: honeypot,
           edicao_ids: form.edicao_ids,
           equipe: form.equipe,
+          equipe_outro: form.equipe === 'OUTROS' ? form.equipe_outro.trim() : null,
           diretor_id: form.diretor_id,
           solicitante_nome: form.solicitante_nome.trim(),
           solicitante_email: form.solicitante_email.trim().toLowerCase(),
@@ -352,6 +361,10 @@ export default function Solicitar() {
           aeroporto_chegada:
             form.precisa_transporte === 'SIM' && form.modal === 'AEREO'
               ? form.aeroporto_chegada
+              : null,
+          precisa_bagagem:
+            form.precisa_transporte === 'SIM' && form.modal === 'AEREO'
+              ? form.precisa_bagagem === 'SIM'
               : null,
           obs_transporte:
             form.precisa_transporte === 'SIM'
@@ -769,6 +782,24 @@ export default function Solicitar() {
                       </div>
                     )}
 
+                    {form.modal === 'AEREO' && (
+                      <Campo
+                        label="Precisa de bagagem despachada?"
+                        erro={erros.precisa_bagagem}
+                        dica="Bagagem de porão, além da de mão. Costuma ter custo extra."
+                      >
+                        <Radios
+                          valor={form.precisa_bagagem}
+                          erro={!!erros.precisa_bagagem}
+                          onChange={(v) => set('precisa_bagagem', v)}
+                          opcoes={[
+                            { value: 'SIM', label: 'Sim' },
+                            { value: 'NAO', label: 'Não, só bagagem de mão' },
+                          ]}
+                        />
+                      </Campo>
+                    )}
+
                     <Campo
                       label="Observações sobre o transporte"
                       erro={erros.obs_transporte}
@@ -837,6 +868,24 @@ export default function Solicitar() {
                     ))}
                   </Select>
                 </Campo>
+
+                {form.equipe === 'OUTROS' && (
+                  <div className="mt-4">
+                    <Campo
+                      label="Qual é a sua área ou departamento?"
+                      erro={erros.equipe_outro}
+                      dica="Ex.: Operacional, Financeiro, T.I., Jurídico."
+                    >
+                      <Input
+                        value={form.equipe_outro}
+                        erro={!!erros.equipe_outro}
+                        maxLength={60}
+                        onChange={(e) => set('equipe_outro', e.target.value)}
+                        placeholder="Escreva o nome da área"
+                      />
+                    </Campo>
+                  </div>
+                )}
               </Card>
 
               {form.colaboradores.map((c, i) => (
@@ -1010,6 +1059,11 @@ export default function Solicitar() {
                         ? `Aéreo · ${form.aeroporto_saida} → ${form.aeroporto_chegada}`
                         : 'Rodoviário'}
                   </Linha>
+                  {form.modal === 'AEREO' && form.precisa_transporte === 'SIM' && (
+                    <Linha rotulo="Bagagem despachada" onEditar={() => setPasso(1)}>
+                      {form.precisa_bagagem === 'SIM' ? 'Sim' : 'Não, só bagagem de mão'}
+                    </Linha>
+                  )}
                   {form.precisa_transporte === 'SIM' && (
                     <Linha rotulo="Obs. transporte" onEditar={() => setPasso(1)}>
                       <span className="whitespace-pre-wrap">{form.obs_transporte}</span>
@@ -1021,17 +1075,22 @@ export default function Solicitar() {
                       : 'Não'}
                   </Linha>
                   <Linha rotulo="Equipe" onEditar={() => setPasso(2)}>
-                    {form.equipe ? equipeLabel(form.equipe) : '—'}
+                    {form.equipe ? equipeLabel(form.equipe, form.equipe_outro) : '—'}
                   </Linha>
                   <Linha
                     rotulo={`Colaboradores (${form.colaboradores.length})`}
                     onEditar={() => setPasso(2)}
                   >
-                    <ul className="space-y-0.5">
+                    <ul className="space-y-1.5">
                       {form.colaboradores.map((c, i) => (
                         <li key={i}>
-                          {c.nome_completo || '—'}{' '}
-                          <span className="text-neutral-500">· {c.cpf}</span>
+                          <span className="block font-medium">
+                            {c.nome_completo || '—'}
+                          </span>
+                          <span className="block text-xs text-neutral-500">
+                            CPF {c.cpf || '—'} · nascimento{' '}
+                            {c.data_nascimento ? dataBR(c.data_nascimento) : '—'}
+                          </span>
                         </li>
                       ))}
                     </ul>

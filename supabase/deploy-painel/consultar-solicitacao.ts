@@ -58,6 +58,7 @@ export const EQUIPE_LABEL: Record<string, string> = {
   MONITORIA: 'Monitoria',
   SEGURANCA: 'Segurança',
   SALVA_VIDAS: 'Salva-Vidas',
+  OUTROS: 'Outros',
   DJ: 'DJ',
 }
 
@@ -130,6 +131,7 @@ Deno.serve(async (req) => {
       data_entrada: s.data_entrada,
       data_saida: s.data_saida,
       equipe: s.equipe,
+      equipe_outro: s.equipe_outro,
       tipo_hospedagem: s.tipo_hospedagem,
       precisa_transporte: s.precisa_transporte,
       modal: s.modal,

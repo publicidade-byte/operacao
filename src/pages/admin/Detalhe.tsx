@@ -233,7 +233,7 @@ export default function Detalhe() {
           <p className="mt-1 text-sm text-neutral-600">
             {s.edicoes.destino} — {s.edicoes.hotel} · {dataBR(s.data_entrada)} a{' '}
             {dataBR(s.data_saida)} · {s.colaboradores.length} pax ·{' '}
-            {equipeLabel(s.equipe)}
+            {equipeLabel(s.equipe, s.equipe_outro)}
             {operacoes.length > 1 && (
               <span className="ml-2 rounded bg-neutral-900 px-1.5 py-0.5 text-xs font-semibold text-white">
                 {operacoes.length} operações
@@ -422,7 +422,7 @@ export default function Detalhe() {
               <L t="Tipo de hospedagem">
                 {s.tipo_hospedagem === 'HOTEL_PAX' ? 'Hotel do pax' : 'Fora do hotel do pax'}
               </L>
-              <L t="Equipe">{equipeLabel(s.equipe)}</L>
+              <L t="Equipe">{equipeLabel(s.equipe, s.equipe_outro)}</L>
               <L t="Transporte">
                 {!s.precisa_transporte
                   ? 'Não solicitado'
@@ -434,6 +434,13 @@ export default function Detalhe() {
                 <>
                   <L t="Aeroporto saída">{aeroportoLabel(s.aeroporto_saida)}</L>
                   <L t="Aeroporto chegada">{aeroportoLabel(s.aeroporto_chegada)}</L>
+                  <L t="Bagagem despachada">
+                    {s.precisa_bagagem === null
+                      ? '—'
+                      : s.precisa_bagagem
+                        ? 'Sim'
+                        : 'Não, só bagagem de mão'}
+                  </L>
                 </>
               )}
               <L t="Obs. transporte">

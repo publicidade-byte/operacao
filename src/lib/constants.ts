@@ -12,12 +12,19 @@ export const EQUIPES = [
   { value: 'SEGURANCA', label: 'Segurança' },
   { value: 'SALVA_VIDAS', label: 'Salva-Vidas' },
   { value: 'DJ', label: 'DJ' },
+  { value: 'OUTROS', label: 'Outros — informar a área' },
 ] as const
 
 export type EquipeValue = (typeof EQUIPES)[number]['value']
 
-export const equipeLabel = (v: string) =>
-  EQUIPES.find((e) => e.value === v)?.label ?? v
+/**
+ * Rótulo da equipe. Para OUTROS, mostra o que a pessoa escreveu — é a
+ * informação útil; "Outros" sozinho não diz nada a quem lê depois.
+ */
+export const equipeLabel = (v: string, outro?: string | null) => {
+  if (v === 'OUTROS') return outro?.trim() ? `Outros — ${outro.trim()}` : 'Outros'
+  return EQUIPES.find((e) => e.value === v)?.label ?? v
+}
 
 export const STATUS_LABEL: Record<string, string> = {
   RECEBIDA: 'Recebida',
@@ -51,13 +58,16 @@ export const STATUS_ORDEM = [
   'CONCLUIDA',
 ]
 
-/** Aeroportos brasileiros mais usados nas rotas do Forma 9. */
+/**
+ * Aeroportos brasileiros mais usados nas rotas do Forma 9.
+ *
+ * São Paulo e Rio usam o código de cidade (SAO, RIO) em vez do aeroporto
+ * específico: quem solicita raramente sabe de qual terminal vai sair, e a
+ * escolha entre Guarulhos/Congonhas/Viracopos é da operação, na cotação.
+ */
 export const AEROPORTOS = [
-  { iata: 'GRU', nome: 'São Paulo — Guarulhos' },
-  { iata: 'CGH', nome: 'São Paulo — Congonhas' },
-  { iata: 'VCP', nome: 'Campinas — Viracopos' },
-  { iata: 'GIG', nome: 'Rio de Janeiro — Galeão' },
-  { iata: 'SDU', nome: 'Rio de Janeiro — Santos Dumont' },
+  { iata: 'SAO', nome: 'São Paulo — qualquer aeroporto' },
+  { iata: 'RIO', nome: 'Rio de Janeiro — qualquer aeroporto' },
   { iata: 'BSB', nome: 'Brasília' },
   { iata: 'CNF', nome: 'Belo Horizonte — Confins' },
   { iata: 'CWB', nome: 'Curitiba' },

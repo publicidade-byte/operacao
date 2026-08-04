@@ -116,7 +116,7 @@ export default function Lista() {
       d.edicoes?.hotel ?? '',
       d.data_entrada,
       d.data_saida,
-      equipeLabel(d.equipe),
+      equipeLabel(d.equipe, d.equipe_outro),
       d.colaboradores?.length ?? 0,
       d.solicitante_nome,
       d.solicitante_email,
@@ -252,7 +252,7 @@ export default function Lista() {
                     <td className="whitespace-nowrap px-4 py-2.5 text-neutral-600">
                       {dataCurta(d.data_entrada)} a {dataCurta(d.data_saida)}
                     </td>
-                    <td className="px-4 py-2.5 text-neutral-600">{equipeLabel(d.equipe)}</td>
+                    <td className="px-4 py-2.5 text-neutral-600">{equipeLabel(d.equipe, d.equipe_outro)}</td>
                     <td className="px-4 py-2.5 text-center text-neutral-600">
                       {d.colaboradores?.length ?? 0}
                     </td>

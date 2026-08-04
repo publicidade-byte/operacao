@@ -73,6 +73,8 @@ Deno.serve(async (req) => {
     if (b.data_saida <= b.data_entrada)
       return erro('A data de saída precisa ser posterior à de entrada.')
     if (!EQUIPE_LABEL[b.equipe]) return erro('Equipe inválida.')
+    if (b.equipe === 'OUTROS' && !String(b.equipe_outro ?? '').trim())
+      return erro('Informe qual é a área quando escolher "Outros".')
     if (b.precisa_transporte && !['AEREO', 'RODOVIARIO'].includes(b.modal))
       return erro('Selecione o tipo de transporte.')
     if (b.precisa_transporte && b.modal === 'AEREO' && (!b.aeroporto_saida || !b.aeroporto_chegada))
@@ -144,6 +146,8 @@ Deno.serve(async (req) => {
         token_acompanhamento: token,
         edicao_id: edicao.id,
         equipe: b.equipe,
+        equipe_outro:
+          b.equipe === 'OUTROS' ? String(b.equipe_outro).trim().slice(0, 60) : null,
         diretor_id: b.diretor_id,
         solicitante_nome: b.solicitante_nome,
         solicitante_email: b.solicitante_email,
@@ -155,6 +159,10 @@ Deno.serve(async (req) => {
         modal: b.precisa_transporte ? b.modal : null,
         aeroporto_saida: b.aeroporto_saida ?? null,
         aeroporto_chegada: b.aeroporto_chegada ?? null,
+        precisa_bagagem:
+          b.precisa_transporte && b.modal === 'AEREO'
+            ? b.precisa_bagagem === true
+            : null,
         obs_transporte: b.obs_transporte,
         precisa_locacao_carro: b.precisa_locacao_carro,
         obs_locacao_carro: b.obs_locacao_carro ?? null,
