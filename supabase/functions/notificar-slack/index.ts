@@ -31,7 +31,7 @@ Deno.serve(async (req) => {
 
     const { data: s } = await sb
       .from('solicitacoes')
-      .select('*, edicoes(*), diretores(*), colaboradores(*)')
+      .select('*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(*), colaboradores(*)')
       .eq('id', solicitacao_id)
       .maybeSingle()
     if (!s) return erro('Solicitação não encontrada.', 404)

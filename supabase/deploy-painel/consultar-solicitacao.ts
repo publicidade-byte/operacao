@@ -110,7 +110,7 @@ Deno.serve(async (req) => {
 
     const { data: s } = await sb
       .from('solicitacoes')
-      .select('*, edicoes(*), diretores(nome), colaboradores(id, nome_completo, ordem)')
+      .select('*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(nome), colaboradores(id, nome_completo, ordem)')
       .eq('token_acompanhamento', token)
       .maybeSingle()
 
