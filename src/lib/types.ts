@@ -68,6 +68,7 @@ export type HospedagemDetalhe = {
   id?: string
   colaborador_id: string
   hotel: string | null
+  endereco: string | null
   tipo_quarto: string | null
   dividindo_com: string | null
   check_in: string | null
@@ -114,6 +115,13 @@ export type Solicitacao = {
   van_horario_saida: string | null
   van_destino: string | null
   van_qtd_passageiros: number | null
+  hosp_externa_operacao: boolean | null
+  hosp_externa_obs: string | null
+  tipo_voo: string | null
+  aeroporto_saida_volta: string | null
+  aeroporto_chegada_volta: string | null
+  carro_condutor_nascimento: string | null
+  servicos: string[]
   carro_condutor_nome: string | null
   carro_condutor_cpf: string | null
   carro_transmissao: string | null

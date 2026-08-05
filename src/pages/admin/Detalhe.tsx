@@ -49,6 +49,8 @@ export default function Detalhe() {
   const [eventos, setEventos] = useState<Evento[]>([])
   const [aprovacoes, setAprovacoes] = useState<Aprovacao[]>([])
   const [operacoes, setOperacoes] = useState<Edicao[]>([])
+  const [equipe, setEquipe] = useState<{ id: string; nome: string; role: string }[]>([])
+  const [responsaveis, setResponsaveis] = useState<string[]>([])
   const [cpfsVisiveis, setCpfsVisiveis] = useState<Set<string>>(new Set())
   const [salvando, setSalvando] = useState(false)
   const [msg, setMsg] = useState<{ tom: 'sucesso' | 'erro'; texto: string } | null>(null)
@@ -116,6 +118,13 @@ export default function Detalhe() {
     setHosp(mh)
     setCarro((l.data as LocacaoCarro) ?? {})
     setVan((vn.data as LocacaoVan) ?? {})
+
+    const [eq, rp] = await Promise.all([
+      supabase.from('v_equipe').select('id, nome, role'),
+      supabase.from('solicitacao_responsaveis').select('admin_id').eq('solicitacao_id', id),
+    ])
+    setEquipe((eq.data ?? []) as { id: string; nome: string; role: string }[])
+    setResponsaveis(((rp.data ?? []) as { admin_id: string }[]).map((r) => r.admin_id))
     setEventos((ev.data ?? []) as Evento[])
     setAprovacoes((ap.data ?? []) as Aprovacao[])
   }, [id])
@@ -231,6 +240,33 @@ export default function Detalhe() {
     } finally {
       setSalvando(false)
     }
+  }
+
+  /** Atribui ou remove alguém da operação. Grava na hora, sem botão salvar. */
+  async function alternarResponsavel(adminId: string) {
+    const marcado = responsaveis.includes(adminId)
+    setResponsaveis((r) => (marcado ? r.filter((x) => x !== adminId) : [...r, adminId]))
+
+    const nome = equipe.find((u) => u.id === adminId)?.nome ?? 'alguém'
+    const { error } = marcado
+      ? await supabase
+          .from('solicitacao_responsaveis')
+          .delete()
+          .eq('solicitacao_id', id)
+          .eq('admin_id', adminId)
+      : await supabase
+          .from('solicitacao_responsaveis')
+          .insert({ solicitacao_id: id, admin_id: adminId })
+
+    if (error) {
+      setMsg({ tom: 'erro', texto: error.message })
+      carregar()
+      return
+    }
+    registrarEvento(
+      'RESPONSAVEL',
+      marcado ? `${nome} saiu dos responsáveis` : `${nome} assumiu esta solicitação`,
+    )
   }
 
   function revelarCpf(cid: string) {
@@ -392,6 +428,39 @@ export default function Detalhe() {
         )}
       </Card>
 
+      {/* Quem da operação está cuidando. Mais de uma pessoa é o normal:
+          uma cuida do aéreo, outra do hotel, outra do transfer. */}
+      <Card
+        titulo="Responsáveis da operação"
+        descricao="Marque quem está preenchendo esta solicitação."
+      >
+        <div className="flex flex-wrap gap-2">
+          {equipe.map((u) => {
+            const marcado = responsaveis.includes(u.id)
+            return (
+              <button
+                key={u.id}
+                type="button"
+                aria-pressed={marcado}
+                onClick={() => alternarResponsavel(u.id)}
+                className={
+                  'rounded-full px-3 py-1.5 text-xs font-semibold ring-1 ring-inset transition ' +
+                  (marcado
+                    ? 'bg-marca-400 text-neutral-900 ring-marca-500'
+                    : 'bg-white text-neutral-600 ring-neutral-300 hover:bg-neutral-50')
+                }
+              >
+                {marcado ? '✓ ' : ''}
+                {u.nome}
+              </button>
+            )
+          })}
+          {equipe.length === 0 && (
+            <span className="text-sm text-neutral-500">Carregando equipe…</span>
+          )}
+        </div>
+      </Card>
+
       {msg && <Aviso tom={msg.tom}>{msg.texto}</Aviso>}
 
       {/* Abas */}
@@ -445,8 +514,33 @@ export default function Detalhe() {
               <L t="Estadia solicitada">
                 {dataBR(s.data_entrada)} a {dataBR(s.data_saida)}
               </L>
+              <L t="Serviços pedidos">
+                <div className="flex flex-wrap gap-1">
+                  {(s.servicos ?? []).map((sv) => (
+                    <span
+                      key={sv}
+                      className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-700"
+                    >
+                      {sv}
+                    </span>
+                  ))}
+                </div>
+              </L>
               <L t="Tipo de hospedagem">
                 {s.tipo_hospedagem === 'HOTEL_PAX' ? 'Hotel do pax' : 'Fora do hotel do pax'}
+                {s.tipo_hospedagem === 'FORA_HOTEL_PAX' && (
+                  <>
+                    <br />
+                    {s.hosp_externa_operacao
+                      ? 'A operação precisa reservar'
+                      : 'Já resolvido pelo solicitante'}
+                    {s.hosp_externa_obs && (
+                      <span className="mt-1 block whitespace-pre-wrap text-neutral-600">
+                        {s.hosp_externa_obs}
+                      </span>
+                    )}
+                  </>
+                )}
               </L>
               <L t="Equipe">{equipeLabel(s.equipe, s.equipe_outro)}</L>
               <L t="Transporte">
@@ -1085,6 +1179,16 @@ function BlocoHospedagem({
               value={valor.hotel ?? ''}
               placeholder={padraoHotel}
               onChange={(e) => up('hotel', e.target.value)}
+            />
+          </Campo>
+        </div>
+        <div className="lg:col-span-2">
+          <Campo label="Endereço do hotel" obrigatorio={false}>
+            <Input
+              disabled={!editavel}
+              value={valor.endereco ?? ''}
+              onChange={(e) => up('endereco', e.target.value)}
+              placeholder="Rua, número, bairro, cidade"
             />
           </Campo>
         </div>

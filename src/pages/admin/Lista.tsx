@@ -4,6 +4,7 @@ import { supabase } from '../../lib/supabase'
 import type { Diretor, Edicao, Solicitacao } from '../../lib/types'
 import {
   EQUIPES,
+  SERVICOS,
   STATUS_CLASS,
   STATUS_LABEL,
   equipeLabel,
@@ -15,6 +16,16 @@ type Linha = Solicitacao & {
   edicoes: Edicao
   diretores: Diretor
   colaboradores: { id: string; nome_completo: string; cpf: string }[]
+  responsaveis?: string[]
+}
+
+/** Rótulos curtos, para caber na coluna da tabela. */
+const SERVICO_CURTO: Record<string, string> = {
+  AEREO: 'Aéreo',
+  HOSPEDAGEM: 'Hospedagem',
+  CARRO: 'Carro',
+  VAN: 'Van',
+  RODOVIARIO: 'Rodoviário',
 }
 
 const STATUS_FILTROS = [
@@ -35,16 +46,36 @@ export default function Lista() {
   const [fEquipe, setFEquipe] = useState('')
   const [fDestino, setFDestino] = useState('')
   const [fDiretor, setFDiretor] = useState('')
+  const [fServico, setFServico] = useState('')
 
   useEffect(() => {
     ;(async () => {
-      const { data } = await supabase
-        .from('solicitacoes')
-        .select(
-          '*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(*), colaboradores(id, nome_completo, cpf)',
-        )
-        .order('created_at', { ascending: false })
-      setDados((data ?? []) as Linha[])
+      const [sol, resp] = await Promise.all([
+        supabase
+          .from('solicitacoes')
+          .select(
+            '*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(*), colaboradores(id, nome_completo, cpf)',
+          )
+          .order('created_at', { ascending: false }),
+        supabase.from('solicitacao_responsaveis').select('solicitacao_id, admin_id'),
+      ])
+
+      // Nomes dos responsáveis, para mostrar ao lado do status.
+      const { data: equipe } = await supabase.from('v_equipe').select('id, nome')
+      const nomePorId = new Map((equipe ?? []).map((u) => [u.id, u.nome]))
+      const porSolicitacao = new Map<string, string[]>()
+      for (const r of resp.data ?? []) {
+        const lista = porSolicitacao.get(r.solicitacao_id) ?? []
+        lista.push(nomePorId.get(r.admin_id) ?? '—')
+        porSolicitacao.set(r.solicitacao_id, lista)
+      }
+
+      setDados(
+        ((sol.data ?? []) as Linha[]).map((d) => ({
+          ...d,
+          responsaveis: porSolicitacao.get(d.id) ?? [],
+        })),
+      )
       setCarregando(false)
     })()
   }, [])
@@ -67,6 +98,7 @@ export default function Lista() {
       if (fEquipe && d.equipe !== fEquipe) return false
       if (fDestino && d.edicoes?.destino !== fDestino) return false
       if (fDiretor && d.diretor_id !== fDiretor) return false
+      if (fServico && !(d.servicos ?? []).includes(fServico)) return false
       if (!q) return true
       return (
         d.protocolo.toLowerCase().includes(q) ||
@@ -79,7 +111,7 @@ export default function Lista() {
         )
       )
     })
-  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor])
+  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor, fServico])
 
   const contagem = useMemo(() => {
     const c: Record<string, number> = {}
@@ -97,6 +129,8 @@ export default function Lista() {
       'Saida',
       'Equipe',
       'Pax',
+      'Servicos',
+      'Responsaveis',
       'Solicitante',
       'Email',
       'WhatsApp',
@@ -118,6 +152,8 @@ export default function Lista() {
       d.data_saida,
       equipeLabel(d.equipe, d.equipe_outro),
       d.colaboradores?.length ?? 0,
+      (d.servicos ?? []).map((sv) => SERVICO_CURTO[sv] ?? sv).join(' + '),
+      (d.responsaveis ?? []).join(' + '),
       d.solicitante_nome,
       d.solicitante_email,
       d.solicitante_whatsapp,
@@ -196,10 +232,18 @@ export default function Lista() {
               </option>
             ))}
           </Select>
+          <Select value={fServico} onChange={(e) => setFServico(e.target.value)}>
+            <option value="">Todos os serviços</option>
+            {SERVICOS.map((s) => (
+              <option key={s.value} value={s.value}>
+                {s.label}
+              </option>
+            ))}
+          </Select>
           <Select
             value={fDiretor}
             onChange={(e) => setFDiretor(e.target.value)}
-            className="lg:col-span-2"
+            className="lg:col-span-1"
           >
             <option value="">Todos os diretores</option>
             {diretores.map(([id, nome]) => (
@@ -226,9 +270,11 @@ export default function Lista() {
                   <th className="px-4 py-2.5 font-medium">Período</th>
                   <th className="px-4 py-2.5 font-medium">Equipe</th>
                   <th className="px-4 py-2.5 text-center font-medium">Pax</th>
+                  <th className="px-4 py-2.5 font-medium">Solicitado</th>
                   <th className="px-4 py-2.5 font-medium">Solicitante</th>
                   <th className="px-4 py-2.5 font-medium">Diretor</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
+                  <th className="px-4 py-2.5 font-medium">Responsáveis</th>
                   <th className="px-4 py-2.5 text-right font-medium">Custo</th>
                 </tr>
               </thead>
@@ -257,6 +303,21 @@ export default function Lista() {
                       {d.colaboradores?.length ?? 0}
                     </td>
                     <td className="px-4 py-2.5">
+                      <div className="flex flex-wrap gap-1">
+                        {(d.servicos ?? []).map((sv) => (
+                          <span
+                            key={sv}
+                            className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700"
+                          >
+                            {SERVICO_CURTO[sv] ?? sv}
+                          </span>
+                        ))}
+                        {(d.servicos ?? []).length === 0 && (
+                          <span className="text-xs text-neutral-400">—</span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
                       <span className="text-neutral-700">{d.solicitante_nome}</span>
                       <span className="block text-xs text-neutral-500">
                         {d.solicitante_email}
@@ -267,6 +328,22 @@ export default function Lista() {
                       <Etiqueta className={STATUS_CLASS[d.status]}>
                         {STATUS_LABEL[d.status]}
                       </Etiqueta>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {d.responsaveis && d.responsaveis.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {d.responsaveis.map((n) => (
+                            <span
+                              key={n}
+                              className="rounded-full bg-marca-100 px-2 py-0.5 text-[11px] font-medium text-neutral-800"
+                            >
+                              {n.split(' ')[0]}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-neutral-400">ninguém</span>
+                      )}
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right text-neutral-700">
                       {moeda(d.custo_total_manual ?? d.custo_total)}
