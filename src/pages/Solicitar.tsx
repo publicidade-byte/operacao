@@ -42,9 +42,14 @@ type Form = {
   data_entrada: string
   data_saida: string
   tipo_hospedagem: string
+  hosp_externa_operacao: string
+  hosp_externa_obs: string
   servicos: string[]
   aeroporto_saida: string
   aeroporto_chegada: string
+  tipo_voo: string
+  aeroporto_saida_volta: string
+  aeroporto_chegada_volta: string
   precisa_bagagem: string
   van_local_saida: string
   van_horario_saida: string
@@ -54,6 +59,7 @@ type Form = {
   obs_locacao_carro: string
   carro_condutor_nome: string
   carro_condutor_cpf: string
+  carro_condutor_nascimento: string
   carro_transmissao: string
   equipe: string
   equipe_outro: string
@@ -71,9 +77,14 @@ const VAZIO: Form = {
   data_entrada: '',
   data_saida: '',
   tipo_hospedagem: '',
+  hosp_externa_operacao: '',
+  hosp_externa_obs: '',
   servicos: [],
   aeroporto_saida: '',
   aeroporto_chegada: '',
+  tipo_voo: '',
+  aeroporto_saida_volta: '',
+  aeroporto_chegada_volta: '',
   precisa_bagagem: '',
   van_local_saida: '',
   van_horario_saida: '',
@@ -83,6 +94,7 @@ const VAZIO: Form = {
   obs_locacao_carro: '',
   carro_condutor_nome: '',
   carro_condutor_cpf: '',
+  carro_condutor_nascimento: '',
   carro_transmissao: '',
   equipe: '',
   equipe_outro: '',
@@ -261,6 +273,16 @@ export default function Solicitar() {
 
   const temTransporte = form.servicos.some((s) => SERVICOS_TRANSPORTE.includes(s))
 
+  /** Atalho: na volta os aeroportos costumam ser os mesmos, invertidos. */
+  function inverterTrechoVolta() {
+    setForm((f) => ({
+      ...f,
+      aeroporto_saida_volta: f.aeroporto_chegada,
+      aeroporto_chegada_volta: f.aeroporto_saida,
+    }))
+    setErros((e) => ({ ...e, aeroporto_saida_volta: '', aeroporto_chegada_volta: '' }))
+  }
+
   function marcarTodasDoDestino() {
     const ids = datasDoDestino.map((e) => e.id)
     setForm((f) => ({
@@ -283,12 +305,30 @@ export default function Solicitar() {
       if (form.data_entrada && form.data_saida && form.data_saida <= form.data_entrada)
         e.data_saida = 'A saída precisa ser depois da entrada.'
       if (!form.tipo_hospedagem) e.tipo_hospedagem = 'Selecione o tipo de hospedagem.'
+      if (form.tipo_hospedagem === 'FORA_HOTEL_PAX') {
+        if (!form.hosp_externa_operacao)
+          e.hosp_externa_operacao = 'Informe se a operação precisa reservar.'
+        if (form.hosp_externa_operacao === 'SIM' && !form.hosp_externa_obs.trim())
+          e.hosp_externa_obs = 'Descreva o que a operação precisa reservar.'
+      }
     }
     if (p === 1) {
       if (form.servicos.length === 0)
         e.servicos = 'Selecione ao menos um serviço.'
 
       if (form.servicos.includes('AEREO')) {
+        if (!form.tipo_voo) e.tipo_voo = 'Selecione o tipo de voo.'
+        if (form.tipo_voo === 'IDA_VOLTA') {
+          if (!form.aeroporto_saida_volta)
+            e.aeroporto_saida_volta = 'Selecione o aeroporto de saída da volta.'
+          if (!form.aeroporto_chegada_volta)
+            e.aeroporto_chegada_volta = 'Selecione o aeroporto de chegada da volta.'
+          if (
+            form.aeroporto_saida_volta &&
+            form.aeroporto_saida_volta === form.aeroporto_chegada_volta
+          )
+            e.aeroporto_chegada_volta = 'Saída e chegada não podem ser iguais.'
+        }
         if (!form.aeroporto_saida) e.aeroporto_saida = 'Selecione o aeroporto de saída.'
         if (!form.aeroporto_chegada)
           e.aeroporto_chegada = 'Selecione o aeroporto de chegada.'
@@ -316,6 +356,13 @@ export default function Solicitar() {
           e.carro_condutor_nome = 'Informe o nome completo do condutor.'
         if (!cpfValido(form.carro_condutor_cpf))
           e.carro_condutor_cpf = 'CPF do condutor inválido.'
+        if (!form.carro_condutor_nascimento)
+          e.carro_condutor_nascimento = 'Informe a data de nascimento do condutor.'
+        else {
+          const a = idade(form.carro_condutor_nascimento)
+          if (a < 18 || a > 90)
+            e.carro_condutor_nascimento = 'O condutor precisa ter ao menos 18 anos.'
+        }
         if (!form.carro_transmissao) e.carro_transmissao = 'Selecione o tipo de câmbio.'
       }
 
@@ -402,6 +449,24 @@ export default function Solicitar() {
           data_saida: form.data_saida,
           tipo_hospedagem: form.tipo_hospedagem,
           servicos: form.servicos,
+          hosp_externa_operacao:
+            form.tipo_hospedagem === 'FORA_HOTEL_PAX'
+              ? form.hosp_externa_operacao === 'SIM'
+              : null,
+          hosp_externa_obs:
+            form.hosp_externa_operacao === 'SIM' ? form.hosp_externa_obs.trim() : null,
+          tipo_voo: form.servicos.includes('AEREO') ? form.tipo_voo : null,
+          aeroporto_saida_volta:
+            form.servicos.includes('AEREO') && form.tipo_voo === 'IDA_VOLTA'
+              ? form.aeroporto_saida_volta
+              : null,
+          aeroporto_chegada_volta:
+            form.servicos.includes('AEREO') && form.tipo_voo === 'IDA_VOLTA'
+              ? form.aeroporto_chegada_volta
+              : null,
+          carro_condutor_nascimento: form.servicos.includes('CARRO')
+            ? form.carro_condutor_nascimento
+            : null,
           aeroporto_saida: form.servicos.includes('AEREO')
             ? form.aeroporto_saida
             : null,
@@ -772,6 +837,56 @@ export default function Solicitar() {
                                     />
                                   </Campo>
                                 </div>
+
+                                {/* Fora do hotel do pax pode ser reserva da
+                                    operação ou por conta própria — muda quem
+                                    faz o trabalho e quem paga. */}
+                                {form.tipo_hospedagem === 'FORA_HOTEL_PAX' && (
+                                  <div className="mt-4">
+                                    <Campo
+                                      label="A operação precisa reservar essa hospedagem?"
+                                      erro={erros.hosp_externa_operacao}
+                                    >
+                                      <Radios
+                                        valor={form.hosp_externa_operacao}
+                                        erro={!!erros.hosp_externa_operacao}
+                                        onChange={(v) =>
+                                          set('hosp_externa_operacao', v)
+                                        }
+                                        opcoes={[
+                                          {
+                                            value: 'SIM',
+                                            label: 'Sim, a operação reserva',
+                                          },
+                                          {
+                                            value: 'NAO',
+                                            label: 'Não, já está resolvido',
+                                          },
+                                        ]}
+                                      />
+                                    </Campo>
+
+                                    {form.hosp_externa_operacao === 'SIM' && (
+                                      <div className="mt-3">
+                                        <Campo
+                                          label="Observações sobre a hospedagem"
+                                          erro={erros.hosp_externa_obs}
+                                          dica="Região, preferência de hotel, quantos quartos, quem divide."
+                                        >
+                                          <Textarea
+                                            rows={3}
+                                            maxLength={1000}
+                                            value={form.hosp_externa_obs}
+                                            erro={!!erros.hosp_externa_obs}
+                                            onChange={(ev) =>
+                                              set('hosp_externa_obs', ev.target.value)
+                                            }
+                                          />
+                                        </Campo>
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             )}
                           </div>
@@ -854,6 +969,32 @@ export default function Solicitar() {
               {form.servicos.includes('AEREO') && (
                 <Card titulo="Aéreo">
                   <div className="space-y-5">
+                    <Campo label="Tipo de voo" erro={erros.tipo_voo}>
+                      <Radios
+                        valor={form.tipo_voo}
+                        erro={!!erros.tipo_voo}
+                        colunas={1}
+                        onChange={(v) => set('tipo_voo', v)}
+                        opcoes={[
+                          {
+                            value: 'IDA_VOLTA',
+                            label: 'Ida e volta',
+                            descricao: 'Os dois trechos serão emitidos',
+                          },
+                          { value: 'IDA', label: 'Somente ida' },
+                          { value: 'VOLTA', label: 'Somente volta' },
+                        ]}
+                      />
+                    </Campo>
+
+                    <div className="rounded-lg border border-neutral-200 p-3.5">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        {form.tipo_voo === 'IDA_VOLTA'
+                          ? 'Trecho de ida'
+                          : form.tipo_voo === 'VOLTA'
+                            ? 'Trecho de volta'
+                            : 'Trecho'}
+                      </p>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <Campo label="Aeroporto de saída" erro={erros.aeroporto_saida}>
                         <Select
@@ -884,6 +1025,65 @@ export default function Solicitar() {
                         </Select>
                       </Campo>
                     </div>
+                    </div>
+
+                    {form.tipo_voo === 'IDA_VOLTA' && (
+                      <div className="rounded-lg border border-neutral-200 p-3.5">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                            Trecho de volta
+                          </p>
+                          <button
+                            type="button"
+                            onClick={inverterTrechoVolta}
+                            className="text-xs font-semibold text-neutral-700 underline decoration-marca-500 decoration-2 underline-offset-2"
+                          >
+                            inverter a ida
+                          </button>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Campo
+                            label="Aeroporto de saída"
+                            erro={erros.aeroporto_saida_volta}
+                          >
+                            <Select
+                              value={form.aeroporto_saida_volta}
+                              erro={!!erros.aeroporto_saida_volta}
+                              onChange={(e) =>
+                                set('aeroporto_saida_volta', e.target.value)
+                              }
+                            >
+                              <option value="">Selecione…</option>
+                              {AEROPORTOS.map((a) => (
+                                <option key={a.iata} value={a.iata}>
+                                  {a.iata} — {a.nome}
+                                </option>
+                              ))}
+                            </Select>
+                          </Campo>
+                          <Campo
+                            label="Aeroporto de chegada"
+                            erro={erros.aeroporto_chegada_volta}
+                          >
+                            <Select
+                              value={form.aeroporto_chegada_volta}
+                              erro={!!erros.aeroporto_chegada_volta}
+                              onChange={(e) =>
+                                set('aeroporto_chegada_volta', e.target.value)
+                              }
+                            >
+                              <option value="">Selecione…</option>
+                              {AEROPORTOS.map((a) => (
+                                <option key={a.iata} value={a.iata}>
+                                  {a.iata} — {a.nome}
+                                </option>
+                              ))}
+                            </Select>
+                          </Campo>
+                        </div>
+                      </div>
+                    )}
+
                     <Campo
                       label="Precisa de bagagem despachada?"
                       erro={erros.precisa_bagagem}
@@ -984,6 +1184,22 @@ export default function Solicitar() {
                           placeholder="000.000.000-00"
                         />
                       </Campo>
+                      <Campo
+                        label="Data de nascimento do condutor"
+                        erro={erros.carro_condutor_nascimento}
+                        dica="Locadoras costumam exigir idade mínima."
+                      >
+                        <Input
+                          type="date"
+                          value={form.carro_condutor_nascimento}
+                          erro={!!erros.carro_condutor_nascimento}
+                          onChange={(e) =>
+                            set('carro_condutor_nascimento', e.target.value)
+                          }
+                        />
+                      </Campo>
+                    </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <Campo label="Câmbio" erro={erros.carro_transmissao}>
                         <Select
                           value={form.carro_transmissao}
@@ -1251,7 +1467,21 @@ export default function Solicitar() {
                   </Linha>
                   {form.servicos.includes('AEREO') && (
                     <Linha rotulo="Aéreo" onEditar={() => setPasso(1)}>
+                      {form.tipo_voo === 'IDA_VOLTA'
+                        ? 'Ida e volta'
+                        : form.tipo_voo === 'VOLTA'
+                          ? 'Somente volta'
+                          : 'Somente ida'}
+                      <br />
+                      {form.tipo_voo === 'IDA_VOLTA' ? 'Ida: ' : ''}
                       {form.aeroporto_saida} → {form.aeroporto_chegada}
+                      {form.tipo_voo === 'IDA_VOLTA' && (
+                        <>
+                          <br />
+                          Volta: {form.aeroporto_saida_volta} →{' '}
+                          {form.aeroporto_chegada_volta}
+                        </>
+                      )}
                       <br />
                       Bagagem despachada:{' '}
                       {form.precisa_bagagem === 'SIM' ? 'sim' : 'não, só de mão'}
@@ -1268,6 +1498,8 @@ export default function Solicitar() {
                   {form.servicos.includes('CARRO') && (
                     <Linha rotulo="Carro" onEditar={() => setPasso(1)}>
                       Condutor: {form.carro_condutor_nome} · {form.carro_condutor_cpf}
+                      <br />
+                      Nascimento: {dataBR(form.carro_condutor_nascimento)}
                       <br />
                       Câmbio:{' '}
                       {form.carro_transmissao === 'AUTOMATICO' ? 'Automático' : 'Manual'}

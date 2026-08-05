@@ -275,8 +275,16 @@ Deno.serve(async (req) => {
             : servicos.includes('RODOVIARIO')
               ? 'RODOVIARIO'
               : null,
+        hosp_externa_operacao: b.hosp_externa_operacao ?? null,
+        hosp_externa_obs: b.hosp_externa_obs ?? null,
         aeroporto_saida: servicos.includes('AEREO') ? b.aeroporto_saida : null,
         aeroporto_chegada: servicos.includes('AEREO') ? b.aeroporto_chegada : null,
+        tipo_voo: servicos.includes('AEREO') ? (b.tipo_voo ?? null) : null,
+        aeroporto_saida_volta: b.aeroporto_saida_volta ?? null,
+        aeroporto_chegada_volta: b.aeroporto_chegada_volta ?? null,
+        carro_condutor_nascimento: servicos.includes('CARRO')
+          ? (b.carro_condutor_nascimento ?? null)
+          : null,
         precisa_bagagem: servicos.includes('AEREO')
           ? b.precisa_bagagem === true
           : null,
@@ -323,8 +331,23 @@ Deno.serve(async (req) => {
       solicitacao_id: sol.id,
       tipo: 'CRIADA',
       descricao: `Solicitação criada por ${b.solicitante_nome}`,
-      payload: { ip, pax: colabs.length },
+      payload: { ip, pax: colabs.length, servicos },
     })
+
+    // Avisa a operação no Slack. Falha aqui não pode derrubar a solicitação —
+    // ela já está gravada e o painel mostra tudo de qualquer forma.
+    try {
+      await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/notificar-operacao`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+        },
+        body: JSON.stringify({ solicitacao_id: sol.id }),
+      })
+    } catch (e) {
+      console.error('Falha ao avisar a operação no Slack:', e)
+    }
 
     // ---- e-mails --------------------------------------------------------
     const site = Deno.env.get('SITE_URL') ?? ''
