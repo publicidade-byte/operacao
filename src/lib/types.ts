@@ -106,10 +106,17 @@ export type Solicitacao = {
   data_saida: string
   tipo_hospedagem: 'HOTEL_PAX' | 'FORA_HOTEL_PAX'
   precisa_transporte: boolean
-  modal: 'AEREO' | 'RODOVIARIO' | null
+  modal: 'AEREO' | 'RODOVIARIO' | 'VAN' | null
   aeroporto_saida: string | null
   aeroporto_chegada: string | null
   precisa_bagagem: boolean | null
+  van_local_saida: string | null
+  van_horario_saida: string | null
+  van_destino: string | null
+  van_qtd_passageiros: number | null
+  carro_condutor_nome: string | null
+  carro_condutor_cpf: string | null
+  carro_transmissao: string | null
   obs_transporte: string
   precisa_locacao_carro: boolean
   obs_locacao_carro: string | null
@@ -154,4 +161,20 @@ export type AdminUser = {
   role: 'OPERACIONAL' | 'GESTOR'
   ativo: boolean
   super_admin?: boolean
+}
+
+export type LocacaoVan = {
+  id?: string
+  solicitacao_id: string
+  empresa: string | null
+  motorista: string | null
+  telefone: string | null
+  placa: string | null
+  local_saida: string | null
+  saida_em: string | null
+  local_chegada: string | null
+  chegada_em: string | null
+  qtd_passageiros: number | null
+  preco: number | null
+  observacoes: string | null
 }

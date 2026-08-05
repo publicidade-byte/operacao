@@ -40,9 +40,16 @@ type Form = {
   aeroporto_saida: string
   aeroporto_chegada: string
   precisa_bagagem: string
+  van_local_saida: string
+  van_horario_saida: string
+  van_destino: string
+  van_qtd_passageiros: string
   obs_transporte: string
   precisa_locacao_carro: string
   obs_locacao_carro: string
+  carro_condutor_nome: string
+  carro_condutor_cpf: string
+  carro_transmissao: string
   equipe: string
   equipe_outro: string
   colaboradores: ColabForm[]
@@ -64,9 +71,16 @@ const VAZIO: Form = {
   aeroporto_saida: '',
   aeroporto_chegada: '',
   precisa_bagagem: '',
+  van_local_saida: '',
+  van_horario_saida: '',
+  van_destino: '',
+  van_qtd_passageiros: '',
   obs_transporte: '',
   precisa_locacao_carro: '',
   obs_locacao_carro: '',
+  carro_condutor_nome: '',
+  carro_condutor_cpf: '',
+  carro_transmissao: '',
   equipe: '',
   equipe_outro: '',
   colaboradores: [{ nome_completo: '', cpf: '', data_nascimento: '' }],
@@ -268,13 +282,31 @@ export default function Solicitar() {
           if (!form.precisa_bagagem)
             e.precisa_bagagem = 'Informe se precisa de bagagem despachada.'
         }
+        if (form.modal === 'VAN') {
+          if (!form.van_local_saida.trim())
+            e.van_local_saida = 'Informe o endereço de saída.'
+          if (!form.van_horario_saida.trim())
+            e.van_horario_saida = 'Informe o horário de saída.'
+          if (!form.van_destino.trim()) e.van_destino = 'Informe o destino.'
+          const n = Number(form.van_qtd_passageiros)
+          if (!form.van_qtd_passageiros || !Number.isInteger(n) || n < 1 || n > 60)
+            e.van_qtd_passageiros = 'Informe a quantidade de passageiros (1 a 60).'
+        }
         if (!form.obs_transporte.trim())
           e.obs_transporte = 'Descreva a necessidade de transporte.'
       }
       if (!form.precisa_locacao_carro)
         e.precisa_locacao_carro = 'Informe se precisa de locação de carro.'
-      if (form.precisa_locacao_carro === 'SIM' && !form.obs_locacao_carro.trim())
-        e.obs_locacao_carro = 'Descreva a necessidade do carro.'
+      if (form.precisa_locacao_carro === 'SIM') {
+        if (!form.obs_locacao_carro.trim())
+          e.obs_locacao_carro = 'Descreva a necessidade do carro.'
+        if (form.carro_condutor_nome.trim().split(/\s+/).length < 2)
+          e.carro_condutor_nome = 'Informe o nome completo do condutor.'
+        if (!cpfValido(form.carro_condutor_cpf))
+          e.carro_condutor_cpf = 'CPF do condutor inválido.'
+        if (!form.carro_transmissao)
+          e.carro_transmissao = 'Selecione o tipo de câmbio.'
+      }
     }
     if (p === 2) {
       if (!form.equipe) e.equipe = 'Selecione a equipe.'
@@ -370,9 +402,24 @@ export default function Solicitar() {
             form.precisa_transporte === 'SIM'
               ? form.obs_transporte.trim()
               : 'Não se aplica — sem transporte.',
+          van_local_saida: form.modal === 'VAN' ? form.van_local_saida.trim() : null,
+          van_horario_saida: form.modal === 'VAN' ? form.van_horario_saida.trim() : null,
+          van_destino: form.modal === 'VAN' ? form.van_destino.trim() : null,
+          van_qtd_passageiros:
+            form.modal === 'VAN' ? Number(form.van_qtd_passageiros) : null,
           precisa_locacao_carro: form.precisa_locacao_carro === 'SIM',
           obs_locacao_carro:
             form.precisa_locacao_carro === 'SIM' ? form.obs_locacao_carro.trim() : null,
+          carro_condutor_nome:
+            form.precisa_locacao_carro === 'SIM'
+              ? form.carro_condutor_nome.trim()
+              : null,
+          carro_condutor_cpf:
+            form.precisa_locacao_carro === 'SIM'
+              ? soDigitos(form.carro_condutor_cpf)
+              : null,
+          carro_transmissao:
+            form.precisa_locacao_carro === 'SIM' ? form.carro_transmissao : null,
           colaboradores: form.colaboradores.map((c, i) => ({
             nome_completo: c.nome_completo.trim(),
             cpf: soDigitos(c.cpf),
@@ -619,7 +666,7 @@ export default function Solicitar() {
                                         {dataCurta(e.data_fim)}
                                       </span>
                                       <span className="block text-xs text-neutral-500">
-                                        {e.noites} noites
+                                        {e.noites} {e.noites === 1 ? 'dia' : 'dias'}
                                       </span>
                                     </span>
                                   </button>
@@ -745,9 +792,73 @@ export default function Solicitar() {
                         opcoes={[
                           { value: 'AEREO', label: 'Aéreo' },
                           { value: 'RODOVIARIO', label: 'Rodoviário' },
+                          {
+                            value: 'VAN',
+                            label: 'Locação de van',
+                            descricao: 'Van fretada para o grupo',
+                          },
                         ]}
                       />
                     </Campo>
+
+                    {form.modal === 'VAN' && (
+                      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3.5">
+                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                          Dados da van
+                        </p>
+                        <div className="space-y-4">
+                          <Campo label="Endereço de saída" erro={erros.van_local_saida}>
+                            <Input
+                              value={form.van_local_saida}
+                              erro={!!erros.van_local_saida}
+                              maxLength={200}
+                              onChange={(e) => set('van_local_saida', e.target.value)}
+                              placeholder="Rua, número, bairro, cidade"
+                            />
+                          </Campo>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            <Campo
+                              label="Horário de saída"
+                              erro={erros.van_horario_saida}
+                              dica="Pode ser aproximado, ex.: 06h ou madrugada"
+                            >
+                              <Input
+                                value={form.van_horario_saida}
+                                erro={!!erros.van_horario_saida}
+                                maxLength={60}
+                                onChange={(e) => set('van_horario_saida', e.target.value)}
+                                placeholder="Ex.: 05/10 às 06h"
+                              />
+                            </Campo>
+                            <Campo
+                              label="Quantidade de passageiros"
+                              erro={erros.van_qtd_passageiros}
+                            >
+                              <Input
+                                type="number"
+                                min={1}
+                                max={60}
+                                inputMode="numeric"
+                                value={form.van_qtd_passageiros}
+                                erro={!!erros.van_qtd_passageiros}
+                                onChange={(e) =>
+                                  set('van_qtd_passageiros', e.target.value)
+                                }
+                              />
+                            </Campo>
+                          </div>
+                          <Campo label="Destino da van" erro={erros.van_destino}>
+                            <Input
+                              value={form.van_destino}
+                              erro={!!erros.van_destino}
+                              maxLength={200}
+                              onChange={(e) => set('van_destino', e.target.value)}
+                              placeholder="Para onde a van vai levar o grupo"
+                            />
+                          </Campo>
+                        </div>
+                      </div>
+                    )}
 
                     {form.modal === 'AEREO' && (
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -833,18 +944,61 @@ export default function Solicitar() {
                 </Campo>
 
                 {form.precisa_locacao_carro === 'SIM' && (
-                  <Campo
-                    label="Observações sobre a locação"
-                    erro={erros.obs_locacao_carro}
-                    dica="Categoria desejada, período, quem será o condutor, local de retirada."
-                  >
-                    <Textarea
-                      maxLength={1000}
-                      value={form.obs_locacao_carro}
-                      erro={!!erros.obs_locacao_carro}
-                      onChange={(e) => set('obs_locacao_carro', e.target.value)}
-                    />
-                  </Campo>
+                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3.5">
+                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                      Dados da locação
+                    </p>
+                    <div className="space-y-4">
+                      <Campo
+                        label="Nome do condutor"
+                        erro={erros.carro_condutor_nome}
+                        dica="Quem vai dirigir. A locadora exige CNH em nome dessa pessoa."
+                      >
+                        <Input
+                          value={form.carro_condutor_nome}
+                          erro={!!erros.carro_condutor_nome}
+                          onChange={(e) => set('carro_condutor_nome', e.target.value)}
+                        />
+                      </Campo>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <Campo label="CPF do condutor" erro={erros.carro_condutor_cpf}>
+                          <Input
+                            value={form.carro_condutor_cpf}
+                            inputMode="numeric"
+                            erro={!!erros.carro_condutor_cpf}
+                            autoComplete="off"
+                            onChange={(e) =>
+                              set('carro_condutor_cpf', mascaraCpf(e.target.value))
+                            }
+                            placeholder="000.000.000-00"
+                          />
+                        </Campo>
+                        <Campo label="Câmbio" erro={erros.carro_transmissao}>
+                          <Select
+                            value={form.carro_transmissao}
+                            erro={!!erros.carro_transmissao}
+                            onChange={(e) => set('carro_transmissao', e.target.value)}
+                          >
+                            <option value="">Selecione…</option>
+                            <option value="MANUAL">Manual</option>
+                            <option value="AUTOMATICO">Automático</option>
+                          </Select>
+                        </Campo>
+                      </div>
+                      <Campo
+                        label="Observações sobre a locação"
+                        erro={erros.obs_locacao_carro}
+                        dica="Categoria desejada, período, local de retirada e devolução."
+                      >
+                        <Textarea
+                          maxLength={1000}
+                          value={form.obs_locacao_carro}
+                          erro={!!erros.obs_locacao_carro}
+                          onChange={(e) => set('obs_locacao_carro', e.target.value)}
+                        />
+                      </Campo>
+                    </div>
+                  </div>
                 )}
               </div>
             </Card>
@@ -1057,8 +1211,18 @@ export default function Solicitar() {
                       ? 'Não precisa'
                       : form.modal === 'AEREO'
                         ? `Aéreo · ${form.aeroporto_saida} → ${form.aeroporto_chegada}`
-                        : 'Rodoviário'}
+                        : form.modal === 'VAN'
+                          ? 'Locação de van'
+                          : 'Rodoviário'}
                   </Linha>
+                  {form.modal === 'VAN' && form.precisa_transporte === 'SIM' && (
+                    <Linha rotulo="Van" onEditar={() => setPasso(1)}>
+                      Saída de {form.van_local_saida} · {form.van_horario_saida}
+                      <br />
+                      Destino: {form.van_destino} · {form.van_qtd_passageiros}{' '}
+                      passageiro(s)
+                    </Linha>
+                  )}
                   {form.modal === 'AEREO' && form.precisa_transporte === 'SIM' && (
                     <Linha rotulo="Bagagem despachada" onEditar={() => setPasso(1)}>
                       {form.precisa_bagagem === 'SIM' ? 'Sim' : 'Não, só bagagem de mão'}
@@ -1070,9 +1234,23 @@ export default function Solicitar() {
                     </Linha>
                   )}
                   <Linha rotulo="Locação de carro" onEditar={() => setPasso(1)}>
-                    {form.precisa_locacao_carro === 'SIM'
-                      ? `Sim — ${form.obs_locacao_carro}`
-                      : 'Não'}
+                    {form.precisa_locacao_carro === 'SIM' ? (
+                      <>
+                        Condutor: {form.carro_condutor_nome} ·{' '}
+                        {form.carro_condutor_cpf}
+                        <br />
+                        Câmbio:{' '}
+                        {form.carro_transmissao === 'AUTOMATICO'
+                          ? 'Automático'
+                          : 'Manual'}
+                        <br />
+                        <span className="text-neutral-500">
+                          {form.obs_locacao_carro}
+                        </span>
+                      </>
+                    ) : (
+                      'Não'
+                    )}
                   </Linha>
                   <Linha rotulo="Equipe" onEditar={() => setPasso(2)}>
                     {form.equipe ? equipeLabel(form.equipe, form.equipe_outro) : '—'}

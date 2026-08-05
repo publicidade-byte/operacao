@@ -1,5 +1,5 @@
 // Funcao autocontida: o modulo compartilhado foi embutido para permitir
-// deploy pelo editor do painel do Supabase, que aceita um arquivo so.
+// deploy pelo painel do Supabase, que aceita um arquivo so.
 
 export const cors = {
   'Access-Control-Allow-Origin': '*',
@@ -110,8 +110,6 @@ Deno.serve(async (req) => {
 
     const token = Deno.env.get('SLACK_BOT_TOKEN')
     const canal = Deno.env.get('SLACK_CHANNEL_ID')
-    if (!token || !canal)
-      return erro('Slack não configurado (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID).', 500)
 
     const { data: s } = await sb
       .from('solicitacoes')
@@ -121,12 +119,13 @@ Deno.serve(async (req) => {
     if (!s) return erro('Solicitação não encontrada.', 404)
 
     const ids = s.colaboradores.map((c: { id: string }) => c.id)
-    const [{ data: voos }, { data: rodo }, { data: hosp }, { data: carro }] =
+    const [{ data: voos }, { data: rodo }, { data: hosp }, { data: carro }, { data: van }] =
       await Promise.all([
         sb.from('voos').select('*').in('colaborador_id', ids),
         sb.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
         sb.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
         sb.from('locacao_carro').select('*').eq('solicitacao_id', s.id).maybeSingle(),
+        sb.from('locacao_van').select('*').eq('solicitacao_id', s.id).maybeSingle(),
       ])
 
     const site = Deno.env.get('SITE_URL') ?? ''
@@ -166,13 +165,17 @@ Deno.serve(async (req) => {
       return t + Number(h.valor_diaria) * noites
     }, 0)
     const totalCarro = Number(carro?.preco ?? 0)
-    const total = s.custo_total_manual ?? totalVoos + totalBus + totalHosp + totalCarro
+    const totalVan = Number(van?.preco ?? 0)
+    const total =
+      s.custo_total_manual ?? totalVoos + totalBus + totalHosp + totalCarro + totalVan
 
     const transporte = !s.precisa_transporte
       ? 'não solicitado'
       : s.modal === 'AEREO'
         ? `aéreo ${s.aeroporto_saida} → ${s.aeroporto_chegada}`
-        : 'rodoviário'
+        : s.modal === 'VAN'
+          ? `van de ${s.van_local_saida} para ${s.van_destino} (${s.van_qtd_passageiros} pax)`
+          : 'rodoviário'
 
     const texto = [
       `:airplane: *Solicitação ${s.protocolo} aguarda sua aprovação no sistema*`,
@@ -204,25 +207,78 @@ Deno.serve(async (req) => {
       .filter(Boolean)
       .join('\n')
 
-    const res = await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: JSON.stringify({ channel: canal, text: texto, unfurl_links: false }),
-    })
-    const resultado = await res.json()
-    if (!resultado.ok) return erro(`Slack recusou a mensagem: ${resultado.error}`, 502)
+    // ---- Canal 1: e-mail para o diretor ---------------------------------
+    const link = site ? `${site}/aprovacao/${s.id}` : ''
+    let emailEnviado = false
+    let motivoEmail = 'diretor sem e-mail cadastrado'
+
+    if (s.diretores.email) {
+      if (!Deno.env.get('RESEND_API_KEY') || !Deno.env.get('EMAIL_FROM')) {
+        motivoEmail = 'provedor de e-mail não configurado (RESEND_API_KEY / EMAIL_FROM)'
+      } else {
+        await enviarEmail(
+          s.diretores.email,
+          `[${s.protocolo}] Aprovação pendente — ${s.edicoes.destino} · ${moeda(total)}`,
+          layoutEmail(
+            'Solicitação aguardando sua aprovação',
+            `<p>Olá, ${s.diretores.nome.split(' ')[0]}!</p>
+             <p>A operação preparou a solicitação
+                <strong style="font-family:monospace">${s.protocolo}</strong> e ela está
+                aguardando sua decisão no sistema.</p>
+             <table style="width:100%;font-size:14px;border-collapse:collapse;margin:16px 0">
+               <tr><td style="padding:6px 0;color:#64748b;width:150px">Destino</td><td>${s.edicoes.destino} — ${s.edicoes.hotel}</td></tr>
+               <tr><td style="padding:6px 0;color:#64748b">Equipe</td><td>${EQUIPE_LABEL[s.equipe] ?? s.equipe} · ${s.colaboradores.length} pax</td></tr>
+               <tr><td style="padding:6px 0;color:#64748b">Estadia</td><td>${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}</td></tr>
+               <tr><td style="padding:6px 0;color:#64748b">Transporte</td><td>${transporte}</td></tr>
+               <tr><td style="padding:6px 0;color:#64748b">Solicitante</td><td>${s.solicitante_nome}</td></tr>
+               <tr><td style="padding:6px 0;color:#64748b"><strong>Custo total</strong></td><td><strong>${moeda(total)}</strong></td></tr>
+             </table>
+             ${link ? `<p><a href="${link}" style="background:#f5c400;color:#111;padding:12px 22px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600">Aprovar ou reprovar no sistema</a></p>` : ''}
+             <p style="color:#64748b;font-size:13px">A decisão é registrada com seu nome, data e hora.</p>`,
+          ),
+        )
+        emailEnviado = true
+      }
+    }
+
+    // ---- Canal 2: aviso no Slack ----------------------------------------
+    let slackTs: string | null = null
+    let motivoSlack = 'Slack não configurado (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID)'
+
+    if (token && canal) {
+      const res = await fetch('https://slack.com/api/chat.postMessage', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: JSON.stringify({ channel: canal, text: texto, unfurl_links: false }),
+      })
+      const resultado = await res.json()
+      if (resultado.ok) slackTs = resultado.ts
+      else motivoSlack = `Slack recusou a mensagem: ${resultado.error}`
+    }
+
+    // Se nenhum canal funcionou, o operacional precisa saber — senão ele
+    // acha que avisou o diretor e a solicitação fica parada.
+    if (!emailEnviado && !slackTs)
+      return erro(
+        `Não foi possível avisar ${s.diretores.nome}. E-mail: ${motivoEmail}. Slack: ${motivoSlack}.`,
+        502,
+      )
+
+    const canais = [emailEnviado ? 'e-mail' : null, slackTs ? 'Slack' : null]
+      .filter(Boolean)
+      .join(' e ')
 
     await sb.from('eventos_solicitacao').insert({
       solicitacao_id: s.id,
-      tipo: 'SLACK_ENVIADO',
-      descricao: `Mensagem de aprovação enviada no Slack para ${s.diretores.nome}`,
-      payload: { ts: resultado.ts, canal },
+      tipo: 'AVISO_APROVADOR',
+      descricao: `${s.diretores.nome} avisado por ${canais}`,
+      payload: { ts: slackTs, canal, email: emailEnviado ? s.diretores.email : null },
     })
 
-    return json({ ok: true, ts: resultado.ts })
+    return json({ ok: true, canais, ts: slackTs })
   } catch (e) {
     console.error(e)
     return erro(e instanceof Error ? e.message : 'Erro interno.', 500)

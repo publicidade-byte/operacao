@@ -1,5 +1,5 @@
 // Funcao autocontida: o modulo compartilhado foi embutido para permitir
-// deploy pelo editor do painel do Supabase, que aceita um arquivo so.
+// deploy pelo painel do Supabase, que aceita um arquivo so.
 
 export const cors = {
   'Access-Control-Allow-Origin': '*',

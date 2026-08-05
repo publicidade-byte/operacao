@@ -10,6 +10,7 @@ import type {
   Evento,
   HospedagemDetalhe,
   LocacaoCarro,
+  LocacaoVan,
   Rodoviario,
   Solicitacao,
   Status,
@@ -44,6 +45,7 @@ export default function Detalhe() {
   const [rodo, setRodo] = useState<Record<string, Partial<Rodoviario>>>({})
   const [hosp, setHosp] = useState<Record<string, Partial<HospedagemDetalhe>>>({})
   const [carro, setCarro] = useState<Partial<LocacaoCarro>>({})
+  const [van, setVan] = useState<Partial<LocacaoVan>>({})
   const [eventos, setEventos] = useState<Evento[]>([])
   const [aprovacoes, setAprovacoes] = useState<Aprovacao[]>([])
   const [operacoes, setOperacoes] = useState<Edicao[]>([])
@@ -63,11 +65,12 @@ export default function Detalhe() {
     setS(sol)
 
     const ids = sol.colaboradores.map((c) => c.id)
-    const [v, r, h, l, ev, ap] = await Promise.all([
+    const [v, r, h, l, vn, ev, ap] = await Promise.all([
       supabase.from('voos').select('*').in('colaborador_id', ids),
       supabase.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
       supabase.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
       supabase.from('locacao_carro').select('*').eq('solicitacao_id', id).maybeSingle(),
+      supabase.from('locacao_van').select('*').eq('solicitacao_id', id).maybeSingle(),
       supabase
         .from('eventos_solicitacao')
         .select('*')
@@ -99,8 +102,20 @@ export default function Detalhe() {
     setRodo(mr)
     const mh: Record<string, Partial<HospedagemDetalhe>> = {}
     ;(h.data ?? []).forEach((x: HospedagemDetalhe) => (mh[x.colaborador_id] = x))
+    // Colaborador ainda sem hospedagem cadastrada já vem com as datas que o
+    // solicitante pediu — a operação só confirma ou ajusta, não redigita.
+    sol.colaboradores.forEach((c) => {
+      if (!mh[c.id])
+        mh[c.id] = {
+          colaborador_id: c.id,
+          hotel: sol.edicoes?.hotel ?? null,
+          check_in: sol.data_entrada,
+          check_out: sol.data_saida,
+        }
+    })
     setHosp(mh)
     setCarro((l.data as LocacaoCarro) ?? {})
+    setVan((vn.data as LocacaoVan) ?? {})
     setEventos((ev.data ?? []) as Evento[])
     setAprovacoes((ap.data ?? []) as Aprovacao[])
   }, [id])
@@ -179,6 +194,17 @@ export default function Detalhe() {
         await erro(
           supabase
             .from('locacao_carro')
+            .upsert({ ...limpar(resto), solicitacao_id: s.id }, {
+              onConflict: 'solicitacao_id',
+            }),
+        )
+      }
+
+      if (s.modal === 'VAN' && Object.keys(van).length) {
+        const { id: _i, ...resto } = van as LocacaoVan
+        await erro(
+          supabase
+            .from('locacao_van')
             .upsert({ ...limpar(resto), solicitacao_id: s.id }, {
               onConflict: 'solicitacao_id',
             }),
@@ -446,8 +472,31 @@ export default function Detalhe() {
               <L t="Obs. transporte">
                 <span className="whitespace-pre-wrap">{s.obs_transporte}</span>
               </L>
+              {s.modal === 'VAN' && (
+                <L t="Van solicitada">
+                  Saída de {s.van_local_saida} · {s.van_horario_saida}
+                  <br />
+                  Destino: {s.van_destino} · {s.van_qtd_passageiros} passageiro(s)
+                </L>
+              )}
               <L t="Locação de carro">
-                {s.precisa_locacao_carro ? `Sim — ${s.obs_locacao_carro ?? ''}` : 'Não'}
+                {s.precisa_locacao_carro ? (
+                  <>
+                    Condutor: {s.carro_condutor_nome} ·{' '}
+                    <span className="font-mono">
+                      {s.carro_condutor_cpf ? mascaraCpf(s.carro_condutor_cpf) : '—'}
+                    </span>
+                    <br />
+                    Câmbio:{' '}
+                    {s.carro_transmissao === 'AUTOMATICO' ? 'Automático' : 'Manual'}
+                    <br />
+                    <span className="whitespace-pre-wrap text-neutral-600">
+                      {s.obs_locacao_carro ?? ''}
+                    </span>
+                  </>
+                ) : (
+                  'Não'
+                )}
               </L>
             </dl>
           </Card>
@@ -563,6 +612,102 @@ export default function Detalhe() {
               </div>
             </Card>
           ))}
+
+          {s.precisa_transporte && s.modal === 'VAN' && (
+            <Card
+              titulo="Locação de van"
+              descricao={`Pedido: saída de ${s.van_local_saida ?? '—'} · ${s.van_horario_saida ?? '—'} · destino ${s.van_destino ?? '—'} · ${s.van_qtd_passageiros ?? '—'} passageiro(s)`}
+            >
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                <Campo label="Empresa / locadora" obrigatorio={false}>
+                  <Input
+                    disabled={!podeEditar}
+                    value={van.empresa ?? ''}
+                    onChange={(e) => setVan({ ...van, empresa: e.target.value })}
+                  />
+                </Campo>
+                <Campo label="Motorista" obrigatorio={false}>
+                  <Input
+                    disabled={!podeEditar}
+                    value={van.motorista ?? ''}
+                    onChange={(e) => setVan({ ...van, motorista: e.target.value })}
+                  />
+                </Campo>
+                <Campo label="Telefone do motorista" obrigatorio={false}>
+                  <Input
+                    disabled={!podeEditar}
+                    value={van.telefone ?? ''}
+                    onChange={(e) => setVan({ ...van, telefone: e.target.value })}
+                  />
+                </Campo>
+                <Campo label="Placa" obrigatorio={false}>
+                  <Input
+                    disabled={!podeEditar}
+                    value={van.placa ?? ''}
+                    onChange={(e) =>
+                      setVan({ ...van, placa: e.target.value.toUpperCase() })
+                    }
+                  />
+                </Campo>
+                <Campo label="Passageiros" obrigatorio={false}>
+                  <Input
+                    type="number"
+                    disabled={!podeEditar}
+                    value={van.qtd_passageiros ?? ''}
+                    onChange={(e) =>
+                      setVan({
+                        ...van,
+                        qtd_passageiros: e.target.value ? +e.target.value : null,
+                      })
+                    }
+                  />
+                </Campo>
+                <Campo label="Preço (R$)" obrigatorio={false}>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    disabled={!podeEditar}
+                    value={van.preco ?? ''}
+                    onChange={(e) =>
+                      setVan({ ...van, preco: e.target.value ? +e.target.value : null })
+                    }
+                  />
+                </Campo>
+                <Campo label="Local de saída" obrigatorio={false}>
+                  <Input
+                    disabled={!podeEditar}
+                    value={van.local_saida ?? ''}
+                    onChange={(e) => setVan({ ...van, local_saida: e.target.value })}
+                  />
+                </Campo>
+                <Campo label="Saída em" obrigatorio={false}>
+                  <Input
+                    type="datetime-local"
+                    disabled={!podeEditar}
+                    value={paraInputDateTime(van.saida_em)}
+                    onChange={(e) => setVan({ ...van, saida_em: e.target.value || null })}
+                  />
+                </Campo>
+                <Campo label="Local de chegada" obrigatorio={false}>
+                  <Input
+                    disabled={!podeEditar}
+                    value={van.local_chegada ?? ''}
+                    onChange={(e) => setVan({ ...van, local_chegada: e.target.value })}
+                  />
+                </Campo>
+                <div className="sm:col-span-2 lg:col-span-3">
+                  <Campo label="Observações" obrigatorio={false}>
+                    <Textarea
+                      rows={2}
+                      disabled={!podeEditar}
+                      value={van.observacoes ?? ''}
+                      onChange={(e) => setVan({ ...van, observacoes: e.target.value })}
+                    />
+                  </Campo>
+                </div>
+              </div>
+            </Card>
+          )}
 
           {s.precisa_locacao_carro && (
             <Card titulo="Locação de carro">
