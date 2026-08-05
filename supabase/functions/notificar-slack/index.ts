@@ -134,7 +134,7 @@ Deno.serve(async (req) => {
       if (!Deno.env.get('RESEND_API_KEY') || !Deno.env.get('EMAIL_FROM')) {
         motivoEmail = 'provedor de e-mail não configurado (RESEND_API_KEY / EMAIL_FROM)'
       } else {
-        await enviarEmail(
+        const envio = await enviarEmail(
           s.diretores.email,
           `[${s.protocolo}] Aprovação pendente — ${s.edicoes.destino} · ${moeda(total)}`,
           layoutEmail(
@@ -155,7 +155,8 @@ Deno.serve(async (req) => {
              <p style="color:#64748b;font-size:13px">A decisão é registrada com seu nome, data e hora.</p>`,
           ),
         )
-        emailEnviado = true
+        emailEnviado = envio.enviado
+        if (!envio.enviado) motivoEmail = envio.motivo ?? 'falha no envio'
       }
     }
 

@@ -321,18 +321,28 @@ export default function Detalhe() {
             <Botao
               onClick={async () => {
                 setSalvando(true)
+                // A mudança de status vem primeiro: o diretor precisa ver a
+                // solicitação na área dele mesmo que o aviso não saia. Aviso
+                // é conveniência; aprovação é o processo.
+                await mudarStatus(
+                  'AGUARDANDO_APROVACAO',
+                  `Enviada para aprovação de ${s.diretores.nome}`,
+                )
                 try {
-                  await invocar('notificar-slack', { solicitacao_id: s.id })
-                  await mudarStatus(
-                    'AGUARDANDO_APROVACAO',
-                    `Enviada para aprovação de ${s.diretores.nome} via Slack`,
-                  )
+                  const r = await invocar<{ canais?: string }>('notificar-slack', {
+                    solicitacao_id: s.id,
+                  })
+                  setMsg({
+                    tom: 'sucesso',
+                    texto: `Enviada para ${s.diretores.nome} e avisado por ${r.canais ?? 'Slack'}.`,
+                  })
                 } catch (e) {
                   setMsg({
                     tom: 'erro',
                     texto:
-                      (e instanceof Error ? e.message : 'Falha no Slack') +
-                      ' — o status não foi alterado.',
+                      `Status alterado — a solicitação já aparece para ${s.diretores.nome} aprovar. ` +
+                      `Mas o aviso automático não saiu: ${e instanceof Error ? e.message : 'falha'} ` +
+                      '— avise por outro canal enquanto isso.',
                   })
                 } finally {
                   setSalvando(false)
@@ -384,9 +394,19 @@ export default function Detalhe() {
             <Botao
               onClick={async () => {
                 setSalvando(true)
+                // Mesma lógica do envio para aprovação: a viagem está
+                // confirmada de qualquer forma. Se o e-mail não sair, a
+                // operação precisa saber para avisar por outro canal.
+                await mudarStatus('CONCLUIDA', 'Solicitação concluída')
                 try {
-                  await invocar('enviar-confirmacao', { solicitacao_id: s.id })
-                  await mudarStatus('CONCLUIDA', 'Confirmação enviada ao solicitante')
+                  const r = await invocar<{ destinatario?: string }>(
+                    'enviar-confirmacao',
+                    { solicitacao_id: s.id },
+                  )
+                  setMsg({
+                    tom: 'sucesso',
+                    texto: `Confirmação enviada para ${r.destinatario ?? s.solicitante_email}.`,
+                  })
                 } catch (e) {
                   setMsg({
                     tom: 'erro',

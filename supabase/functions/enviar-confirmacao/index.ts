@@ -133,7 +133,7 @@ Deno.serve(async (req) => {
 
     corpo += `<p style="margin-top:24px">Dúvidas? Responda este e-mail ou fale com a equipe operacional.</p>`
 
-    await enviarEmail(
+    const envio = await enviarEmail(
       s.solicitante_email,
       `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
       layoutEmail('Viagem confirmada', corpo),
@@ -142,10 +142,20 @@ Deno.serve(async (req) => {
     await sb.from('eventos_solicitacao').insert({
       solicitacao_id: s.id,
       tipo: 'EMAIL_CONFIRMACAO',
-      descricao: `Confirmação enviada para ${s.solicitante_email}`,
+      descricao: envio.enviado
+        ? `Confirmação enviada para ${s.solicitante_email}`
+        : `Confirmação NÃO enviada para ${s.solicitante_email}: ${envio.motivo}`,
     })
 
-    return json({ ok: true })
+    // Não damos ok silencioso quando o e-mail não saiu: a operação
+    // precisa saber para avisar o solicitante por outro caminho.
+    if (!envio.enviado)
+      return erro(
+        `A viagem está confirmada no sistema, mas o e-mail não foi enviado: ${envio.motivo}. Avise ${s.solicitante_email} por outro canal.`,
+        502,
+      )
+
+    return json({ ok: true, destinatario: s.solicitante_email })
   } catch (e) {
     console.error(e)
     return erro(e instanceof Error ? e.message : 'Erro interno.', 500)

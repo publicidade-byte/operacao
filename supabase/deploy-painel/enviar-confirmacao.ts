@@ -62,20 +62,35 @@ export const EQUIPE_LABEL: Record<string, string> = {
   DJ: 'DJ',
 }
 
-/** Envia e-mail via Resend. Se a chave não estiver configurada, apenas loga. */
-export async function enviarEmail(para: string | string[], assunto: string, html: string) {
+/**
+ * Envia e-mail via Resend.
+ *
+ * Devolve se realmente saiu e, se não, por quê — quem chama precisa poder
+ * avisar a operação em vez de deixar parecer que o e-mail foi entregue.
+ */
+export async function enviarEmail(
+  para: string | string[],
+  assunto: string,
+  html: string,
+): Promise<{ enviado: boolean; motivo?: string }> {
   const key = Deno.env.get('RESEND_API_KEY')
   const from = Deno.env.get('EMAIL_FROM')
   if (!key || !from) {
-    console.warn('RESEND_API_KEY/EMAIL_FROM ausentes — e-mail não enviado:', assunto)
-    return
+    const motivo = 'provedor de e-mail não configurado (RESEND_API_KEY / EMAIL_FROM)'
+    console.warn(`${motivo} — não enviado:`, assunto)
+    return { enviado: false, motivo }
   }
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ from, to: para, subject: assunto, html }),
   })
-  if (!res.ok) console.error('Falha ao enviar e-mail:', await res.text())
+  if (!res.ok) {
+    const motivo = `Resend recusou o envio: ${await res.text()}`
+    console.error(motivo)
+    return { enviado: false, motivo }
+  }
+  return { enviado: true }
 }
 
 export const layoutEmail = (titulo: string, corpo: string) => `
@@ -216,7 +231,7 @@ Deno.serve(async (req) => {
 
     corpo += `<p style="margin-top:24px">Dúvidas? Responda este e-mail ou fale com a equipe operacional.</p>`
 
-    await enviarEmail(
+    const envio = await enviarEmail(
       s.solicitante_email,
       `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
       layoutEmail('Viagem confirmada', corpo),
@@ -225,10 +240,20 @@ Deno.serve(async (req) => {
     await sb.from('eventos_solicitacao').insert({
       solicitacao_id: s.id,
       tipo: 'EMAIL_CONFIRMACAO',
-      descricao: `Confirmação enviada para ${s.solicitante_email}`,
+      descricao: envio.enviado
+        ? `Confirmação enviada para ${s.solicitante_email}`
+        : `Confirmação NÃO enviada para ${s.solicitante_email}: ${envio.motivo}`,
     })
 
-    return json({ ok: true })
+    // Não damos ok silencioso quando o e-mail não saiu: a operação
+    // precisa saber para avisar o solicitante por outro caminho.
+    if (!envio.enviado)
+      return erro(
+        `A viagem está confirmada no sistema, mas o e-mail não foi enviado: ${envio.motivo}. Avise ${s.solicitante_email} por outro canal.`,
+        502,
+      )
+
+    return json({ ok: true, destinatario: s.solicitante_email })
   } catch (e) {
     console.error(e)
     return erro(e instanceof Error ? e.message : 'Erro interno.', 500)
