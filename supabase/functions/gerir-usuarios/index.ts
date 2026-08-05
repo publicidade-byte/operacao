@@ -167,6 +167,18 @@ Deno.serve(async (req) => {
       return json({ ok: true })
     }
 
+    // ================= E-MAIL DO DIRETOR =================
+    // Vale para diretor sem login: sem e-mail cadastrado ele não recebe o
+    // aviso de aprovação, mesmo com tudo o mais configurado.
+    if (acao === 'email') {
+      const diretorId = String(b.diretor_id ?? '')
+      const email = String(b.email ?? '').trim().toLowerCase()
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) return erro('E-mail inválido.')
+      const { error } = await sb.from('diretores').update({ email }).eq('id', diretorId)
+      if (error) return erro(error.message)
+      return json({ ok: true })
+    }
+
     // ================= SLACK ID DO DIRETOR =================
     if (acao === 'slack') {
       const diretorId = String(b.diretor_id ?? '')

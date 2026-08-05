@@ -368,12 +368,35 @@ export default function Usuarios() {
                     )}
                   </p>
                   <p className="text-xs text-neutral-500">
-                    {u.email}
+                    {u.email === '—' ? (
+                      <span className="font-medium text-red-600">
+                        sem e-mail — não recebe aviso de aprovação
+                      </span>
+                    ) : (
+                      u.email
+                    )}
                     {u.slack_user_id ? ` · Slack ${u.slack_user_id}` : ' · sem ID do Slack'}
                   </p>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
+                  <Botao
+                    variante={u.email === '—' ? 'primario' : 'secundario'}
+                    className="px-2.5 py-1.5 text-xs"
+                    onClick={() => {
+                      const e = prompt(
+                        `E-mail de ${u.nome}.\nÉ para onde vai o aviso de aprovação:`,
+                        u.email === '—' ? '' : u.email,
+                      )
+                      if (e)
+                        acao(
+                          { acao: 'email', diretor_id: u.diretor_id, email: e },
+                          'E-mail atualizado.',
+                        )
+                    }}
+                  >
+                    E-mail
+                  </Botao>
                   <Botao
                     variante="secundario"
                     className="px-2.5 py-1.5 text-xs"
