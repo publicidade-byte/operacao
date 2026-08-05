@@ -146,8 +146,10 @@ begin
   values
     (p_solicitacao, v_diretor, p_aprovado, now(), nullif(btrim(p_observacao), ''));
 
+  -- Cast explicito: o CASE devolve text e o Postgres nao converte sozinho
+  -- para o enum da coluna (ERRO 42804 na aprovacao).
   update solicitacoes
-     set status = case when p_aprovado then 'APROVADA' else 'REPROVADA' end
+     set status = (case when p_aprovado then 'APROVADA' else 'REPROVADA' end)::status_solicitacao
    where id = p_solicitacao;
 
   insert into eventos_solicitacao (solicitacao_id, tipo, autor_nome, descricao, payload)
