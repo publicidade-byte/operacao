@@ -367,15 +367,21 @@ export default function Usuarios() {
                       </Etiqueta>
                     )}
                   </p>
+                  {/* O aviso de aprovação sai por e-mail OU Slack. Só é problema
+                      quando os dois faltam — aí o diretor não é avisado por nada. */}
                   <p className="text-xs text-neutral-500">
-                    {u.email === '—' ? (
+                    {u.email === '—' && !u.slack_user_id ? (
                       <span className="font-medium text-red-600">
-                        sem e-mail — não recebe aviso de aprovação
+                        sem e-mail e sem ID do Slack — não recebe aviso de aprovação
                       </span>
                     ) : (
-                      u.email
+                      <>
+                        {u.email === '—' ? 'sem e-mail' : u.email}
+                        {u.slack_user_id
+                          ? ` · Slack ${u.slack_user_id}`
+                          : ' · sem ID do Slack'}
+                      </>
                     )}
-                    {u.slack_user_id ? ` · Slack ${u.slack_user_id}` : ' · sem ID do Slack'}
                   </p>
                 </div>
 
