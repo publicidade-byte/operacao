@@ -2,7 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { supabase, invocar } from '../lib/supabase'
 import type { Edicao, Diretor } from '../lib/types'
-import { AEROPORTOS, EQUIPES, equipeLabel } from '../lib/constants'
+import {
+  AEROPORTOS,
+  EQUIPES,
+  SERVICOS,
+  SERVICOS_TRANSPORTE,
+  equipeLabel,
+  servicoLabel,
+} from '../lib/constants'
 import {
   cpfValido,
   dataBR,
@@ -35,8 +42,7 @@ type Form = {
   data_entrada: string
   data_saida: string
   tipo_hospedagem: string
-  precisa_transporte: string
-  modal: string
+  servicos: string[]
   aeroporto_saida: string
   aeroporto_chegada: string
   precisa_bagagem: string
@@ -45,7 +51,6 @@ type Form = {
   van_destino: string
   van_qtd_passageiros: string
   obs_transporte: string
-  precisa_locacao_carro: string
   obs_locacao_carro: string
   carro_condutor_nome: string
   carro_condutor_cpf: string
@@ -66,8 +71,7 @@ const VAZIO: Form = {
   data_entrada: '',
   data_saida: '',
   tipo_hospedagem: '',
-  precisa_transporte: '',
-  modal: '',
+  servicos: [],
   aeroporto_saida: '',
   aeroporto_chegada: '',
   precisa_bagagem: '',
@@ -76,7 +80,6 @@ const VAZIO: Form = {
   van_destino: '',
   van_qtd_passageiros: '',
   obs_transporte: '',
-  precisa_locacao_carro: '',
   obs_locacao_carro: '',
   carro_condutor_nome: '',
   carro_condutor_cpf: '',
@@ -91,7 +94,7 @@ const VAZIO: Form = {
   consentimento: false,
 }
 
-const PASSOS = ['Destino', 'Transporte', 'Equipe', 'Solicitante', 'Revisão']
+const PASSOS = ['Destino', 'Serviços', 'Equipe', 'Solicitante', 'Revisão']
 const RASCUNHO = 'f9:rascunho'
 
 type Erros = Record<string, string>
@@ -245,6 +248,19 @@ export default function Solicitar() {
     setErros((e) => ({ ...e, edicao_ids: '', data_entrada: '', data_saida: '' }))
   }
 
+  /** Marca/desmarca um serviço. Vários podem coexistir na mesma viagem. */
+  function alternarServico(valor: string) {
+    setForm((f) => ({
+      ...f,
+      servicos: f.servicos.includes(valor)
+        ? f.servicos.filter((s) => s !== valor)
+        : [...f.servicos, valor],
+    }))
+    setErros((e) => ({ ...e, servicos: '' }))
+  }
+
+  const temTransporte = form.servicos.some((s) => SERVICOS_TRANSPORTE.includes(s))
+
   function marcarTodasDoDestino() {
     const ids = datasDoDestino.map((e) => e.id)
     setForm((f) => ({
@@ -269,44 +285,45 @@ export default function Solicitar() {
       if (!form.tipo_hospedagem) e.tipo_hospedagem = 'Selecione o tipo de hospedagem.'
     }
     if (p === 1) {
-      if (!form.precisa_transporte)
-        e.precisa_transporte = 'Informe se precisa de transporte.'
-      if (form.precisa_transporte === 'SIM') {
-        if (!form.modal) e.modal = 'Selecione o tipo de transporte.'
-        if (form.modal === 'AEREO') {
-          if (!form.aeroporto_saida) e.aeroporto_saida = 'Selecione o aeroporto de saída.'
-          if (!form.aeroporto_chegada)
-            e.aeroporto_chegada = 'Selecione o aeroporto de chegada.'
-          if (form.aeroporto_saida && form.aeroporto_saida === form.aeroporto_chegada)
-            e.aeroporto_chegada = 'Saída e chegada não podem ser o mesmo aeroporto.'
-          if (!form.precisa_bagagem)
-            e.precisa_bagagem = 'Informe se precisa de bagagem despachada.'
-        }
-        if (form.modal === 'VAN') {
-          if (!form.van_local_saida.trim())
-            e.van_local_saida = 'Informe o endereço de saída.'
-          if (!form.van_horario_saida.trim())
-            e.van_horario_saida = 'Informe o horário de saída.'
-          if (!form.van_destino.trim()) e.van_destino = 'Informe o destino.'
-          const n = Number(form.van_qtd_passageiros)
-          if (!form.van_qtd_passageiros || !Number.isInteger(n) || n < 1 || n > 60)
-            e.van_qtd_passageiros = 'Informe a quantidade de passageiros (1 a 60).'
-        }
-        if (!form.obs_transporte.trim())
-          e.obs_transporte = 'Descreva a necessidade de transporte.'
+      if (form.servicos.length === 0)
+        e.servicos = 'Selecione ao menos um serviço.'
+
+      if (form.servicos.includes('AEREO')) {
+        if (!form.aeroporto_saida) e.aeroporto_saida = 'Selecione o aeroporto de saída.'
+        if (!form.aeroporto_chegada)
+          e.aeroporto_chegada = 'Selecione o aeroporto de chegada.'
+        if (form.aeroporto_saida && form.aeroporto_saida === form.aeroporto_chegada)
+          e.aeroporto_chegada = 'Saída e chegada não podem ser o mesmo aeroporto.'
+        if (!form.precisa_bagagem)
+          e.precisa_bagagem = 'Informe se precisa de bagagem despachada.'
       }
-      if (!form.precisa_locacao_carro)
-        e.precisa_locacao_carro = 'Informe se precisa de locação de carro.'
-      if (form.precisa_locacao_carro === 'SIM') {
+
+      if (form.servicos.includes('VAN')) {
+        if (!form.van_local_saida.trim())
+          e.van_local_saida = 'Informe o endereço de saída.'
+        if (!form.van_horario_saida.trim())
+          e.van_horario_saida = 'Informe o horário de saída.'
+        if (!form.van_destino.trim()) e.van_destino = 'Informe o destino.'
+        const n = Number(form.van_qtd_passageiros)
+        if (!form.van_qtd_passageiros || !Number.isInteger(n) || n < 1 || n > 60)
+          e.van_qtd_passageiros = 'Informe a quantidade de passageiros (1 a 60).'
+      }
+
+      if (form.servicos.includes('CARRO')) {
         if (!form.obs_locacao_carro.trim())
           e.obs_locacao_carro = 'Descreva a necessidade do carro.'
         if (form.carro_condutor_nome.trim().split(/\s+/).length < 2)
           e.carro_condutor_nome = 'Informe o nome completo do condutor.'
         if (!cpfValido(form.carro_condutor_cpf))
           e.carro_condutor_cpf = 'CPF do condutor inválido.'
-        if (!form.carro_transmissao)
-          e.carro_transmissao = 'Selecione o tipo de câmbio.'
+        if (!form.carro_transmissao) e.carro_transmissao = 'Selecione o tipo de câmbio.'
       }
+
+      if (
+        form.servicos.some((s) => SERVICOS_TRANSPORTE.includes(s)) &&
+        !form.obs_transporte.trim()
+      )
+        e.obs_transporte = 'Descreva a necessidade de transporte.'
     }
     if (p === 2) {
       if (!form.equipe) e.equipe = 'Selecione a equipe.'
@@ -384,42 +401,41 @@ export default function Solicitar() {
           data_entrada: form.data_entrada,
           data_saida: form.data_saida,
           tipo_hospedagem: form.tipo_hospedagem,
-          precisa_transporte: form.precisa_transporte === 'SIM',
-          modal: form.precisa_transporte === 'SIM' ? form.modal : null,
-          aeroporto_saida:
-            form.precisa_transporte === 'SIM' && form.modal === 'AEREO'
-              ? form.aeroporto_saida
-              : null,
-          aeroporto_chegada:
-            form.precisa_transporte === 'SIM' && form.modal === 'AEREO'
-              ? form.aeroporto_chegada
-              : null,
-          precisa_bagagem:
-            form.precisa_transporte === 'SIM' && form.modal === 'AEREO'
-              ? form.precisa_bagagem === 'SIM'
-              : null,
-          obs_transporte:
-            form.precisa_transporte === 'SIM'
-              ? form.obs_transporte.trim()
-              : 'Não se aplica — sem transporte.',
-          van_local_saida: form.modal === 'VAN' ? form.van_local_saida.trim() : null,
-          van_horario_saida: form.modal === 'VAN' ? form.van_horario_saida.trim() : null,
-          van_destino: form.modal === 'VAN' ? form.van_destino.trim() : null,
-          van_qtd_passageiros:
-            form.modal === 'VAN' ? Number(form.van_qtd_passageiros) : null,
-          precisa_locacao_carro: form.precisa_locacao_carro === 'SIM',
-          obs_locacao_carro:
-            form.precisa_locacao_carro === 'SIM' ? form.obs_locacao_carro.trim() : null,
-          carro_condutor_nome:
-            form.precisa_locacao_carro === 'SIM'
-              ? form.carro_condutor_nome.trim()
-              : null,
-          carro_condutor_cpf:
-            form.precisa_locacao_carro === 'SIM'
-              ? soDigitos(form.carro_condutor_cpf)
-              : null,
-          carro_transmissao:
-            form.precisa_locacao_carro === 'SIM' ? form.carro_transmissao : null,
+          servicos: form.servicos,
+          aeroporto_saida: form.servicos.includes('AEREO')
+            ? form.aeroporto_saida
+            : null,
+          aeroporto_chegada: form.servicos.includes('AEREO')
+            ? form.aeroporto_chegada
+            : null,
+          precisa_bagagem: form.servicos.includes('AEREO')
+            ? form.precisa_bagagem === 'SIM'
+            : null,
+          obs_transporte: temTransporte
+            ? form.obs_transporte.trim()
+            : 'Não se aplica — sem transporte.',
+          van_local_saida: form.servicos.includes('VAN')
+            ? form.van_local_saida.trim()
+            : null,
+          van_horario_saida: form.servicos.includes('VAN')
+            ? form.van_horario_saida.trim()
+            : null,
+          van_destino: form.servicos.includes('VAN') ? form.van_destino.trim() : null,
+          van_qtd_passageiros: form.servicos.includes('VAN')
+            ? Number(form.van_qtd_passageiros)
+            : null,
+          obs_locacao_carro: form.servicos.includes('CARRO')
+            ? form.obs_locacao_carro.trim()
+            : null,
+          carro_condutor_nome: form.servicos.includes('CARRO')
+            ? form.carro_condutor_nome.trim()
+            : null,
+          carro_condutor_cpf: form.servicos.includes('CARRO')
+            ? soDigitos(form.carro_condutor_cpf)
+            : null,
+          carro_transmissao: form.servicos.includes('CARRO')
+            ? form.carro_transmissao
+            : null,
           colaboradores: form.colaboradores.map((c, i) => ({
             nome_completo: c.nome_completo.trim(),
             cpf: soDigitos(c.cpf),
@@ -466,8 +482,8 @@ export default function Solicitar() {
           k,
         )
           ? 0
-          : k.startsWith('precisa_transporte') ||
-              ['modal', 'aeroporto_saida', 'aeroporto_chegada', 'obs_transporte', 'precisa_locacao_carro', 'obs_locacao_carro'].includes(k)
+          : k === 'servicos' ||
+              ['aeroporto_saida','aeroporto_chegada','precisa_bagagem','obs_transporte','obs_locacao_carro','van_local_saida','van_horario_saida','van_destino','van_qtd_passageiros','carro_condutor_nome','carro_condutor_cpf','carro_transmissao'].includes(k)
             ? 1
             : k.startsWith('colab.') || k === 'equipe'
               ? 2
@@ -678,6 +694,86 @@ export default function Solicitar() {
                                 {erros.edicao_ids}
                               </p>
                             )}
+
+                            {/* Período e hospedagem ficam aqui dentro: a pessoa
+                                acabou de escolher a data e responde na sequência,
+                                sem precisar procurar outro bloco na página. */}
+                            {selecionadas.length > 0 && (
+                              <div className="mt-4 border-t border-marca-200 pt-4">
+                                <div className="mb-3 rounded-lg bg-white px-3.5 py-2.5 text-sm ring-1 ring-neutral-200">
+                                  <span className="font-semibold text-neutral-900">
+                                    {selecionadas.length}{' '}
+                                    {selecionadas.length === 1
+                                      ? 'operação marcada'
+                                      : 'operações marcadas'}
+                                  </span>
+                                  <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
+                                    {selecionadas.map((e) => (
+                                      <li key={e.id}>
+                                        {dataBR(e.data_inicio)} a {dataBR(e.data_fim)}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+
+                                <p className="mb-2 text-xs text-neutral-600">
+                                  Preenchemos com as datas da operação. Ajuste se você
+                                  chega antes ou sai depois.
+                                </p>
+
+                                <div className="grid gap-4 sm:grid-cols-2">
+                                  <Campo
+                                    label="Data de entrada"
+                                    erro={erros.data_entrada}
+                                  >
+                                    <Input
+                                      type="date"
+                                      value={form.data_entrada}
+                                      erro={!!erros.data_entrada}
+                                      onChange={(ev) =>
+                                        set('data_entrada', ev.target.value)
+                                      }
+                                    />
+                                  </Campo>
+                                  <Campo label="Data de saída" erro={erros.data_saida}>
+                                    <Input
+                                      type="date"
+                                      value={form.data_saida}
+                                      erro={!!erros.data_saida}
+                                      onChange={(ev) =>
+                                        set('data_saida', ev.target.value)
+                                      }
+                                    />
+                                  </Campo>
+                                </div>
+
+                                <div className="mt-4">
+                                  <Campo
+                                    label="Onde será a hospedagem?"
+                                    erro={erros.tipo_hospedagem}
+                                  >
+                                    <Radios
+                                      valor={form.tipo_hospedagem}
+                                      erro={!!erros.tipo_hospedagem}
+                                      onChange={(v) => set('tipo_hospedagem', v)}
+                                      opcoes={[
+                                        {
+                                          value: 'HOTEL_PAX',
+                                          label: 'Hotel do pax',
+                                          descricao: 'Mesmo hotel dos passageiros',
+                                        },
+                                        {
+                                          value: 'FORA_HOTEL_PAX',
+                                          label: 'Fora do hotel do pax',
+                                          descricao:
+                                            'Hotel separado, a definir pela operação',
+                                        },
+                                      ]}
+                                    />
+                                  </Campo>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -698,310 +794,243 @@ export default function Solicitar() {
                 )}
               </Card>
 
-              {edicao && (
-                <Card
-                  titulo="2. Seu período de hospedagem"
-                  descricao={
-                    selecionadas.length > 1
-                      ? 'Preenchemos cobrindo todas as operações marcadas. Ajuste se precisar.'
-                      : 'Preenchemos com as datas da operação. Ajuste se você chega antes ou sai depois.'
-                  }
-                >
-                  <div className="mb-4 rounded-lg bg-neutral-100 px-3.5 py-2.5 text-sm text-neutral-700">
-                    <span className="font-semibold">
-                      {selecionadas.length}{' '}
-                      {selecionadas.length === 1 ? 'operação' : 'operações'} em{' '}
-                      {edicao.destino}
-                    </span>
-                    <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
-                      {selecionadas.map((e) => (
-                        <li key={e.id}>
-                          {dataBR(e.data_inicio)} a {dataBR(e.data_fim)}
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <Campo label="Data de entrada" erro={erros.data_entrada}>
-                      <Input
-                        type="date"
-                        value={form.data_entrada}
-                        erro={!!erros.data_entrada}
-                        onChange={(e) => set('data_entrada', e.target.value)}
-                      />
-                    </Campo>
-                    <Campo label="Data de saída" erro={erros.data_saida}>
-                      <Input
-                        type="date"
-                        value={form.data_saida}
-                        erro={!!erros.data_saida}
-                        onChange={(e) => set('data_saida', e.target.value)}
-                      />
-                    </Campo>
-                  </div>
+            </>
+          )}
 
-                  <div className="mt-5">
-                    <Campo label="Onde será a hospedagem?" erro={erros.tipo_hospedagem}>
+          {/* ---------------- PASSO 2: SERVIÇOS ---------------- */}
+          {passo === 1 && (
+            <>
+              <Card
+                titulo="O que você deseja solicitar?"
+                descricao="Marque tudo o que precisa. Pode ser mais de um."
+              >
+                <div className="grid gap-2">
+                  {SERVICOS.map((s) => {
+                    const marcado = form.servicos.includes(s.value)
+                    return (
+                      <button
+                        key={s.value}
+                        type="button"
+                        role="checkbox"
+                        aria-checked={marcado}
+                        onClick={() => alternarServico(s.value)}
+                        className={
+                          'flex items-start gap-3 rounded-lg border px-3.5 py-3 text-left transition ' +
+                          (marcado
+                            ? 'border-marca-500 bg-marca-50 ring-2 ring-marca-500/40'
+                            : 'border-neutral-300 bg-white hover:border-neutral-400 hover:bg-neutral-50')
+                        }
+                      >
+                        <span
+                          className={
+                            'mt-0.5 grid size-5 shrink-0 place-items-center rounded border-2 text-xs font-bold ' +
+                            (marcado
+                              ? 'border-marca-600 bg-marca-400 text-neutral-900'
+                              : 'border-neutral-400 text-transparent')
+                          }
+                        >
+                          ✓
+                        </span>
+                        <span>
+                          <span className="block text-sm font-semibold text-neutral-900">
+                            {s.label}
+                          </span>
+                          <span className="block text-xs text-neutral-500">
+                            {s.descricao}
+                          </span>
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+                {erros.servicos && (
+                  <p role="alert" className="mt-3 text-xs text-red-600">
+                    {erros.servicos}
+                  </p>
+                )}
+              </Card>
+
+              {/* Cada serviço marcado abre só os campos que ele precisa. */}
+              {form.servicos.includes('AEREO') && (
+                <Card titulo="Aéreo">
+                  <div className="space-y-5">
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Campo label="Aeroporto de saída" erro={erros.aeroporto_saida}>
+                        <Select
+                          value={form.aeroporto_saida}
+                          erro={!!erros.aeroporto_saida}
+                          onChange={(e) => set('aeroporto_saida', e.target.value)}
+                        >
+                          <option value="">Selecione…</option>
+                          {AEROPORTOS.map((a) => (
+                            <option key={a.iata} value={a.iata}>
+                              {a.iata} — {a.nome}
+                            </option>
+                          ))}
+                        </Select>
+                      </Campo>
+                      <Campo label="Aeroporto de chegada" erro={erros.aeroporto_chegada}>
+                        <Select
+                          value={form.aeroporto_chegada}
+                          erro={!!erros.aeroporto_chegada}
+                          onChange={(e) => set('aeroporto_chegada', e.target.value)}
+                        >
+                          <option value="">Selecione…</option>
+                          {AEROPORTOS.map((a) => (
+                            <option key={a.iata} value={a.iata}>
+                              {a.iata} — {a.nome}
+                            </option>
+                          ))}
+                        </Select>
+                      </Campo>
+                    </div>
+                    <Campo
+                      label="Precisa de bagagem despachada?"
+                      erro={erros.precisa_bagagem}
+                      dica="Bagagem de porão, além da de mão. Costuma ter custo extra."
+                    >
                       <Radios
-                        valor={form.tipo_hospedagem}
-                        erro={!!erros.tipo_hospedagem}
-                        onChange={(v) => set('tipo_hospedagem', v)}
+                        valor={form.precisa_bagagem}
+                        erro={!!erros.precisa_bagagem}
+                        onChange={(v) => set('precisa_bagagem', v)}
                         opcoes={[
-                          {
-                            value: 'HOTEL_PAX',
-                            label: 'Hotel do pax',
-                            descricao: 'Mesmo hotel dos passageiros',
-                          },
-                          {
-                            value: 'FORA_HOTEL_PAX',
-                            label: 'Fora do hotel do pax',
-                            descricao: 'Hotel separado, a definir pela operação',
-                          },
+                          { value: 'SIM', label: 'Sim' },
+                          { value: 'NAO', label: 'Não, só bagagem de mão' },
                         ]}
                       />
                     </Campo>
                   </div>
                 </Card>
               )}
-            </>
-          )}
 
-          {/* ---------------- PASSO 2: TRANSPORTE ---------------- */}
-          {passo === 1 && (
-            <Card titulo="Transporte e locação">
-              <div className="space-y-5">
-                <Campo label="Precisa de transporte?" erro={erros.precisa_transporte}>
-                  <Radios
-                    valor={form.precisa_transporte}
-                    erro={!!erros.precisa_transporte}
-                    onChange={(v) => set('precisa_transporte', v)}
-                    opcoes={[
-                      { value: 'SIM', label: 'Sim' },
-                      { value: 'NAO', label: 'Não, vou por conta própria' },
-                    ]}
-                  />
-                </Campo>
-
-                {form.precisa_transporte === 'SIM' && (
-                  <>
-                    <Campo label="Tipo de transporte" erro={erros.modal}>
-                      <Radios
-                        valor={form.modal}
-                        erro={!!erros.modal}
-                        onChange={(v) => set('modal', v)}
-                        opcoes={[
-                          { value: 'AEREO', label: 'Aéreo' },
-                          { value: 'RODOVIARIO', label: 'Rodoviário' },
-                          {
-                            value: 'VAN',
-                            label: 'Locação de van',
-                            descricao: 'Van fretada para o grupo',
-                          },
-                        ]}
+              {form.servicos.includes('VAN') && (
+                <Card titulo="Aluguel de van">
+                  <div className="space-y-4">
+                    <Campo label="Endereço de saída" erro={erros.van_local_saida}>
+                      <Input
+                        value={form.van_local_saida}
+                        erro={!!erros.van_local_saida}
+                        maxLength={200}
+                        onChange={(e) => set('van_local_saida', e.target.value)}
+                        placeholder="Rua, número, bairro, cidade"
                       />
                     </Campo>
-
-                    {form.modal === 'VAN' && (
-                      <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3.5">
-                        <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                          Dados da van
-                        </p>
-                        <div className="space-y-4">
-                          <Campo label="Endereço de saída" erro={erros.van_local_saida}>
-                            <Input
-                              value={form.van_local_saida}
-                              erro={!!erros.van_local_saida}
-                              maxLength={200}
-                              onChange={(e) => set('van_local_saida', e.target.value)}
-                              placeholder="Rua, número, bairro, cidade"
-                            />
-                          </Campo>
-                          <div className="grid gap-4 sm:grid-cols-2">
-                            <Campo
-                              label="Horário de saída"
-                              erro={erros.van_horario_saida}
-                              dica="Pode ser aproximado, ex.: 06h ou madrugada"
-                            >
-                              <Input
-                                value={form.van_horario_saida}
-                                erro={!!erros.van_horario_saida}
-                                maxLength={60}
-                                onChange={(e) => set('van_horario_saida', e.target.value)}
-                                placeholder="Ex.: 05/10 às 06h"
-                              />
-                            </Campo>
-                            <Campo
-                              label="Quantidade de passageiros"
-                              erro={erros.van_qtd_passageiros}
-                            >
-                              <Input
-                                type="number"
-                                min={1}
-                                max={60}
-                                inputMode="numeric"
-                                value={form.van_qtd_passageiros}
-                                erro={!!erros.van_qtd_passageiros}
-                                onChange={(e) =>
-                                  set('van_qtd_passageiros', e.target.value)
-                                }
-                              />
-                            </Campo>
-                          </div>
-                          <Campo label="Destino da van" erro={erros.van_destino}>
-                            <Input
-                              value={form.van_destino}
-                              erro={!!erros.van_destino}
-                              maxLength={200}
-                              onChange={(e) => set('van_destino', e.target.value)}
-                              placeholder="Para onde a van vai levar o grupo"
-                            />
-                          </Campo>
-                        </div>
-                      </div>
-                    )}
-
-                    {form.modal === 'AEREO' && (
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Campo label="Aeroporto de saída" erro={erros.aeroporto_saida}>
-                          <Select
-                            value={form.aeroporto_saida}
-                            erro={!!erros.aeroporto_saida}
-                            onChange={(e) => set('aeroporto_saida', e.target.value)}
-                          >
-                            <option value="">Selecione…</option>
-                            {AEROPORTOS.map((a) => (
-                              <option key={a.iata} value={a.iata}>
-                                {a.iata} — {a.nome}
-                              </option>
-                            ))}
-                          </Select>
-                        </Campo>
-                        <Campo label="Aeroporto de chegada" erro={erros.aeroporto_chegada}>
-                          <Select
-                            value={form.aeroporto_chegada}
-                            erro={!!erros.aeroporto_chegada}
-                            onChange={(e) => set('aeroporto_chegada', e.target.value)}
-                          >
-                            <option value="">Selecione…</option>
-                            {AEROPORTOS.map((a) => (
-                              <option key={a.iata} value={a.iata}>
-                                {a.iata} — {a.nome}
-                              </option>
-                            ))}
-                          </Select>
-                        </Campo>
-                      </div>
-                    )}
-
-                    {form.modal === 'AEREO' && (
+                    <div className="grid gap-4 sm:grid-cols-2">
                       <Campo
-                        label="Precisa de bagagem despachada?"
-                        erro={erros.precisa_bagagem}
-                        dica="Bagagem de porão, além da de mão. Costuma ter custo extra."
-                      >
-                        <Radios
-                          valor={form.precisa_bagagem}
-                          erro={!!erros.precisa_bagagem}
-                          onChange={(v) => set('precisa_bagagem', v)}
-                          opcoes={[
-                            { value: 'SIM', label: 'Sim' },
-                            { value: 'NAO', label: 'Não, só bagagem de mão' },
-                          ]}
-                        />
-                      </Campo>
-                    )}
-
-                    <Campo
-                      label="Observações sobre o transporte"
-                      erro={erros.obs_transporte}
-                      dica={`${form.obs_transporte.length}/1000 caracteres`}
-                    >
-                      <Textarea
-                        rows={4}
-                        maxLength={1000}
-                        value={form.obs_transporte}
-                        erro={!!erros.obs_transporte}
-                        onChange={(e) => set('obs_transporte', e.target.value)}
-                        placeholder="Ex.: equipe de vídeo precisa de transfer até Cuiabá e depois entrar no embarque do pax."
-                      />
-                    </Campo>
-                  </>
-                )}
-
-                <Campo
-                  label="Precisa de locação de carro?"
-                  erro={erros.precisa_locacao_carro}
-                >
-                  <Radios
-                    valor={form.precisa_locacao_carro}
-                    erro={!!erros.precisa_locacao_carro}
-                    onChange={(v) => set('precisa_locacao_carro', v)}
-                    opcoes={[
-                      { value: 'SIM', label: 'Sim' },
-                      { value: 'NAO', label: 'Não' },
-                    ]}
-                  />
-                </Campo>
-
-                {form.precisa_locacao_carro === 'SIM' && (
-                  <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3.5">
-                    <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-                      Dados da locação
-                    </p>
-                    <div className="space-y-4">
-                      <Campo
-                        label="Nome do condutor"
-                        erro={erros.carro_condutor_nome}
-                        dica="Quem vai dirigir. A locadora exige CNH em nome dessa pessoa."
+                        label="Horário de saída"
+                        erro={erros.van_horario_saida}
+                        dica="Pode ser aproximado, ex.: 06h ou madrugada"
                       >
                         <Input
-                          value={form.carro_condutor_nome}
-                          erro={!!erros.carro_condutor_nome}
-                          onChange={(e) => set('carro_condutor_nome', e.target.value)}
+                          value={form.van_horario_saida}
+                          erro={!!erros.van_horario_saida}
+                          maxLength={60}
+                          onChange={(e) => set('van_horario_saida', e.target.value)}
+                          placeholder="Ex.: 05/10 às 06h"
                         />
                       </Campo>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <Campo label="CPF do condutor" erro={erros.carro_condutor_cpf}>
-                          <Input
-                            value={form.carro_condutor_cpf}
-                            inputMode="numeric"
-                            erro={!!erros.carro_condutor_cpf}
-                            autoComplete="off"
-                            onChange={(e) =>
-                              set('carro_condutor_cpf', mascaraCpf(e.target.value))
-                            }
-                            placeholder="000.000.000-00"
-                          />
-                        </Campo>
-                        <Campo label="Câmbio" erro={erros.carro_transmissao}>
-                          <Select
-                            value={form.carro_transmissao}
-                            erro={!!erros.carro_transmissao}
-                            onChange={(e) => set('carro_transmissao', e.target.value)}
-                          >
-                            <option value="">Selecione…</option>
-                            <option value="MANUAL">Manual</option>
-                            <option value="AUTOMATICO">Automático</option>
-                          </Select>
-                        </Campo>
-                      </div>
                       <Campo
-                        label="Observações sobre a locação"
-                        erro={erros.obs_locacao_carro}
-                        dica="Categoria desejada, período, local de retirada e devolução."
+                        label="Quantidade de passageiros"
+                        erro={erros.van_qtd_passageiros}
                       >
-                        <Textarea
-                          maxLength={1000}
-                          value={form.obs_locacao_carro}
-                          erro={!!erros.obs_locacao_carro}
-                          onChange={(e) => set('obs_locacao_carro', e.target.value)}
+                        <Input
+                          type="number"
+                          min={1}
+                          max={60}
+                          inputMode="numeric"
+                          value={form.van_qtd_passageiros}
+                          erro={!!erros.van_qtd_passageiros}
+                          onChange={(e) => set('van_qtd_passageiros', e.target.value)}
                         />
                       </Campo>
                     </div>
+                    <Campo label="Destino da van" erro={erros.van_destino}>
+                      <Input
+                        value={form.van_destino}
+                        erro={!!erros.van_destino}
+                        maxLength={200}
+                        onChange={(e) => set('van_destino', e.target.value)}
+                        placeholder="Para onde a van vai levar o grupo"
+                      />
+                    </Campo>
                   </div>
-                )}
-              </div>
-            </Card>
+                </Card>
+              )}
+
+              {form.servicos.includes('CARRO') && (
+                <Card titulo="Aluguel de carro">
+                  <div className="space-y-4">
+                    <Campo
+                      label="Nome do condutor"
+                      erro={erros.carro_condutor_nome}
+                      dica="Quem vai dirigir. A locadora exige CNH em nome dessa pessoa."
+                    >
+                      <Input
+                        value={form.carro_condutor_nome}
+                        erro={!!erros.carro_condutor_nome}
+                        onChange={(e) => set('carro_condutor_nome', e.target.value)}
+                      />
+                    </Campo>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <Campo label="CPF do condutor" erro={erros.carro_condutor_cpf}>
+                        <Input
+                          value={form.carro_condutor_cpf}
+                          inputMode="numeric"
+                          erro={!!erros.carro_condutor_cpf}
+                          autoComplete="off"
+                          onChange={(e) =>
+                            set('carro_condutor_cpf', mascaraCpf(e.target.value))
+                          }
+                          placeholder="000.000.000-00"
+                        />
+                      </Campo>
+                      <Campo label="Câmbio" erro={erros.carro_transmissao}>
+                        <Select
+                          value={form.carro_transmissao}
+                          erro={!!erros.carro_transmissao}
+                          onChange={(e) => set('carro_transmissao', e.target.value)}
+                        >
+                          <option value="">Selecione…</option>
+                          <option value="MANUAL">Manual</option>
+                          <option value="AUTOMATICO">Automático</option>
+                        </Select>
+                      </Campo>
+                    </div>
+                    <Campo
+                      label="Observações sobre a locação"
+                      erro={erros.obs_locacao_carro}
+                      dica="Categoria desejada, período, local de retirada e devolução."
+                    >
+                      <Textarea
+                        maxLength={1000}
+                        value={form.obs_locacao_carro}
+                        erro={!!erros.obs_locacao_carro}
+                        onChange={(e) => set('obs_locacao_carro', e.target.value)}
+                      />
+                    </Campo>
+                  </div>
+                </Card>
+              )}
+
+              {temTransporte && (
+                <Card titulo="Observações do transporte">
+                  <Campo
+                    label="Alguma particularidade?"
+                    erro={erros.obs_transporte}
+                    dica={`${form.obs_transporte.length}/1000 caracteres`}
+                  >
+                    <Textarea
+                      rows={4}
+                      maxLength={1000}
+                      value={form.obs_transporte}
+                      erro={!!erros.obs_transporte}
+                      onChange={(e) => set('obs_transporte', e.target.value)}
+                      placeholder="Ex.: equipe de vídeo precisa de transfer até Cuiabá e depois entrar no embarque do pax."
+                    />
+                  </Campo>
+                </Card>
+              )}
+            </>
           )}
 
           {/* ---------------- PASSO 3: EQUIPE ---------------- */}
@@ -1206,16 +1235,29 @@ export default function Solicitar() {
                       ? 'Hotel do pax'
                       : 'Fora do hotel do pax'}
                   </Linha>
-                  <Linha rotulo="Transporte" onEditar={() => setPasso(1)}>
-                    {form.precisa_transporte === 'NAO'
-                      ? 'Não precisa'
-                      : form.modal === 'AEREO'
-                        ? `Aéreo · ${form.aeroporto_saida} → ${form.aeroporto_chegada}`
-                        : form.modal === 'VAN'
-                          ? 'Locação de van'
-                          : 'Rodoviário'}
+                  <Linha
+                    rotulo={`Serviços (${form.servicos.length})`}
+                    onEditar={() => setPasso(1)}
+                  >
+                    {form.servicos.length === 0 ? (
+                      '—'
+                    ) : (
+                      <ul className="space-y-0.5">
+                        {form.servicos.map((s) => (
+                          <li key={s}>{servicoLabel(s)}</li>
+                        ))}
+                      </ul>
+                    )}
                   </Linha>
-                  {form.modal === 'VAN' && form.precisa_transporte === 'SIM' && (
+                  {form.servicos.includes('AEREO') && (
+                    <Linha rotulo="Aéreo" onEditar={() => setPasso(1)}>
+                      {form.aeroporto_saida} → {form.aeroporto_chegada}
+                      <br />
+                      Bagagem despachada:{' '}
+                      {form.precisa_bagagem === 'SIM' ? 'sim' : 'não, só de mão'}
+                    </Linha>
+                  )}
+                  {form.servicos.includes('VAN') && (
                     <Linha rotulo="Van" onEditar={() => setPasso(1)}>
                       Saída de {form.van_local_saida} · {form.van_horario_saida}
                       <br />
@@ -1223,35 +1265,21 @@ export default function Solicitar() {
                       passageiro(s)
                     </Linha>
                   )}
-                  {form.modal === 'AEREO' && form.precisa_transporte === 'SIM' && (
-                    <Linha rotulo="Bagagem despachada" onEditar={() => setPasso(1)}>
-                      {form.precisa_bagagem === 'SIM' ? 'Sim' : 'Não, só bagagem de mão'}
+                  {form.servicos.includes('CARRO') && (
+                    <Linha rotulo="Carro" onEditar={() => setPasso(1)}>
+                      Condutor: {form.carro_condutor_nome} · {form.carro_condutor_cpf}
+                      <br />
+                      Câmbio:{' '}
+                      {form.carro_transmissao === 'AUTOMATICO' ? 'Automático' : 'Manual'}
+                      <br />
+                      <span className="text-neutral-500">{form.obs_locacao_carro}</span>
                     </Linha>
                   )}
-                  {form.precisa_transporte === 'SIM' && (
+                  {temTransporte && (
                     <Linha rotulo="Obs. transporte" onEditar={() => setPasso(1)}>
                       <span className="whitespace-pre-wrap">{form.obs_transporte}</span>
                     </Linha>
                   )}
-                  <Linha rotulo="Locação de carro" onEditar={() => setPasso(1)}>
-                    {form.precisa_locacao_carro === 'SIM' ? (
-                      <>
-                        Condutor: {form.carro_condutor_nome} ·{' '}
-                        {form.carro_condutor_cpf}
-                        <br />
-                        Câmbio:{' '}
-                        {form.carro_transmissao === 'AUTOMATICO'
-                          ? 'Automático'
-                          : 'Manual'}
-                        <br />
-                        <span className="text-neutral-500">
-                          {form.obs_locacao_carro}
-                        </span>
-                      </>
-                    ) : (
-                      'Não'
-                    )}
-                  </Linha>
                   <Linha rotulo="Equipe" onEditar={() => setPasso(2)}>
                     {form.equipe ? equipeLabel(form.equipe, form.equipe_outro) : '—'}
                   </Linha>

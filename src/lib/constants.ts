@@ -108,3 +108,41 @@ export const aeroportoLabel = (iata?: string | null) => {
   const a = AEROPORTOS.find((x) => x.iata === iata)
   return a ? `${a.iata} — ${a.nome}` : iata
 }
+
+/**
+ * Serviços que o solicitante pode pedir. Substitui o antigo "modal" único —
+ * uma mesma viagem pode precisar de aéreo, carro e hospedagem ao mesmo tempo.
+ */
+export const SERVICOS = [
+  {
+    value: 'AEREO',
+    label: 'Solicitação de aéreo',
+    descricao: 'Passagem de avião, ida e/ou volta',
+  },
+  {
+    value: 'HOSPEDAGEM',
+    label: 'Solicitação de hospedagem',
+    descricao: 'Reserva de hotel para o período informado acima',
+  },
+  {
+    value: 'CARRO',
+    label: 'Solicitação de aluguel de carro',
+    descricao: 'Carro alugado, com condutor identificado',
+  },
+  {
+    value: 'VAN',
+    label: 'Solicitação de aluguel de van',
+    descricao: 'Van fretada para levar o grupo',
+  },
+  {
+    value: 'RODOVIARIO',
+    label: 'Solicitação de rodoviário',
+    descricao: 'Passagem de ônibus',
+  },
+] as const
+
+export const servicoLabel = (v: string) =>
+  SERVICOS.find((s) => s.value === v)?.label ?? v
+
+/** Serviços que envolvem deslocamento — usados para exigir observações. */
+export const SERVICOS_TRANSPORTE = ['AEREO', 'RODOVIARIO', 'VAN']

@@ -150,21 +150,24 @@ Deno.serve(async (req) => {
     ]
     for (const c of obrig) if (!b[c]) return erro(`Campo obrigatório ausente: ${c}`)
 
-    if (typeof b.precisa_transporte !== 'boolean')
-      return erro('Informe se precisa de transporte.')
-    if (typeof b.precisa_locacao_carro !== 'boolean')
-      return erro('Informe se precisa de locação de carro.')
+    const SERVICOS_OK = ['AEREO', 'RODOVIARIO', 'VAN', 'CARRO', 'HOSPEDAGEM']
+    const servicos: string[] = Array.isArray(b.servicos)
+      ? [...new Set(b.servicos.filter((s: string) => SERVICOS_OK.includes(s)))]
+      : []
+    if (servicos.length === 0) return erro('Selecione ao menos um serviço.')
+
+    const temTransporte = servicos.some((s) =>
+      ['AEREO', 'RODOVIARIO', 'VAN'].includes(s),
+    )
     if (b.data_saida <= b.data_entrada)
       return erro('A data de saída precisa ser posterior à de entrada.')
     if (!EQUIPE_LABEL[b.equipe]) return erro('Equipe inválida.')
     if (b.equipe === 'OUTROS' && !String(b.equipe_outro ?? '').trim())
       return erro('Informe qual é a área quando escolher "Outros".')
-    if (b.precisa_transporte && !['AEREO', 'RODOVIARIO', 'VAN'].includes(b.modal))
-      return erro('Selecione o tipo de transporte.')
-    if (b.precisa_transporte && b.modal === 'AEREO' && (!b.aeroporto_saida || !b.aeroporto_chegada))
+    if (servicos.includes('AEREO') && (!b.aeroporto_saida || !b.aeroporto_chegada))
       return erro('Informe os aeroportos de saída e chegada.')
 
-    if (b.precisa_transporte && b.modal === 'VAN') {
+    if (servicos.includes('VAN')) {
       const n = Number(b.van_qtd_passageiros)
       if (
         !String(b.van_local_saida ?? '').trim() ||
@@ -177,7 +180,7 @@ Deno.serve(async (req) => {
         return erro('Preencha os dados da van: saída, horário, destino e passageiros.')
     }
 
-    if (b.precisa_locacao_carro) {
+    if (servicos.includes('CARRO')) {
       if (String(b.carro_condutor_nome ?? '').trim().split(/\s+/).length < 2)
         return erro('Informe o nome completo do condutor.')
       if (!cpfValido(String(b.carro_condutor_cpf ?? '')))
@@ -261,25 +264,34 @@ Deno.serve(async (req) => {
         data_entrada: b.data_entrada,
         data_saida: b.data_saida,
         tipo_hospedagem: b.tipo_hospedagem,
-        precisa_transporte: b.precisa_transporte,
-        modal: b.precisa_transporte ? b.modal : null,
-        aeroporto_saida: b.aeroporto_saida ?? null,
-        aeroporto_chegada: b.aeroporto_chegada ?? null,
-        precisa_bagagem:
-          b.precisa_transporte && b.modal === 'AEREO'
-            ? b.precisa_bagagem === true
-            : null,
+        servicos,
+        // `precisa_transporte` e `modal` seguem preenchidos por compatibilidade
+        // com o que já existia; a fonte de verdade agora é `servicos`.
+        precisa_transporte: temTransporte,
+        modal: servicos.includes('AEREO')
+          ? 'AEREO'
+          : servicos.includes('VAN')
+            ? 'VAN'
+            : servicos.includes('RODOVIARIO')
+              ? 'RODOVIARIO'
+              : null,
+        aeroporto_saida: servicos.includes('AEREO') ? b.aeroporto_saida : null,
+        aeroporto_chegada: servicos.includes('AEREO') ? b.aeroporto_chegada : null,
+        precisa_bagagem: servicos.includes('AEREO')
+          ? b.precisa_bagagem === true
+          : null,
         obs_transporte: b.obs_transporte,
-        van_local_saida: b.modal === 'VAN' ? b.van_local_saida : null,
-        van_horario_saida: b.modal === 'VAN' ? b.van_horario_saida : null,
-        van_destino: b.modal === 'VAN' ? b.van_destino : null,
-        van_qtd_passageiros:
-          b.modal === 'VAN' ? Number(b.van_qtd_passageiros) : null,
-        precisa_locacao_carro: b.precisa_locacao_carro,
+        van_local_saida: servicos.includes('VAN') ? b.van_local_saida : null,
+        van_horario_saida: servicos.includes('VAN') ? b.van_horario_saida : null,
+        van_destino: servicos.includes('VAN') ? b.van_destino : null,
+        van_qtd_passageiros: servicos.includes('VAN')
+          ? Number(b.van_qtd_passageiros)
+          : null,
+        precisa_locacao_carro: servicos.includes('CARRO'),
         obs_locacao_carro: b.obs_locacao_carro ?? null,
-        carro_condutor_nome: b.precisa_locacao_carro ? b.carro_condutor_nome : null,
-        carro_condutor_cpf: b.precisa_locacao_carro ? b.carro_condutor_cpf : null,
-        carro_transmissao: b.precisa_locacao_carro ? b.carro_transmissao : null,
+        carro_condutor_nome: servicos.includes('CARRO') ? b.carro_condutor_nome : null,
+        carro_condutor_cpf: servicos.includes('CARRO') ? b.carro_condutor_cpf : null,
+        carro_transmissao: servicos.includes('CARRO') ? b.carro_transmissao : null,
       })
       .select('id, protocolo')
       .single()
