@@ -44,6 +44,8 @@ type CarroForm = {
   transmissao: string
   tipo: string
   retirada: string
+  retirada_data: string
+  devolucao_data: string
 }
 
 type Form = {
@@ -108,7 +110,7 @@ const VAZIO: Form = {
   van_qtd_passageiros: '',
   obs_transporte: '',
   obs_locacao_carro: '',
-  carros: [{ nome: '', cpf: '', nascimento: '', transmissao: '', tipo: '', retirada: '' }],
+  carros: [{ nome: '', cpf: '', nascimento: '', transmissao: '', tipo: '', retirada: '', retirada_data: '', devolucao_data: '' }],
   rodo_regiao_saida: '',
   rodo_cidade_estado: '',
   van_retorno_local: '',
@@ -279,6 +281,13 @@ export default function Solicitar() {
         // precisar chegar antes ou voltar depois.
         voo_data_ida: entrada,
         voo_data_volta: saida,
+        // O carro segue a mesma lógica: por padrão pega na chegada e
+        // devolve na saída.
+        carros: f.carros.map((c) => ({
+          ...c,
+          retirada_data: entrada,
+          devolucao_data: saida,
+        })),
       }
     })
     setErros((e) => ({ ...e, edicao_ids: '', data_entrada: '', data_saida: '' }))
@@ -416,6 +425,11 @@ export default function Solicitar() {
           if (!c.transmissao) e[`carro.${i}.transmissao`] = 'Selecione o câmbio.'
           if (!c.retirada.trim())
             e[`carro.${i}.retirada`] = 'Informe o local de retirada.'
+          if (!c.retirada_data) e[`carro.${i}.retirada_data`] = 'Informe a data de retirada.'
+          if (!c.devolucao_data)
+            e[`carro.${i}.devolucao_data`] = 'Informe a data de devolução.'
+          else if (c.retirada_data && c.devolucao_data < c.retirada_data)
+            e[`carro.${i}.devolucao_data`] = 'A devolução não pode ser antes da retirada.'
         })
       }
 
@@ -552,6 +566,8 @@ export default function Solicitar() {
                 transmissao: c.transmissao,
                 tipo_carro: c.tipo,
                 local_retirada: c.retirada.trim(),
+                retirada_data: c.retirada_data,
+                devolucao_data: c.devolucao_data,
                 ordem: i + 1,
               }))
             : [],
@@ -1456,6 +1472,32 @@ export default function Solicitar() {
                             onChange={(e) => setCarro(i, 'retirada', e.target.value)}
                           />
                         </Campo>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Campo
+                            label="Data de retirada"
+                            erro={erros[`carro.${i}.retirada_data`]}
+                            dica="Sugerimos a entrada; ajuste se pegar o carro antes."
+                          >
+                            <Input
+                              type="date"
+                              value={c.retirada_data}
+                              erro={!!erros[`carro.${i}.retirada_data`]}
+                              onChange={(e) => setCarro(i, 'retirada_data', e.target.value)}
+                            />
+                          </Campo>
+                          <Campo
+                            label="Data de devolução"
+                            erro={erros[`carro.${i}.devolucao_data`]}
+                            dica="Sugerimos a saída; ajuste se devolver depois."
+                          >
+                            <Input
+                              type="date"
+                              value={c.devolucao_data}
+                              erro={!!erros[`carro.${i}.devolucao_data`]}
+                              onChange={(e) => setCarro(i, 'devolucao_data', e.target.value)}
+                            />
+                          </Campo>
+                        </div>
                       </div>
                     </Card>
                   ))}
@@ -1473,6 +1515,8 @@ export default function Solicitar() {
                           transmissao: '',
                           tipo: '',
                           retirada: '',
+                          retirada_data: form.data_entrada,
+                          devolucao_data: form.data_saida,
                         },
                       ])
                     }
@@ -1779,6 +1823,8 @@ export default function Solicitar() {
                               · {c.transmissao === 'AUTOMATICO' ? 'automático' : 'manual'}
                               <br />
                               retirada: {c.retirada}
+                              <br />
+                              {dataBR(c.retirada_data)} a {dataBR(c.devolucao_data)}
                             </span>
                           </li>
                         ))}

@@ -20,6 +20,7 @@ import {
   STATUS_CLASS,
   STATUS_LABEL,
   aeroportoLabel,
+  TIPOS_CARRO,
   corServico,
   equipeLabel,
 } from '../../lib/constants'
@@ -40,6 +41,20 @@ type Cheia = Solicitacao & {
   colaboradores: Colaborador[]
 }
 
+/** Uma reserva de carro como o solicitante pediu — sem preço nem locadora. */
+type CarroPedido = {
+  id: string
+  condutor_nome: string
+  condutor_cpf: string
+  condutor_nascimento: string | null
+  transmissao: string | null
+  tipo_carro: string | null
+  local_retirada: string | null
+  retirada_data: string | null
+  devolucao_data: string | null
+  ordem: number
+}
+
 const ABAS = ['Solicitação', 'Operacional', 'Aprovação', 'Histórico'] as const
 
 export default function Detalhe() {
@@ -52,6 +67,7 @@ export default function Detalhe() {
   const [hosp, setHosp] = useState<Record<string, Partial<HospedagemDetalhe>>>({})
   const [carro, setCarro] = useState<Partial<LocacaoCarro>>({})
   const [van, setVan] = useState<Partial<LocacaoVan>>({})
+  const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
   const [eventos, setEventos] = useState<Evento[]>([])
   const [aprovacoes, setAprovacoes] = useState<Aprovacao[]>([])
   const [operacoes, setOperacoes] = useState<Edicao[]>([])
@@ -73,7 +89,7 @@ export default function Detalhe() {
     setS(sol)
 
     const ids = sol.colaboradores.map((c) => c.id)
-    const [v, r, h, l, vn, ev, ap] = await Promise.all([
+    const [v, r, h, l, vn, ev, ap, sc] = await Promise.all([
       supabase.from('voos').select('*').in('colaborador_id', ids),
       supabase.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
       supabase.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
@@ -89,7 +105,15 @@ export default function Detalhe() {
         .select('*')
         .eq('solicitacao_id', id)
         .order('created_at', { ascending: false }),
+      supabase
+        .from('solicitacao_carros')
+        .select('*')
+        .eq('solicitacao_id', id)
+        .order('ordem'),
     ])
+
+    const reservas = (sc.data ?? []) as CarroPedido[]
+    setCarrosPedidos(reservas)
 
     // Operações cobertas por esta solicitação (pode ser mais de uma).
     const { data: ops } = await supabase
@@ -104,9 +128,38 @@ export default function Detalhe() {
     )
     const mv: Record<string, Partial<Voo>> = {}
     ;(v.data ?? []).forEach((x: Voo) => (mv[`${x.colaborador_id}:${x.trecho}`] = x))
+    // Voo ainda não preenchido já chega com a data que o solicitante pediu.
+    // A operação completa a hora e o resto — não redigita o dia.
+    // Só o trecho que foi pedido: quem pediu só ida não ganha uma volta.
+    const trechos: ('IDA' | 'VOLTA')[] =
+      sol.tipo_voo === 'IDA' ? ['IDA'] : sol.tipo_voo === 'VOLTA' ? ['VOLTA'] : ['IDA', 'VOLTA']
+    sol.colaboradores.forEach((c) => {
+      for (const t of trechos) {
+        const chave = `${c.id}:${t}`
+        if (mv[chave]) continue
+        const dia = t === 'IDA' ? sol.voo_data_ida : sol.voo_data_volta
+        mv[chave] = {
+          colaborador_id: c.id,
+          trecho: t,
+          aeroporto_origem: t === 'IDA' ? sol.aeroporto_saida : sol.aeroporto_saida_volta,
+          aeroporto_destino: t === 'IDA' ? sol.aeroporto_chegada : sol.aeroporto_chegada_volta,
+          partida: inicioDoDia(dia),
+        }
+      }
+    })
     setVoos(mv)
+
     const mr: Record<string, Partial<Rodoviario>> = {}
     ;(r.data ?? []).forEach((x: Rodoviario) => (mr[x.colaborador_id] = x))
+    // Mesma ideia no rodoviário: o dia vem da estadia pedida.
+    sol.colaboradores.forEach((c) => {
+      if (!mr[c.id])
+        mr[c.id] = {
+          colaborador_id: c.id,
+          horario_ida: inicioDoDia(sol.data_entrada),
+          horario_volta: inicioDoDia(sol.data_saida),
+        }
+    })
     setRodo(mr)
     const mh: Record<string, Partial<HospedagemDetalhe>> = {}
     ;(h.data ?? []).forEach((x: HospedagemDetalhe) => (mh[x.colaborador_id] = x))
@@ -122,8 +175,27 @@ export default function Detalhe() {
         }
     })
     setHosp(mh)
-    setCarro((l.data as LocacaoCarro) ?? {})
-    setVan((vn.data as LocacaoVan) ?? {})
+
+    // Carro e van: as datas também vêm do pedido. No carro elas são do
+    // solicitante (ele diz quando pega e devolve); na van, do período da
+    // estadia, que é o que existe.
+    setCarro(
+      (l.data as LocacaoCarro) ?? {
+        retirada_em: inicioDoDia(reservas[0]?.retirada_data ?? sol.data_entrada),
+        devolucao_em: inicioDoDia(reservas[0]?.devolucao_data ?? sol.data_saida),
+        retirada_local: reservas[0]?.local_retirada ?? null,
+        categoria: reservas[0]?.tipo_carro ?? null,
+      },
+    )
+    setVan(
+      (vn.data as LocacaoVan) ?? {
+        saida_em: inicioDoDia(sol.data_entrada),
+        chegada_em: inicioDoDia(sol.data_entrada),
+        local_saida: sol.van_local_saida,
+        local_chegada: sol.van_destino,
+        qtd_passageiros: sol.van_qtd_passageiros,
+      },
+    )
 
     const [eq, rp] = await Promise.all([
       supabase.from('v_equipe').select('id, nome, role'),
@@ -881,6 +953,33 @@ export default function Detalhe() {
 
           {tem(s, 'CARRO') && (
             <Card titulo="Locação de carro">
+              {/* O que o solicitante pediu. Pode ser mais de um carro, cada um
+                  com seu condutor e seu período — antes isso não aparecia
+                  aqui e a operação só via o primeiro condutor. */}
+              {carrosPedidos.length > 0 && (
+                <div className="mb-4 rounded-lg bg-neutral-50 p-3">
+                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                    Pedido pelo solicitante ({carrosPedidos.length}{' '}
+                    {carrosPedidos.length === 1 ? 'carro' : 'carros'})
+                  </p>
+                  <ul className="space-y-1.5 text-xs text-neutral-700">
+                    {carrosPedidos.map((c) => (
+                      <li key={c.id}>
+                        <span className="font-medium">{c.condutor_nome}</span> ·{' '}
+                        {TIPOS_CARRO.find((t) => t.value === c.tipo_carro)?.label ??
+                          c.tipo_carro ??
+                          '—'}{' '}
+                        · {c.transmissao === 'AUTOMATICO' ? 'automático' : 'manual'}
+                        <br />
+                        <span className="text-neutral-500">
+                          {dataBR(c.retirada_data)} a {dataBR(c.devolucao_data)}
+                          {c.local_retirada ? ` · retirada: ${c.local_retirada}` : ''}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Campo label="Locadora" obrigatorio={false}>
                   <Input
@@ -1062,6 +1161,18 @@ function tem(s: Solicitacao, servico: string) {
   if (servico === 'CARRO') return s.precisa_locacao_carro
   if (servico === 'HOSPEDAGEM') return true
   return s.precisa_transporte && s.modal === servico
+}
+
+/**
+ * Data (AAAA-MM-DD) no formato que um input `datetime-local` aceita.
+ *
+ * O solicitante informa o DIA — a hora quem descobre é a operação, quando
+ * fecha o voo ou a locadora. Então o campo chega com o dia certo e a hora
+ * zerada, pronta para ser corrigida. Sem data, devolve nulo: melhor campo
+ * vazio do que uma data inventada.
+ */
+function inicioDoDia(data: string | null | undefined) {
+  return data ? `${data}T00:00` : null
 }
 
 function limpar<T extends Record<string, unknown>>(o: T) {

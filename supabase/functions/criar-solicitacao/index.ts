@@ -109,6 +109,10 @@ Deno.serve(async (req) => {
           return erro('Selecione o câmbio de cada carro.')
         if (!['HATCH', 'SEDAN', 'SUV'].includes(c.tipo_carro))
           return erro('Selecione o tipo de cada carro.')
+        if (!c.retirada_data || !c.devolucao_data)
+          return erro('Informe as datas de retirada e devolução de cada carro.')
+        if (String(c.devolucao_data) < String(c.retirada_data))
+          return erro('A devolução do carro não pode ser antes da retirada.')
       }
     }
 
@@ -273,6 +277,8 @@ Deno.serve(async (req) => {
           transmissao: c.transmissao,
           tipo_carro: c.tipo_carro,
           local_retirada: c.local_retirada ?? null,
+          retirada_data: c.retirada_data ?? null,
+          devolucao_data: c.devolucao_data ?? null,
           ordem: (c.ordem as number) ?? i + 1,
         })),
       )
