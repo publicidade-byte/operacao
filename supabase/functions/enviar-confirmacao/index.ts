@@ -11,11 +11,39 @@ import {
   enviarEmail,
   layoutEmail,
   EQUIPE_LABEL,
+  AMARELO,
 } from '../_shared/comum.ts'
 
 const secao = (titulo: string, corpo: string) => `
-  <h2 style="font-size:12px;letter-spacing:1.5px;color:#1f47b8;margin:24px 0 8px;text-transform:uppercase">${titulo}</h2>
+  <h2 style="font-size:12px;letter-spacing:1.5px;color:#171717;margin:24px 0 8px;text-transform:uppercase;border-left:3px solid ${AMARELO};padding-left:8px">${titulo}</h2>
   <div style="font-size:14px;line-height:1.6">${corpo}</div>`
+
+/**
+ * Avisa o canal da operação do desfecho.
+ *
+ * O e-mail vai para o solicitante, que muitas vezes nem tem Slack. Mas a
+ * equipe precisa ver que a viagem fechou — e, se o e-mail não saiu, saber
+ * disso na hora, para avisar por outro caminho.
+ */
+async function avisarCanal(texto: string) {
+  const token = Deno.env.get('SLACK_BOT_TOKEN')
+  const canal = Deno.env.get('SLACK_CHANNEL_ID')
+  if (!token || !canal) return { enviado: false, motivo: 'Slack não configurado' }
+  try {
+    const res = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({ channel: canal, text: texto, unfurl_links: false }),
+    })
+    const r = await res.json()
+    return r.ok ? { enviado: true } : { enviado: false, motivo: `Slack: ${r.error}` }
+  } catch (e) {
+    return { enviado: false, motivo: e instanceof Error ? e.message : 'falha no Slack' }
+  }
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
@@ -135,29 +163,53 @@ Deno.serve(async (req) => {
 
     corpo += `<p style="margin-top:24px">Dúvidas? Responda este e-mail ou fale com a equipe operacional.</p>`
 
-    const envio = await enviarEmail(
-      s.solicitante_email,
-      `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
-      layoutEmail('Viagem confirmada', corpo),
-    )
+    // Os dois canais saem juntos e um não depende do outro: e-mail para o
+    // solicitante, Slack para a equipe. Se um falhar, o outro já foi.
+    const site = Deno.env.get('SITE_URL') ?? ''
+    const [envio, aviso] = await Promise.all([
+      enviarEmail(
+        s.solicitante_email,
+        `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
+        layoutEmail('Viagem confirmada', corpo),
+      ),
+      avisarCanal(
+        [
+          `:white_check_mark: *${s.protocolo} confirmada*`,
+          '',
+          `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel}`,
+          `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} · ${colabs.length} pax`,
+          `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
+          site ? `:link: <${site}/admin/solicitacoes/${s.id}|Ver no painel>` : '',
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      ),
+    ])
 
     await sb.from('eventos_solicitacao').insert({
       solicitacao_id: s.id,
-      tipo: 'EMAIL_CONFIRMACAO',
-      descricao: envio.enviado
-        ? `Confirmação enviada para ${s.solicitante_email}`
-        : `Confirmação NÃO enviada para ${s.solicitante_email}: ${envio.motivo}`,
+      tipo: 'CONFIRMACAO',
+      descricao: [
+        envio.enviado
+          ? `E-mail enviado para ${s.solicitante_email}`
+          : `E-mail NÃO enviado para ${s.solicitante_email}: ${envio.motivo}`,
+        aviso.enviado ? 'Slack avisado' : `Slack NÃO avisado: ${aviso.motivo}`,
+      ].join(' · '),
     })
 
-    // Não damos ok silencioso quando o e-mail não saiu: a operação
-    // precisa saber para avisar o solicitante por outro caminho.
+    // Não damos ok silencioso quando o e-mail não saiu: quem precisa dos
+    // dados é o solicitante, e o Slack não chega nele.
     if (!envio.enviado)
       return erro(
         `A viagem está confirmada no sistema, mas o e-mail não foi enviado: ${envio.motivo}. Avise ${s.solicitante_email} por outro canal.`,
         502,
       )
 
-    return json({ ok: true, destinatario: s.solicitante_email })
+    return json({
+      ok: true,
+      destinatario: s.solicitante_email,
+      slack: aviso.enviado ? 'avisado' : aviso.motivo,
+    })
   } catch (e) {
     console.error(e)
     return erro(e instanceof Error ? e.message : 'Erro interno.', 500)

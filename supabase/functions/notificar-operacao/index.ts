@@ -8,7 +8,19 @@
 //   AEREO · RODOVIARIO · VAN · CARRO · HOSP_PAX · HOSP_FORA
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
-import { cors, erro, json, dataBR, EQUIPE_LABEL } from '../_shared/comum.ts'
+import {
+  cors,
+  erro,
+  json,
+  dataBR,
+  EQUIPE_LABEL,
+  enviarEmail,
+  layoutEmail,
+} from '../_shared/comum.ts'
+
+/** Uma linha rótulo/valor no corpo do e-mail. */
+const linhaEmail = (rotulo: string, valor: string) =>
+  `<p style="margin:0 0 6px;font-size:14px"><span style="color:#64748b">${rotulo}:</span> ${valor}</p>`
 
 const ROTULO: Record<string, string> = {
   AEREO: 'aéreo',
@@ -30,10 +42,11 @@ Deno.serve(async (req) => {
     const { solicitacao_id } = await req.json()
     if (!solicitacao_id) return erro('solicitacao_id ausente.')
 
+    // Sem retorno antecipado aqui: o Slack pode estar fora e o e-mail sair
+    // assim mesmo. A decisão de falhar fica no fim, quando se sabe o
+    // resultado dos dois canais.
     const token = Deno.env.get('SLACK_BOT_TOKEN')
     const canal = Deno.env.get('SLACK_CHANNEL_ID')
-    if (!token || !canal)
-      return erro('Slack não configurado (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID).', 500)
 
     const { data: s } = await sb
       .from('solicitacoes')
@@ -61,7 +74,7 @@ Deno.serve(async (req) => {
       await Promise.all([
         sb
           .from('admin_users')
-          .select('nome, slack_user_id, areas')
+          .select('nome, email, slack_user_id, areas')
           .eq('ativo', true)
           // Logins administrativos (o super admin) têm acesso ao painel mas
           // não são pessoas da operação — não devem ser avisados.
@@ -126,32 +139,76 @@ Deno.serve(async (req) => {
       .filter((l): l is string => l !== null)
       .join('\n')
 
-    const res = await fetch('https://slack.com/api/chat.postMessage', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: JSON.stringify({ channel: canal, text: texto, unfurl_links: false }),
-    })
-    const resultado = await res.json()
-    if (!resultado.ok) return erro(`Slack recusou a mensagem: ${resultado.error}`, 502)
+    // Os dois canais em paralelo. Um não segura o outro: se o Slack estiver
+    // fora do ar, o e-mail ainda sai — e vice-versa.
+    const emails = destinatarios
+      .map((u) => (u as { email?: string }).email)
+      .filter((e): e is string => !!e)
+
+    const [slack, email] = await Promise.all([
+      (async () => {
+        if (!token || !canal)
+          return { enviado: false, motivo: 'SLACK_BOT_TOKEN / SLACK_CHANNEL_ID ausentes' }
+        const res = await fetch('https://slack.com/api/chat.postMessage', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json; charset=utf-8',
+          },
+          body: JSON.stringify({ channel: canal, text: texto, unfurl_links: false }),
+        })
+        const r = await res.json()
+        return r.ok
+          ? { enviado: true, ts: r.ts as string }
+          : { enviado: false, motivo: `Slack recusou: ${r.error}` }
+      })(),
+      emails.length === 0
+        ? Promise.resolve({ enviado: false, motivo: 'nenhum responsável com e-mail' })
+        : enviarEmail(
+            emails,
+            `[${s.protocolo}] Nova solicitação — ${s.edicoes.destino}`,
+            layoutEmail(
+              'Nova solicitação',
+              `<p>Chegou uma solicitação da sua área.</p>
+               ${linhaEmail('Protocolo', s.protocolo)}
+               ${linhaEmail('Destino', `${s.edicoes.destino} — ${s.edicoes.hotel}`)}
+               ${linhaEmail('Estadia', `${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`)}
+               ${linhaEmail('Equipe / Pax', `${equipeTexto} · ${s.colaboradores.length} pax`)}
+               ${linhaEmail('Solicitado', servicos.map((v) => ROTULO[v] ?? v).join(' · '))}
+               ${linhaEmail('Solicitante', `${s.solicitante_nome} — ${s.solicitante_email}`)}
+               ${site ? `<p style="margin-top:20px"><a href="${site}/admin/solicitacoes/${s.id}">Abrir a solicitação no painel</a></p>` : ''}`,
+            ),
+          ),
+    ])
 
     await sb.from('eventos_solicitacao').insert({
       solicitacao_id: s.id,
       tipo: 'AVISO_OPERACAO',
-      descricao: `Operação avisada no Slack: ${destinatarios.map((u) => u.nome).join(', ')}`,
+      descricao:
+        `Operação avisada (${destinatarios.map((u) => u.nome).join(', ')}) — ` +
+        `Slack: ${slack.enviado ? 'ok' : (slack as { motivo: string }).motivo} · ` +
+        `E-mail: ${email.enviado ? 'ok' : email.motivo}`,
       payload: {
-        ts: resultado.ts,
+        ts: (slack as { ts?: string }).ts ?? null,
         areas: [...areas],
         sem_slack: semSlack,
+        emails,
         lista_extra_indisponivel: erroExtras?.message ?? null,
       },
     })
 
+    // Só é falha se NENHUM canal saiu — aí ninguém foi avisado de verdade.
+    if (!slack.enviado && !email.enviado)
+      return erro(
+        `Ninguém foi avisado. Slack: ${(slack as { motivo: string }).motivo}. E-mail: ${email.motivo}.`,
+        502,
+      )
+
     return json({
       ok: true,
       avisados: destinatarios.map((u) => u.nome),
+      slack: slack.enviado ? 'ok' : (slack as { motivo: string }).motivo,
+      email: email.enviado ? `enviado para ${emails.length}` : email.motivo,
       sem_slack: semSlack,
       // Quem sumiu da lista precisa aparecer para quem chamou.
       lista_extra_indisponivel: erroExtras?.message ?? null,

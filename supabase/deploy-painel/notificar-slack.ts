@@ -93,19 +93,21 @@ export async function enviarEmail(
   return { enviado: true }
 }
 
+// Amarelo da marca (--color-marca-400) sobre preto. O layout usava azul,
+// que não é da paleta — branco, cinza, preto e amarelo.
+export const AMARELO = '#ffd21a'
+
 export const layoutEmail = (titulo: string, corpo: string) => `
 <div style="font-family:ui-sans-serif,system-ui,Segoe UI,Roboto,sans-serif;max-width:600px;margin:0 auto;color:#1e293b">
-  <div style="border-bottom:3px solid #1f47b8;padding-bottom:12px;margin-bottom:24px">
-    <span style="font-size:11px;letter-spacing:2px;color:#1f47b8;font-weight:700">FORMA 9</span>
-    <h1 style="margin:6px 0 0;font-size:20px">${titulo}</h1>
+  <div style="border-bottom:3px solid ${AMARELO};padding-bottom:12px;margin-bottom:24px">
+    <span style="font-size:11px;letter-spacing:2px;color:#171717;font-weight:700;background:${AMARELO};padding:2px 6px">FORMA 9</span>
+    <h1 style="margin:10px 0 0;font-size:20px;color:#171717">${titulo}</h1>
   </div>
   ${corpo}
   <p style="margin-top:32px;padding-top:16px;border-top:1px solid #e2e8f0;font-size:12px;color:#94a3b8">
     Mensagem automática do sistema de solicitações do Forma 9.
   </p>
 </div>`
-
-// ==================== notificar-slack ====================
 
 // Manda no DM do diretor aprovador o resumo da solicitação.
 // Exige usuário admin autenticado (o token vem do painel).
