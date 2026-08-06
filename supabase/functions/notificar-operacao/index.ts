@@ -57,13 +57,22 @@ Deno.serve(async (req) => {
 
     // Quem recebe: usuários do sistema + pessoas cadastradas só para
     // notificação (têm Slack mas não têm login, como a Carol).
-    const [{ data: equipe }, { data: extras }] = await Promise.all([
-      sb
-        .from('admin_users')
-        .select('nome, slack_user_id, areas')
-        .eq('ativo', true),
-      sb.from('notificacao_extra').select('nome, slack_user_id, areas').eq('ativo', true),
-    ])
+    const [{ data: equipe, error: erroEquipe }, { data: extras, error: erroExtras }] =
+      await Promise.all([
+        sb
+          .from('admin_users')
+          .select('nome, slack_user_id, areas')
+          .eq('ativo', true),
+        sb.from('notificacao_extra').select('nome, slack_user_id, areas').eq('ativo', true),
+      ])
+
+    // Sem a equipe não há a quem avisar. Falhar alto é melhor que postar uma
+    // mensagem sem destinatário e a operação achar que foi avisada.
+    if (erroEquipe) return erro(`Não foi possível ler a equipe: ${erroEquipe.message}`, 500)
+
+    // A lista extra é opcional, mas se a leitura falhar alguém deixa de ser
+    // avisado — e isso não pode sumir num `?? []`.
+    if (erroExtras) console.error('notificacao_extra:', erroExtras.message)
 
     const candidatos = [...(equipe ?? []), ...(extras ?? [])]
     const destinatarios = candidatos.filter((u) => {
@@ -95,9 +104,11 @@ Deno.serve(async (req) => {
       `*Solicitado:* ${servicos.map((v) => ROTULO[v] ?? v).join(' · ')}`,
       `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
       '',
-      site ? `:link: <${site}/admin/solicitacoes/${s.id}|Abrir a solicitação no painel>` : '',
+      site ? `:link: <${site}/admin/solicitacoes/${s.id}|Abrir a solicitação no painel>` : null,
     ]
-      .filter(Boolean)
+      // Só as linhas ausentes saem. `filter(Boolean)` comeria também as
+      // strings vazias, que aqui são os espaçamentos entre os blocos.
+      .filter((l): l is string => l !== null)
       .join('\n')
 
     const res = await fetch('https://slack.com/api/chat.postMessage', {
@@ -115,13 +126,20 @@ Deno.serve(async (req) => {
       solicitacao_id: s.id,
       tipo: 'AVISO_OPERACAO',
       descricao: `Operação avisada no Slack: ${destinatarios.map((u) => u.nome).join(', ')}`,
-      payload: { ts: resultado.ts, areas: [...areas], sem_slack: semSlack },
+      payload: {
+        ts: resultado.ts,
+        areas: [...areas],
+        sem_slack: semSlack,
+        lista_extra_indisponivel: erroExtras?.message ?? null,
+      },
     })
 
     return json({
       ok: true,
       avisados: destinatarios.map((u) => u.nome),
       sem_slack: semSlack,
+      // Quem sumiu da lista precisa aparecer para quem chamou.
+      lista_extra_indisponivel: erroExtras?.message ?? null,
     })
   } catch (e) {
     console.error(e)

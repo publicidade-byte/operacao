@@ -107,8 +107,12 @@ export const layoutEmail = (titulo: string, corpo: string) => `
 
 // ==================== notificar-slack ====================
 
-// Posta no Slack o resumo da solicitação, mencionando o diretor aprovador.
+// Manda no DM do diretor aprovador o resumo da solicitação.
 // Exige usuário admin autenticado (o token vem do painel).
+//
+// Vai por DM, não por canal: a mensagem traz a composição de custos e é uma
+// pendência pessoal do diretor. Sem `slack_user_id` cadastrado não há para
+// onde mandar — nesse caso sobra o e-mail.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 Deno.serve(async (req) => {
@@ -124,7 +128,6 @@ Deno.serve(async (req) => {
     if (!solicitacao_id) return erro('solicitacao_id ausente.')
 
     const token = Deno.env.get('SLACK_BOT_TOKEN')
-    const canal = Deno.env.get('SLACK_CHANNEL_ID')
 
     const { data: s } = await sb
       .from('solicitacoes')
@@ -144,9 +147,9 @@ Deno.serve(async (req) => {
       ])
 
     const site = Deno.env.get('SITE_URL') ?? ''
-    const mencao = s.diretores.slack_user_id
-      ? `<@${s.diretores.slack_user_id}>`
-      : `*${s.diretores.nome}*`
+    // Num DM a menção é redundante — o próprio canal já é do diretor.
+    const dmDiretor: string | null = s.diretores.slack_user_id ?? null
+    const primeiroNome = s.diretores.nome.split(' ')[0]
 
     const linhasPax = s.colaboradores
       .sort((a: { ordem: number }, b: { ordem: number }) => a.ordem - b.ordem)
@@ -194,7 +197,7 @@ Deno.serve(async (req) => {
 
     const texto = [
       `:airplane: *Solicitação ${s.protocolo} aguarda sua aprovação no sistema*`,
-      `${mencao}, há uma pendência para você:`,
+      `Olá, ${primeiroNome}! Há uma pendência para você:`,
       '',
       `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel} (${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)})`,
       `*Equipe:* ${EQUIPE_LABEL[s.equipe] ?? s.equipe}  ·  *Pax:* ${s.colaboradores.length}`,
@@ -212,14 +215,16 @@ Deno.serve(async (req) => {
       `_Obs. do solicitante:_ ${s.obs_transporte}`,
       s.precisa_locacao_carro && s.obs_locacao_carro
         ? `_Obs. locação:_ ${s.obs_locacao_carro}`
-        : '',
+        : null,
       '',
       site
         ? `:point_right: <${site}/aprovacao/${s.id}|*Abrir no sistema para aprovar ou reprovar*>`
-        : '',
+        : null,
       '_A aprovação é feita dentro do sistema — esta mensagem é apenas um aviso._',
     ]
-      .filter(Boolean)
+      // Só as linhas ausentes saem. `filter(Boolean)` comeria também as
+      // strings vazias, que aqui são os espaçamentos entre os blocos.
+      .filter((l): l is string => l !== null)
       .join('\n')
 
     // ---- Canal 1: e-mail para o diretor ---------------------------------
@@ -259,16 +264,19 @@ Deno.serve(async (req) => {
 
     // ---- Canal 2: aviso no Slack ----------------------------------------
     let slackTs: string | null = null
-    let motivoSlack = 'Slack não configurado (SLACK_BOT_TOKEN / SLACK_CHANNEL_ID)'
+    let motivoSlack = !token
+      ? 'SLACK_BOT_TOKEN não configurado'
+      : `${s.diretores.nome} não tem slack_user_id cadastrado`
 
-    if (token && canal) {
+    if (token && dmDiretor) {
+      // `channel` com um user id faz o Slack abrir/usar o DM com essa pessoa.
       const res = await fetch('https://slack.com/api/chat.postMessage', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json; charset=utf-8',
         },
-        body: JSON.stringify({ channel: canal, text: texto, unfurl_links: false }),
+        body: JSON.stringify({ channel: dmDiretor, text: texto, unfurl_links: false }),
       })
       const resultado = await res.json()
       if (resultado.ok) slackTs = resultado.ts
@@ -291,7 +299,11 @@ Deno.serve(async (req) => {
       solicitacao_id: s.id,
       tipo: 'AVISO_APROVADOR',
       descricao: `${s.diretores.nome} avisado por ${canais}`,
-      payload: { ts: slackTs, canal, email: emailEnviado ? s.diretores.email : null },
+      payload: {
+        ts: slackTs,
+        dm: slackTs ? dmDiretor : null,
+        email: emailEnviado ? s.diretores.email : null,
+      },
     })
 
     return json({ ok: true, canais, ts: slackTs })
