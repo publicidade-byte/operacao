@@ -62,7 +62,10 @@ Deno.serve(async (req) => {
         sb
           .from('admin_users')
           .select('nome, slack_user_id, areas')
-          .eq('ativo', true),
+          .eq('ativo', true)
+          // Logins administrativos (o super admin) têm acesso ao painel mas
+          // não são pessoas da operação — não devem ser avisados.
+          .eq('notificar', true),
         sb.from('notificacao_extra').select('nome, slack_user_id, areas').eq('ativo', true),
       ])
 
