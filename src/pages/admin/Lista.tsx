@@ -8,6 +8,7 @@ import {
   STATUS_CLASS,
   STATUS_LABEL,
   corResponsavel,
+  corServico,
   equipeLabel,
 } from '../../lib/constants'
 import { dataBR, dataCurta, moeda, soDigitos } from '../../lib/format'
@@ -339,7 +340,7 @@ export default function Lista() {
                         {(d.servicos ?? []).map((sv) => (
                           <span
                             key={sv}
-                            className="rounded bg-neutral-100 px-1.5 py-0.5 text-[11px] font-medium text-neutral-700"
+                            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${corServico(sv)}`}
                           >
                             {SERVICO_CURTO[sv] ?? sv}
                           </span>

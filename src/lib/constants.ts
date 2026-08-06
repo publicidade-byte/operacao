@@ -70,6 +70,26 @@ export function corResponsavel(nome: string) {
   return CORES_RESPONSAVEL[h % CORES_RESPONSAVEL.length]
 }
 
+/**
+ * Cada serviço sempre na mesma cor, para bater o olho na tabela e saber do
+ * que se trata sem ler. Diferente de `corResponsavel`, que sorteia a cor a
+ * partir do nome: aqui são cinco valores fixos, então a escolha é explícita
+ * — aéreo verde e carro vermelho foram pedidos assim.
+ *
+ * Mesmo formato visual das etiquetas de responsável (fundo claro, texto
+ * escuro, anel) para não competir com as cores de status.
+ */
+const CORES_SERVICO: Record<string, string> = {
+  AEREO: 'bg-emerald-100 text-emerald-900 ring-emerald-300',
+  CARRO: 'bg-red-100 text-red-900 ring-red-300',
+  HOSPEDAGEM: 'bg-sky-100 text-sky-900 ring-sky-300',
+  VAN: 'bg-violet-100 text-violet-900 ring-violet-300',
+  RODOVIARIO: 'bg-amber-100 text-amber-900 ring-amber-300',
+}
+
+export const corServico = (v: string) =>
+  CORES_SERVICO[v] ?? 'bg-neutral-100 text-neutral-700 ring-neutral-300'
+
 export const TIPOS_CARRO = [
   { value: 'HATCH', label: 'Hatch' },
   { value: 'SEDAN', label: 'Sedan' },

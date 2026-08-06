@@ -16,7 +16,13 @@ import type {
   Status,
   Voo,
 } from '../../lib/types'
-import { STATUS_CLASS, STATUS_LABEL, aeroportoLabel, equipeLabel } from '../../lib/constants'
+import {
+  STATUS_CLASS,
+  STATUS_LABEL,
+  aeroportoLabel,
+  corServico,
+  equipeLabel,
+} from '../../lib/constants'
 import {
   cpfMascarado,
   dataBR,
@@ -585,7 +591,7 @@ export default function Detalhe() {
                   {(s.servicos ?? []).map((sv) => (
                     <span
                       key={sv}
-                      className="rounded bg-neutral-100 px-1.5 py-0.5 text-xs font-medium text-neutral-700"
+                      className={`rounded px-1.5 py-0.5 text-xs font-medium ring-1 ring-inset ${corServico(sv)}`}
                     >
                       {sv}
                     </span>
