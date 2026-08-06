@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { STATUS_CLASS, STATUS_LABEL, equipeLabel } from '../../lib/constants'
+import { STATUS_CLASS, STATUS_LABEL, equipeLabel, servicoCurto } from '../../lib/constants'
 import { dataBR, dataCurta, moeda } from '../../lib/format'
 import { Card, Etiqueta, Vazio } from '../../components/ui'
 
@@ -20,7 +20,13 @@ export type LinhaAprovacao = {
   qtd_pax: number
   custo_total: number | null
   solicitante_nome: string
+  servicos: string[] | null
   created_at: string
+}
+
+/** "Aéreo · Hospedagem · Aluguel de van" — o que o solicitante pediu. */
+function listaServicos(servicos: string[] | null) {
+  return (servicos ?? []).map(servicoCurto).join(' · ')
 }
 
 export default function Pendentes() {
@@ -94,6 +100,10 @@ export default function Pendentes() {
                     {equipeLabel(d.equipe, d.equipe_outro)} · {d.qtd_pax} pax ·{' '}
                     {dataCurta(d.data_entrada)} a {dataCurta(d.data_saida)}
                   </p>
+                  <p className="mt-1.5 text-sm text-neutral-700">
+                    <span className="text-neutral-500">Solicitado:</span>{' '}
+                    {listaServicos(d.servicos) || '—'}
+                  </p>
                   <p className="mt-0.5 text-xs text-neutral-500">
                     Solicitado por {d.solicitante_nome}
                   </p>
@@ -145,6 +155,12 @@ export default function Pendentes() {
                     <p className="text-xs text-neutral-500">
                       {equipeLabel(d.equipe, d.equipe_outro)} · {d.qtd_pax} pax ·{' '}
                       {dataBR(d.data_entrada)}
+                    </p>
+                    <p className="mt-0.5 text-xs text-neutral-600">
+                      {listaServicos(d.servicos) || '—'}
+                      <span className="text-neutral-400">
+                        {' '}· solicitado por {d.solicitante_nome}
+                      </span>
                     </p>
                   </div>
                   <div className="flex items-center gap-3">

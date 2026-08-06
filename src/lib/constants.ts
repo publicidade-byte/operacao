@@ -170,5 +170,17 @@ export const SERVICOS = [
 export const servicoLabel = (v: string) =>
   SERVICOS.find((s) => s.value === v)?.label ?? v
 
+/**
+ * Versão curta, para listas: "Aéreo · Hospedagem · Aluguel de van".
+ * O rótulo longo ("Solicitação de aéreo") faz sentido no formulário, onde a
+ * pessoa está escolhendo; numa linha de lista ele só repete a palavra
+ * "Solicitação" três vezes e empurra o resto para fora da tela.
+ */
+export const servicoCurto = (v: string) => {
+  const l = SERVICOS.find((s) => s.value === v)?.label ?? v
+  const sem = l.replace(/^Solicitação de\s+/i, '')
+  return sem.charAt(0).toUpperCase() + sem.slice(1)
+}
+
 /** Serviços que envolvem deslocamento — usados para exigir observações. */
 export const SERVICOS_TRANSPORTE = ['AEREO', 'RODOVIARIO', 'VAN']

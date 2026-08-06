@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
-import { STATUS_CLASS, STATUS_LABEL, aeroportoLabel, equipeLabel } from '../../lib/constants'
+import {
+  STATUS_CLASS,
+  STATUS_LABEL,
+  aeroportoLabel,
+  equipeLabel,
+  servicoCurto,
+} from '../../lib/constants'
 import { dataBR, dataHoraBR, moeda } from '../../lib/format'
 import { Aviso, Botao, Card, Etiqueta, Textarea } from '../../components/ui'
 import type { LinhaAprovacao } from './Pendentes'
@@ -17,7 +23,27 @@ type Sol = LinhaAprovacao & {
   precisa_locacao_carro: boolean
   obs_locacao_carro: string | null
   solicitante_email: string
+  solicitante_whatsapp: string | null
+  van_local_saida: string | null
+  van_horario_saida: string | null
+  van_destino: string | null
+  van_qtd_passageiros: number | null
+  rodo_regiao_saida: string | null
+  rodo_cidade_estado: string | null
   observacoes_internas: string | null
+}
+
+/**
+ * `modal` guarda um serviço só (aéreo > van > rodoviário), então quem pedia
+ * aéreo E van aparecia para o diretor como se tivesse pedido só o aéreo.
+ * A lista `servicos` é a fonte de verdade; os campos antigos só cobrem as
+ * solicitações anteriores a essa mudança.
+ */
+function tem(s: Sol, servico: string) {
+  const lista = s.servicos ?? []
+  if (lista.length) return lista.includes(servico)
+  if (servico === 'CARRO') return s.precisa_locacao_carro
+  return s.precisa_transporte && s.modal === servico
 }
 
 type Colab = { id: string; nome_completo: string; ordem: number }
@@ -78,6 +104,7 @@ export default function DetalheAprovacao() {
   const [rodo, setRodo] = useState<Rodo[]>([])
   const [hosp, setHosp] = useState<Hosp[]>([])
   const [carro, setCarro] = useState<Carro | null>(null)
+  const [van, setVan] = useState<{ preco: number | null } | null>(null)
   const [decisoes, setDecisoes] = useState<Decisao[]>([])
   const [operacoes, setOperacoes] = useState<Operacao[]>([])
   const [obs, setObs] = useState('')
@@ -86,7 +113,7 @@ export default function DetalheAprovacao() {
   const [erro, setErro] = useState('')
 
   const carregar = useCallback(async () => {
-    const [sol, c, v, r, h, l, d, ops] = await Promise.all([
+    const [sol, c, v, r, h, l, d, ops, vn] = await Promise.all([
       supabase.from('v_aprovacao_solicitacoes').select('*').eq('id', id).maybeSingle(),
       supabase.from('v_aprovacao_colaboradores').select('*').eq('solicitacao_id', id),
       supabase.from('v_aprovacao_voos').select('*').eq('solicitacao_id', id),
@@ -103,6 +130,7 @@ export default function DetalheAprovacao() {
         .select('*')
         .eq('solicitacao_id', id)
         .order('data_inicio'),
+      supabase.from('v_aprovacao_van').select('*').eq('solicitacao_id', id).maybeSingle(),
     ])
     setS(sol.data as Sol)
     setOperacoes((ops.data ?? []) as Operacao[])
@@ -111,6 +139,7 @@ export default function DetalheAprovacao() {
     setRodo((r.data ?? []) as Rodo[])
     setHosp((h.data ?? []) as Hosp[])
     setCarro((l.data as Carro) ?? null)
+    setVan((vn.data as { preco: number | null }) ?? null)
     setDecisoes((d.data ?? []) as Decisao[])
   }, [id])
 
@@ -144,15 +173,21 @@ export default function DetalheAprovacao() {
   const pendente = s.status === 'AGUARDANDO_APROVACAO'
   const totalVoos = voos.reduce((t, v) => t + Number(v.preco ?? 0), 0)
   const totalRodo = rodo.reduce((t, v) => t + Number(v.preco ?? 0), 0)
+  // Mesma regra do banco: sem as datas do detalhe, vale o período da
+  // solicitação, e o mínimo é 1 diária. Antes, faltando as datas, a diária
+  // sumia da composição e ela não fechava com o total exibido em cima.
   const totalHosp = hosp.reduce((t, h) => {
-    if (!h.valor_diaria || !h.check_in || !h.check_out) return t
-    const n = Math.max(
-      0,
-      (new Date(h.check_out).getTime() - new Date(h.check_in).getTime()) / 86400000,
+    if (!h.valor_diaria) return t
+    const entrada = h.check_in ?? s.data_entrada
+    const saida = h.check_out ?? s.data_saida
+    const dias = Math.max(
+      1,
+      (new Date(saida).getTime() - new Date(entrada).getTime()) / 86400000,
     )
-    return t + Number(h.valor_diaria) * n
+    return t + Number(h.valor_diaria) * dias
   }, 0)
   const totalCarro = Number(carro?.preco ?? 0)
+  const totalVan = Number(van?.preco ?? 0)
 
   return (
     <div className="space-y-4">
@@ -186,11 +221,12 @@ export default function DetalheAprovacao() {
 
       {/* Resumo de custos — é o que o diretor precisa para decidir */}
       <Card titulo="Composição do custo">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
           <Custo rotulo="Aéreo" valor={totalVoos} />
           <Custo rotulo="Rodoviário" valor={totalRodo} />
           <Custo rotulo="Hospedagem" valor={totalHosp} />
           <Custo rotulo="Locação de carro" valor={totalCarro} />
+          <Custo rotulo="Locação de van" valor={totalVan} />
         </div>
       </Card>
 
@@ -218,27 +254,40 @@ export default function DetalheAprovacao() {
                 ? 'Hotel do pax'
                 : 'Fora do hotel do pax'}
             </L>
-            <L t="Transporte">
-              {!s.precisa_transporte
-                ? 'Não solicitado'
-                : s.modal === 'AEREO'
-                  ? `Aéreo · ${aeroportoLabel(s.aeroporto_saida)} → ${aeroportoLabel(s.aeroporto_chegada)}`
-                  : 'Rodoviário'}
+            <L t="Solicitado">
+              {(s.servicos ?? []).map(servicoCurto).join(' · ') || '—'}
             </L>
-            {s.modal === 'AEREO' && (
-              <L t="Bagagem despachada">
-                {s.precisa_bagagem === null
-                  ? '—'
-                  : s.precisa_bagagem
-                    ? 'Sim'
-                    : 'Não, só bagagem de mão'}
+            {tem(s, 'AEREO') && (
+              <>
+                <L t="Trecho aéreo">
+                  {aeroportoLabel(s.aeroporto_saida)} →{' '}
+                  {aeroportoLabel(s.aeroporto_chegada)}
+                </L>
+                <L t="Bagagem despachada">
+                  {s.precisa_bagagem === null
+                    ? '—'
+                    : s.precisa_bagagem
+                      ? 'Sim'
+                      : 'Não, só bagagem de mão'}
+                </L>
+              </>
+            )}
+            {tem(s, 'RODOVIARIO') && (
+              <L t="Rodoviário">
+                Sai de {s.rodo_regiao_saida ?? '—'} · {s.rodo_cidade_estado ?? '—'}
               </L>
             )}
-            <L t="Locação de carro">{s.precisa_locacao_carro ? 'Sim' : 'Não'}</L>
+            {tem(s, 'VAN') && (
+              <L t="Van">
+                Saída de {s.van_local_saida ?? '—'} · {s.van_horario_saida ?? '—'} ·
+                destino {s.van_destino ?? '—'} · {s.van_qtd_passageiros ?? '—'}{' '}
+                passageiro(s)
+              </L>
+            )}
             <L t="Observações">
               <span className="whitespace-pre-wrap">{s.obs_transporte}</span>
             </L>
-            {s.precisa_locacao_carro && s.obs_locacao_carro && (
+            {tem(s, 'CARRO') && s.obs_locacao_carro && (
               <L t="Obs. locação">{s.obs_locacao_carro}</L>
             )}
           </dl>
