@@ -198,7 +198,7 @@ export default function Detalhe() {
             .upsert(upHosp, { onConflict: 'colaborador_id' }),
         )
 
-      if (s.precisa_locacao_carro && Object.keys(carro).length) {
+      if (tem(s, 'CARRO') && Object.keys(carro).length) {
         const { id: _i, ...resto } = carro as LocacaoCarro
         await erro(
           supabase
@@ -209,7 +209,7 @@ export default function Detalhe() {
         )
       }
 
-      if (s.modal === 'VAN' && Object.keys(van).length) {
+      if (tem(s, 'VAN') && Object.keys(van).length) {
         const { id: _i, ...resto } = van as LocacaoVan
         await erro(
           supabase
@@ -220,11 +220,16 @@ export default function Detalhe() {
         )
       }
 
-      // recalcula o custo total no banco
-      const { data: custo } = await supabase.rpc('recalcular_custo', {
+      // Recalcula o custo total no banco. Se a RPC falhar, `custo` viria
+      // null e apagaria o total que já estava lá — por isso o erro sobe em
+      // vez de ser gravado.
+      const { data: custo, error: eCusto } = await supabase.rpc('recalcular_custo', {
         p_solicitacao: s.id,
       })
-      await supabase.from('solicitacoes').update({ custo_total: custo }).eq('id', s.id)
+      if (eCusto) throw new Error(`Não consegui recalcular o custo: ${eCusto.message}`)
+      await erro(
+        supabase.from('solicitacoes').update({ custo_total: custo ?? 0 }).eq('id', s.id),
+      )
 
       await registrarEvento('EDICAO', 'Dados operacionais atualizados')
       if (s.status === 'RECEBIDA')
@@ -605,13 +610,15 @@ export default function Detalhe() {
               </L>
               <L t="Equipe">{equipeLabel(s.equipe, s.equipe_outro)}</L>
               <L t="Transporte">
-                {!s.precisa_transporte
-                  ? 'Não solicitado'
-                  : s.modal === 'AEREO'
-                    ? 'Aéreo'
-                    : 'Rodoviário'}
+                {[
+                  tem(s, 'AEREO') && 'Aéreo',
+                  tem(s, 'RODOVIARIO') && 'Rodoviário',
+                  tem(s, 'VAN') && 'Van',
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || 'Não solicitado'}
               </L>
-              {s.modal === 'AEREO' && (
+              {tem(s, 'AEREO') && (
                 <>
                   <L t="Aeroporto saída">{aeroportoLabel(s.aeroporto_saida)}</L>
                   <L t="Aeroporto chegada">{aeroportoLabel(s.aeroporto_chegada)}</L>
@@ -627,7 +634,7 @@ export default function Detalhe() {
               <L t="Obs. transporte">
                 <span className="whitespace-pre-wrap">{s.obs_transporte}</span>
               </L>
-              {s.modal === 'VAN' && (
+              {tem(s, 'VAN') && (
                 <L t="Van solicitada">
                   Saída de {s.van_local_saida} · {s.van_horario_saida}
                   <br />
@@ -635,7 +642,7 @@ export default function Detalhe() {
                 </L>
               )}
               <L t="Locação de carro">
-                {s.precisa_locacao_carro ? (
+                {tem(s, 'CARRO') ? (
                   <>
                     Condutor: {s.carro_condutor_nome} ·{' '}
                     <span className="font-mono">
@@ -731,7 +738,7 @@ export default function Detalhe() {
               }
             >
               <div className="space-y-5">
-                {s.precisa_transporte && s.modal === 'AEREO' && (
+                {tem(s, 'AEREO') && (
                   <>
                     <BlocoVoo
                       titulo="Voo de ida"
@@ -748,7 +755,7 @@ export default function Detalhe() {
                   </>
                 )}
 
-                {s.precisa_transporte && s.modal === 'RODOVIARIO' && (
+                {tem(s, 'RODOVIARIO') && (
                   <BlocoRodoviario
                     valor={rodo[c.id] ?? {}}
                     editavel={podeEditar}
@@ -756,6 +763,7 @@ export default function Detalhe() {
                   />
                 )}
 
+                {tem(s, 'HOSPEDAGEM') && (
                 <BlocoHospedagem
                   valor={hosp[c.id] ?? {}}
                   editavel={podeEditar}
@@ -764,11 +772,12 @@ export default function Detalhe() {
                   padraoOut={s.data_saida}
                   onChange={(v) => setHosp((p) => ({ ...p, [c.id]: v }))}
                 />
+                )}
               </div>
             </Card>
           ))}
 
-          {s.precisa_transporte && s.modal === 'VAN' && (
+          {tem(s, 'VAN') && (
             <Card
               titulo="Locação de van"
               descricao={`Pedido: saída de ${s.van_local_saida ?? '—'} · ${s.van_horario_saida ?? '—'} · destino ${s.van_destino ?? '—'} · ${s.van_qtd_passageiros ?? '—'} passageiro(s)`}
@@ -778,21 +787,21 @@ export default function Detalhe() {
                   <Input
                     disabled={!podeEditar}
                     value={van.empresa ?? ''}
-                    onChange={(e) => setVan({ ...van, empresa: e.target.value })}
+                    onChange={(e) => setVan((v) => ({ ...v, empresa: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Motorista" obrigatorio={false}>
                   <Input
                     disabled={!podeEditar}
                     value={van.motorista ?? ''}
-                    onChange={(e) => setVan({ ...van, motorista: e.target.value })}
+                    onChange={(e) => setVan((v) => ({ ...v, motorista: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Telefone do motorista" obrigatorio={false}>
                   <Input
                     disabled={!podeEditar}
                     value={van.telefone ?? ''}
-                    onChange={(e) => setVan({ ...van, telefone: e.target.value })}
+                    onChange={(e) => setVan((v) => ({ ...v, telefone: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Placa" obrigatorio={false}>
@@ -800,7 +809,7 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={van.placa ?? ''}
                     onChange={(e) =>
-                      setVan({ ...van, placa: e.target.value.toUpperCase() })
+                      setVan((v) => ({ ...v, placa: e.target.value.toUpperCase() }))
                     }
                   />
                 </Campo>
@@ -824,7 +833,7 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={van.preco ?? ''}
                     onChange={(e) =>
-                      setVan({ ...van, preco: e.target.value ? +e.target.value : null })
+                      setVan((v) => ({ ...v, preco: e.target.value ? +e.target.value : null }))
                     }
                   />
                 </Campo>
@@ -832,7 +841,7 @@ export default function Detalhe() {
                   <Input
                     disabled={!podeEditar}
                     value={van.local_saida ?? ''}
-                    onChange={(e) => setVan({ ...van, local_saida: e.target.value })}
+                    onChange={(e) => setVan((v) => ({ ...v, local_saida: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Saída em" obrigatorio={false}>
@@ -840,14 +849,14 @@ export default function Detalhe() {
                     type="datetime-local"
                     disabled={!podeEditar}
                     value={paraInputDateTime(van.saida_em)}
-                    onChange={(e) => setVan({ ...van, saida_em: e.target.value || null })}
+                    onChange={(e) => setVan((v) => ({ ...v, saida_em: e.target.value || null }))}
                   />
                 </Campo>
                 <Campo label="Local de chegada" obrigatorio={false}>
                   <Input
                     disabled={!podeEditar}
                     value={van.local_chegada ?? ''}
-                    onChange={(e) => setVan({ ...van, local_chegada: e.target.value })}
+                    onChange={(e) => setVan((v) => ({ ...v, local_chegada: e.target.value }))}
                   />
                 </Campo>
                 <div className="sm:col-span-2 lg:col-span-3">
@@ -856,7 +865,7 @@ export default function Detalhe() {
                       rows={2}
                       disabled={!podeEditar}
                       value={van.observacoes ?? ''}
-                      onChange={(e) => setVan({ ...van, observacoes: e.target.value })}
+                      onChange={(e) => setVan((v) => ({ ...v, observacoes: e.target.value }))}
                     />
                   </Campo>
                 </div>
@@ -864,21 +873,21 @@ export default function Detalhe() {
             </Card>
           )}
 
-          {s.precisa_locacao_carro && (
+          {tem(s, 'CARRO') && (
             <Card titulo="Locação de carro">
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Campo label="Locadora" obrigatorio={false}>
                   <Input
                     disabled={!podeEditar}
                     value={carro.locadora ?? ''}
-                    onChange={(e) => setCarro({ ...carro, locadora: e.target.value })}
+                    onChange={(e) => setCarro((c) => ({ ...c, locadora: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Categoria" obrigatorio={false}>
                   <Input
                     disabled={!podeEditar}
                     value={carro.categoria ?? ''}
-                    onChange={(e) => setCarro({ ...carro, categoria: e.target.value })}
+                    onChange={(e) => setCarro((c) => ({ ...c, categoria: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Condutor" obrigatorio={false}>
@@ -886,7 +895,7 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={carro.condutor_colaborador_id ?? ''}
                     onChange={(e) =>
-                      setCarro({ ...carro, condutor_colaborador_id: e.target.value || null })
+                      setCarro((c) => ({ ...c, condutor_colaborador_id: e.target.value || null }))
                     }
                   >
                     <option value="">Selecione…</option>
@@ -901,7 +910,7 @@ export default function Detalhe() {
                   <Input
                     disabled={!podeEditar}
                     value={carro.retirada_local ?? ''}
-                    onChange={(e) => setCarro({ ...carro, retirada_local: e.target.value })}
+                    onChange={(e) => setCarro((c) => ({ ...c, retirada_local: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Retirada em" obrigatorio={false}>
@@ -910,7 +919,7 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={paraInputDateTime(carro.retirada_em)}
                     onChange={(e) =>
-                      setCarro({ ...carro, retirada_em: e.target.value || null })
+                      setCarro((c) => ({ ...c, retirada_em: e.target.value || null }))
                     }
                   />
                 </Campo>
@@ -921,7 +930,7 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={carro.preco ?? ''}
                     onChange={(e) =>
-                      setCarro({ ...carro, preco: e.target.value ? +e.target.value : null })
+                      setCarro((c) => ({ ...c, preco: e.target.value ? +e.target.value : null }))
                     }
                   />
                 </Campo>
@@ -929,7 +938,7 @@ export default function Detalhe() {
                   <Input
                     disabled={!podeEditar}
                     value={carro.devolucao_local ?? ''}
-                    onChange={(e) => setCarro({ ...carro, devolucao_local: e.target.value })}
+                    onChange={(e) => setCarro((c) => ({ ...c, devolucao_local: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Devolução em" obrigatorio={false}>
@@ -938,7 +947,7 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={paraInputDateTime(carro.devolucao_em)}
                     onChange={(e) =>
-                      setCarro({ ...carro, devolucao_em: e.target.value || null })
+                      setCarro((c) => ({ ...c, devolucao_em: e.target.value || null }))
                     }
                   />
                 </Campo>
@@ -948,7 +957,7 @@ export default function Detalhe() {
                       rows={2}
                       disabled={!podeEditar}
                       value={carro.observacoes ?? ''}
-                      onChange={(e) => setCarro({ ...carro, observacoes: e.target.value })}
+                      onChange={(e) => setCarro((c) => ({ ...c, observacoes: e.target.value }))}
                     />
                   </Campo>
                 </div>
@@ -1034,6 +1043,21 @@ export default function Detalhe() {
 // ---------------------------------------------------------------- helpers
 
 /** Remove chaves undefined e strings vazias viram null. */
+/**
+ * A solicitação pede vários serviços ao mesmo tempo. `modal` guarda um só
+ * (com prioridade aéreo > van > rodoviário), então quem pedia aéreo E van
+ * nunca via o bloco da van — e o preço dela ficava de fora do total.
+ * `servicos` é a fonte de verdade; `modal` e `precisa_locacao_carro` só
+ * cobrem as solicitações antigas, anteriores a essa mudança.
+ */
+function tem(s: Solicitacao, servico: string) {
+  const lista = s.servicos ?? []
+  if (lista.length) return lista.includes(servico)
+  if (servico === 'CARRO') return s.precisa_locacao_carro
+  if (servico === 'HOSPEDAGEM') return true
+  return s.precisa_transporte && s.modal === servico
+}
+
 function limpar<T extends Record<string, unknown>>(o: T) {
   const r: Record<string, unknown> = {}
   for (const [k, v] of Object.entries(o)) {
