@@ -1,0 +1,7 @@
+# SPA: /admin, /consulta, /s/{token} não existem como arquivo. Sem esta
+# regra o host devolve 404 nessas rotas em vez de entregar o index.html e
+# deixar o React resolver.
+#
+# Lido por Cloudflare Pages e Netlify. No GitHub Pages é ignorado — lá o
+# mesmo papel é feito pelo dist/404.html que o workflow gera.
+/*    /index.html   200
