@@ -15,8 +15,13 @@ create table if not exists notificacao_extra (
   nome          text not null,
   slack_user_id text not null,
   areas         text[] not null default '{}',
-  ativo         boolean not null default true
+  ativo         boolean not null default true,
+  created_at    timestamptz not null default now()
 );
+
+-- A tabela em produção nasceu com created_at; sem esta linha um ambiente
+-- novo ficaria diferente do que está no ar.
+alter table notificacao_extra add column if not exists created_at timestamptz not null default now();
 
 comment on column notificacao_extra.areas is
   'Mesmas areas de admin_users: AEREO, RODOVIARIO, VAN, CARRO, HOSP_PAX, HOSP_FORA. Vazio = todas.';

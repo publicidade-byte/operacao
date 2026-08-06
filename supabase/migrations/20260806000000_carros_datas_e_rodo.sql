@@ -68,25 +68,7 @@ create policy solicitacao_carros_admin on solicitacao_carros
   for all to authenticated
   using (is_admin()) with check (is_admin());
 
--- ---------------------------------------------------------------------------
--- Pessoas que recebem aviso no Slack mas não têm login
---
--- admin_users.id referencia auth.users, então quem não tem conta não cabe lá.
--- A Carol (auxiliar operacional) é o caso: precisa ser marcada nas mensagens
--- de van e rodoviário sem precisar entrar no sistema.
--- ---------------------------------------------------------------------------
-create table if not exists notificacao_extra (
-  id            uuid primary key default gen_random_uuid(),
-  nome          text not null,
-  slack_user_id text,
-  areas         text[] not null default '{}',   -- vazio = recebe tudo
-  ativo         boolean not null default true,
-  created_at    timestamptz not null default now()
-);
-
-alter table notificacao_extra enable row level security;
-
-drop policy if exists notificacao_extra_admin on notificacao_extra;
-create policy notificacao_extra_admin on notificacao_extra
-  for all to authenticated
-  using (is_admin()) with check (is_admin());
+-- A tabela `notificacao_extra` (quem recebe aviso no Slack sem ter login)
+-- também nasceu nesta leva, mas quem a versiona é
+-- 20260806020000_notificacao_extra.sql — escrito em paralelo noutra sessão.
+-- Duas definições da mesma tabela divergem com o tempo; fica só a de lá.
