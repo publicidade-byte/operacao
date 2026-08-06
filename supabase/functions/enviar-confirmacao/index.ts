@@ -35,7 +35,9 @@ Deno.serve(async (req) => {
       .eq('id', solicitacao_id)
       .maybeSingle()
     if (!s) return erro('Solicitação não encontrada.', 404)
-    if (s.status !== 'APROVADA')
+    // Aceita CONCLUIDA porque a operação marca a conclusão antes de disparar
+    // o e-mail — e também para permitir reenvio depois.
+    if (!['APROVADA', 'CONCLUIDA'].includes(s.status))
       return erro('A confirmação só pode ser enviada após a aprovação.', 409)
 
     const colabs = s.colaboradores.sort(

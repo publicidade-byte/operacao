@@ -7,6 +7,7 @@ import {
   SERVICOS,
   STATUS_CLASS,
   STATUS_LABEL,
+  corResponsavel,
   equipeLabel,
 } from '../../lib/constants'
 import { dataBR, dataCurta, moeda, soDigitos } from '../../lib/format'
@@ -47,6 +48,7 @@ export default function Lista() {
   const [fDestino, setFDestino] = useState('')
   const [fDiretor, setFDiretor] = useState('')
   const [fServico, setFServico] = useState('')
+  const [fResponsavel, setFResponsavel] = useState('')
 
   useEffect(() => {
     ;(async () => {
@@ -99,6 +101,7 @@ export default function Lista() {
       if (fDestino && d.edicoes?.destino !== fDestino) return false
       if (fDiretor && d.diretor_id !== fDiretor) return false
       if (fServico && !(d.servicos ?? []).includes(fServico)) return false
+      if (fResponsavel && !(d.responsaveis ?? []).includes(fResponsavel)) return false
       if (!q) return true
       return (
         d.protocolo.toLowerCase().includes(q) ||
@@ -111,7 +114,13 @@ export default function Lista() {
         )
       )
     })
-  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor, fServico])
+  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor, fServico, fResponsavel])
+
+  /** Todos os responsaveis que aparecem em alguma solicitacao. */
+  const responsaveisDisponiveis = useMemo(
+    () => [...new Set(dados.flatMap((d) => d.responsaveis ?? []))].sort(),
+    [dados],
+  )
 
   const contagem = useMemo(() => {
     const c: Record<string, number> = {}
@@ -180,9 +189,21 @@ export default function Lista() {
   const alternarStatus = (s: string) =>
     setFStatus((f) => (f.includes(s) ? f.filter((x) => x !== s) : [...f, s]))
 
+  async function excluir(d: Linha) {
+    const ok = confirm(
+      `Excluir a solicitação ${d.protocolo} (${d.edicoes?.destino})?\n\n` +
+        'Apaga colaboradores, voos, hospedagem e histórico junto. Não tem volta.\n' +
+        'Se a ideia é apenas encerrar, use Cancelar dentro da solicitação.',
+    )
+    if (!ok) return
+    const { error } = await supabase.from('solicitacoes').delete().eq('id', d.id)
+    if (error) return alert(`Não foi possível excluir: ${error.message}`)
+    setDados((ds) => ds.filter((x) => x.id !== d.id))
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="-mx-2 space-y-4 xl:-mx-6 2xl:-mx-12">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-2">
         <h1 className="text-lg font-bold">Solicitações</h1>
         <Botao variante="secundario" onClick={exportarCsv} disabled={!filtrados.length}>
           Exportar CSV ({filtrados.length})
@@ -209,12 +230,12 @@ export default function Lista() {
       </div>
 
       <Card>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <Input
             placeholder="Buscar por protocolo, nome, e-mail ou CPF…"
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
-            className="lg:col-span-2"
+            className="sm:col-span-2 xl:col-span-2"
           />
           <Select value={fDestino} onChange={(e) => setFDestino(e.target.value)}>
             <option value="">Todos os destinos</option>
@@ -241,9 +262,19 @@ export default function Lista() {
             ))}
           </Select>
           <Select
+            value={fResponsavel}
+            onChange={(e) => setFResponsavel(e.target.value)}
+          >
+            <option value="">Todos os responsáveis</option>
+            {responsaveisDisponiveis.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </Select>
+          <Select
             value={fDiretor}
             onChange={(e) => setFDiretor(e.target.value)}
-            className="lg:col-span-1"
           >
             <option value="">Todos os diretores</option>
             {diretores.map(([id, nome]) => (
@@ -261,8 +292,8 @@ export default function Lista() {
         ) : filtrados.length === 0 ? (
           <Vazio>Nenhuma solicitação encontrada com esses filtros.</Vazio>
         ) : (
-          <div className="-m-4 overflow-x-auto">
-            <table className="w-full min-w-[900px] text-sm">
+          <div className="scroll-fino -m-4 overflow-x-auto">
+            <table className="w-full min-w-[1180px] text-sm">
               <thead className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
                 <tr>
                   <th className="px-4 py-2.5 font-medium">Protocolo</th>
@@ -276,6 +307,7 @@ export default function Lista() {
                   <th className="px-4 py-2.5 font-medium">Status</th>
                   <th className="px-4 py-2.5 font-medium">Responsáveis</th>
                   <th className="px-4 py-2.5 text-right font-medium">Custo</th>
+                  <th className="px-2 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100">
@@ -335,7 +367,8 @@ export default function Lista() {
                           {d.responsaveis.map((n) => (
                             <span
                               key={n}
-                              className="rounded-full bg-marca-100 px-2 py-0.5 text-[11px] font-medium text-neutral-800"
+                              title={n}
+                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${corResponsavel(n)}`}
                             >
                               {n.split(' ')[0]}
                             </span>
@@ -347,6 +380,18 @@ export default function Lista() {
                     </td>
                     <td className="whitespace-nowrap px-4 py-2.5 text-right text-neutral-700">
                       {moeda(d.custo_total_manual ?? d.custo_total)}
+                    </td>
+                    <td className="px-2 py-2.5 text-right">
+                      <button
+                        onClick={() => excluir(d)}
+                        title="Excluir solicitação"
+                        aria-label={`Excluir ${d.protocolo}`}
+                        className="rounded p-1.5 text-neutral-300 transition hover:bg-red-50 hover:text-red-600"
+                      >
+                        <svg viewBox="0 0 16 16" className="size-4 fill-current">
+                          <path d="M6.5 1a.5.5 0 00-.5.5V2H3.5a.5.5 0 000 1H4v9.5A1.5 1.5 0 005.5 14h5a1.5 1.5 0 001.5-1.5V3h.5a.5.5 0 000-1H10v-.5a.5.5 0 00-.5-.5h-3zM5 3h6v9.5a.5.5 0 01-.5.5h-5a.5.5 0 01-.5-.5V3zm1.5 1.5v6h1v-6h-1zm2 0v6h1v-6h-1z" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 ))}

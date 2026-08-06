@@ -195,13 +195,36 @@ Deno.serve(async (req) => {
         return erro('Preencha os dados da van: saída, horário, destino e passageiros.')
     }
 
+    const carros = Array.isArray(b.carros) ? b.carros : []
     if (servicos.includes('CARRO')) {
-      if (String(b.carro_condutor_nome ?? '').trim().split(/\s+/).length < 2)
-        return erro('Informe o nome completo do condutor.')
-      if (!cpfValido(String(b.carro_condutor_cpf ?? '')))
-        return erro('CPF do condutor inválido.')
-      if (!['MANUAL', 'AUTOMATICO'].includes(b.carro_transmissao))
-        return erro('Selecione o câmbio do carro (manual ou automático).')
+      if (carros.length === 0) return erro('Inclua ao menos uma reserva de carro.')
+      if (carros.length > 20) return erro('Máximo de 20 reservas de carro.')
+      for (const c of carros) {
+        if (String(c.condutor_nome ?? '').trim().split(/\s+/).length < 2)
+          return erro('Informe o nome completo de cada condutor.')
+        if (!cpfValido(String(c.condutor_cpf ?? '')))
+          return erro(`CPF inválido para o condutor ${c.condutor_nome}.`)
+        if (!['MANUAL', 'AUTOMATICO'].includes(c.transmissao))
+          return erro('Selecione o câmbio de cada carro.')
+        if (!['HATCH', 'SEDAN', 'SUV'].includes(c.tipo_carro))
+          return erro('Selecione o tipo de cada carro.')
+      }
+    }
+
+    if (servicos.includes('RODOVIARIO')) {
+      if (!String(b.rodo_regiao_saida ?? '').trim())
+        return erro('Informe a região de saída do rodoviário.')
+      if (!String(b.rodo_cidade_estado ?? '').trim())
+        return erro('Informe a cidade e o estado do rodoviário.')
+    }
+
+    if (servicos.includes('VAN')) {
+      if (
+        !String(b.van_retorno_local ?? '').trim() ||
+        !String(b.van_retorno_horario ?? '').trim() ||
+        !String(b.van_retorno_destino ?? '').trim()
+      )
+        return erro('Preencha os dados de retorno da van.')
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(b.solicitante_email))
       return erro('E-mail do solicitante inválido.')
@@ -297,9 +320,20 @@ Deno.serve(async (req) => {
         tipo_voo: servicos.includes('AEREO') ? (b.tipo_voo ?? null) : null,
         aeroporto_saida_volta: b.aeroporto_saida_volta ?? null,
         aeroporto_chegada_volta: b.aeroporto_chegada_volta ?? null,
-        carro_condutor_nascimento: servicos.includes('CARRO')
-          ? (b.carro_condutor_nascimento ?? null)
+        voo_data_ida: servicos.includes('AEREO') ? (b.voo_data_ida ?? null) : null,
+        voo_data_volta: b.voo_data_volta ?? null,
+        rodo_regiao_saida: servicos.includes('RODOVIARIO')
+          ? b.rodo_regiao_saida
           : null,
+        rodo_cidade_estado: servicos.includes('RODOVIARIO')
+          ? b.rodo_cidade_estado
+          : null,
+        van_retorno_local: servicos.includes('VAN') ? b.van_retorno_local : null,
+        van_retorno_horario: servicos.includes('VAN') ? b.van_retorno_horario : null,
+        van_retorno_destino: servicos.includes('VAN') ? b.van_retorno_destino : null,
+        // Campos legados do condutor único: preenchidos com a primeira
+        // reserva, para relatórios antigos continuarem funcionando.
+        carro_condutor_nascimento: carros[0]?.condutor_nascimento ?? null,
         precisa_bagagem: servicos.includes('AEREO')
           ? b.precisa_bagagem === true
           : null,
@@ -312,9 +346,9 @@ Deno.serve(async (req) => {
           : null,
         precisa_locacao_carro: servicos.includes('CARRO'),
         obs_locacao_carro: b.obs_locacao_carro ?? null,
-        carro_condutor_nome: servicos.includes('CARRO') ? b.carro_condutor_nome : null,
-        carro_condutor_cpf: servicos.includes('CARRO') ? b.carro_condutor_cpf : null,
-        carro_transmissao: servicos.includes('CARRO') ? b.carro_transmissao : null,
+        carro_condutor_nome: carros[0]?.condutor_nome ?? null,
+        carro_condutor_cpf: carros[0]?.condutor_cpf ?? null,
+        carro_transmissao: carros[0]?.transmissao ?? null,
       })
       .select('id, protocolo')
       .single()
@@ -326,6 +360,25 @@ Deno.serve(async (req) => {
     if (e0) {
       await sb.from('solicitacoes').delete().eq('id', sol.id)
       throw new Error(e0.message)
+    }
+
+    if (carros.length > 0) {
+      const { error: ec } = await sb.from('solicitacao_carros').insert(
+        carros.map((c: Record<string, unknown>, i: number) => ({
+          solicitacao_id: sol.id,
+          condutor_nome: String(c.condutor_nome).trim(),
+          condutor_cpf: c.condutor_cpf,
+          condutor_nascimento: c.condutor_nascimento ?? null,
+          transmissao: c.transmissao,
+          tipo_carro: c.tipo_carro,
+          local_retirada: c.local_retirada ?? null,
+          ordem: (c.ordem as number) ?? i + 1,
+        })),
+      )
+      if (ec) {
+        await sb.from('solicitacoes').delete().eq('id', sol.id)
+        throw new Error(ec.message)
+      }
     }
 
     const { error: e2 } = await sb.from('colaboradores').insert(

@@ -37,18 +37,44 @@ export const STATUS_LABEL: Record<string, string> = {
 }
 
 /**
- * Paleta: cinza para estados neutros, amarelo da marca para "precisa de ação",
- * e só verde/vermelho como sinal semântico de aprovado/reprovado.
+ * Cada status com sua cor, para bater o olho e entender a fila.
+ * Roxo = acabou de chegar · Azul = operação trabalhando · Amarelo = com o
+ * diretor · Verde = aprovado · Vermelho = cancelado ou reprovado.
  */
 export const STATUS_CLASS: Record<string, string> = {
-  RECEBIDA: 'bg-neutral-100 text-neutral-700 ring-neutral-300',
-  EM_PREENCHIMENTO: 'bg-white text-neutral-800 ring-neutral-400',
-  AGUARDANDO_APROVACAO: 'bg-marca-100 text-neutral-900 ring-marca-400',
-  APROVADA: 'bg-emerald-50 text-emerald-800 ring-emerald-300',
-  REPROVADA: 'bg-red-50 text-red-800 ring-red-300',
+  RECEBIDA: 'bg-purple-100 text-purple-800 ring-purple-300',
+  EM_PREENCHIMENTO: 'bg-blue-100 text-blue-800 ring-blue-300',
+  AGUARDANDO_APROVACAO: 'bg-amber-100 text-amber-900 ring-amber-400',
+  APROVADA: 'bg-emerald-100 text-emerald-800 ring-emerald-400',
+  REPROVADA: 'bg-red-100 text-red-800 ring-red-300',
   CONCLUIDA: 'bg-neutral-900 text-white ring-neutral-900',
-  CANCELADA: 'bg-neutral-100 text-neutral-400 ring-neutral-200',
+  CANCELADA: 'bg-red-600 text-white ring-red-700',
 }
+
+/** Cores fixas por pessoa, para reconhecer o responsável de relance. */
+const CORES_RESPONSAVEL = [
+  'bg-sky-100 text-sky-900 ring-sky-300',
+  'bg-fuchsia-100 text-fuchsia-900 ring-fuchsia-300',
+  'bg-lime-100 text-lime-900 ring-lime-300',
+  'bg-orange-100 text-orange-900 ring-orange-300',
+  'bg-teal-100 text-teal-900 ring-teal-300',
+  'bg-violet-100 text-violet-900 ring-violet-300',
+  'bg-rose-100 text-rose-900 ring-rose-300',
+  'bg-cyan-100 text-cyan-900 ring-cyan-300',
+]
+
+/** Mesma pessoa sempre na mesma cor, derivada do nome. */
+export function corResponsavel(nome: string) {
+  let h = 0
+  for (let i = 0; i < nome.length; i++) h = (h * 31 + nome.charCodeAt(i)) >>> 0
+  return CORES_RESPONSAVEL[h % CORES_RESPONSAVEL.length]
+}
+
+export const TIPOS_CARRO = [
+  { value: 'HATCH', label: 'Hatch' },
+  { value: 'SEDAN', label: 'Sedan' },
+  { value: 'SUV', label: 'SUV' },
+]
 
 export const STATUS_ORDEM = [
   'RECEBIDA',

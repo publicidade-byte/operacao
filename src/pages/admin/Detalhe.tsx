@@ -392,6 +392,19 @@ export default function Detalhe() {
           )}
           {s.status === 'APROVADA' && (
             <Botao
+              variante="secundario"
+              onClick={() =>
+                mudarStatus(
+                  'CONCLUIDA',
+                  'Concluída pela operação (sem envio de e-mail)',
+                )
+              }
+            >
+              Marcar como concluída
+            </Botao>
+          )}
+          {s.status === 'APROVADA' && (
+            <Botao
               onClick={async () => {
                 setSalvando(true)
                 // Mesma lógica do envio para aprovação: a viagem está
@@ -418,7 +431,35 @@ export default function Detalhe() {
               }}
               carregando={salvando}
             >
-              Enviar confirmação por e-mail
+              Concluir e enviar confirmação
+            </Botao>
+          )}
+          {s.status === 'CONCLUIDA' && (
+            <Botao
+              variante="secundario"
+              carregando={salvando}
+              onClick={async () => {
+                setSalvando(true)
+                try {
+                  const r = await invocar<{ destinatario?: string }>(
+                    'enviar-confirmacao',
+                    { solicitacao_id: s.id },
+                  )
+                  setMsg({
+                    tom: 'sucesso',
+                    texto: `Confirmação reenviada para ${r.destinatario ?? s.solicitante_email}.`,
+                  })
+                } catch (e) {
+                  setMsg({
+                    tom: 'erro',
+                    texto: e instanceof Error ? e.message : 'Falha ao enviar e-mail',
+                  })
+                } finally {
+                  setSalvando(false)
+                }
+              }}
+            >
+              Reenviar confirmação por e-mail
             </Botao>
           )}
           {s.status === 'REPROVADA' && (
@@ -1128,6 +1169,21 @@ function BlocoRodoviario({
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <Campo label="Empresa" obrigatorio={false}>
           <Input disabled={!editavel} value={valor.empresa ?? ''} onChange={(e) => up('empresa', e.target.value)} />
+        </Campo>
+        <Campo label="Número do ônibus" obrigatorio={false}>
+          <Input
+            disabled={!editavel}
+            value={valor.numero_onibus ?? ''}
+            onChange={(e) => up('numero_onibus', e.target.value)}
+          />
+        </Campo>
+        <Campo label="Horário de apresentação" obrigatorio={false}>
+          <Input
+            type="datetime-local"
+            disabled={!editavel}
+            value={paraInputDateTime(valor.apresentacao_em)}
+            onChange={(e) => up('apresentacao_em', e.target.value || null)}
+          />
         </Campo>
         <Campo label="Horário de ida" obrigatorio={false}>
           <Input

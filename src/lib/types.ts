@@ -56,6 +56,8 @@ export type Rodoviario = {
   id?: string
   colaborador_id: string
   empresa: string | null
+  numero_onibus: string | null
+  apresentacao_em: string | null
   horario_ida: string | null
   local_embarque_ida: string | null
   horario_volta: string | null
@@ -120,6 +122,13 @@ export type Solicitacao = {
   tipo_voo: string | null
   aeroporto_saida_volta: string | null
   aeroporto_chegada_volta: string | null
+  voo_data_ida: string | null
+  voo_data_volta: string | null
+  rodo_regiao_saida: string | null
+  rodo_cidade_estado: string | null
+  van_retorno_local: string | null
+  van_retorno_horario: string | null
+  van_retorno_destino: string | null
   carro_condutor_nascimento: string | null
   servicos: string[]
   carro_condutor_nome: string | null

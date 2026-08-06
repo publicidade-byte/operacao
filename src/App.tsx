@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import Solicitar from './pages/Solicitar'
 import Enviado from './pages/Enviado'
 import Acompanhar from './pages/Acompanhar'
+import Consulta from './pages/Consulta'
 import Login from './pages/Login'
 import AdminLayout from './pages/admin/AdminLayout'
 import Lista from './pages/admin/Lista'
@@ -18,6 +19,7 @@ export default function App() {
       <Route path="/" element={<Solicitar />} />
       <Route path="/enviado/:protocolo" element={<Enviado />} />
       <Route path="/s/:token" element={<Acompanhar />} />
+      <Route path="/consulta" element={<Consulta />} />
 
       {/* Login único — redireciona conforme o perfil */}
       <Route path="/login" element={<Login />} />

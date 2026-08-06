@@ -7,6 +7,7 @@ import {
   EQUIPES,
   SERVICOS,
   SERVICOS_TRANSPORTE,
+  TIPOS_CARRO,
   equipeLabel,
   servicoLabel,
 } from '../lib/constants'
@@ -36,6 +37,15 @@ import { DIRETORES_DEMO, EDICOES_DEMO, ehDemo } from '../lib/demo'
 
 type ColabForm = { nome_completo: string; cpf: string; data_nascimento: string }
 
+type CarroForm = {
+  nome: string
+  cpf: string
+  nascimento: string
+  transmissao: string
+  tipo: string
+  retirada: string
+}
+
 type Form = {
   destino: string // destino escolhido; abre o toggle com as datas
   edicao_ids: string[] // uma solicitação pode cobrir várias operações
@@ -48,6 +58,8 @@ type Form = {
   aeroporto_saida: string
   aeroporto_chegada: string
   tipo_voo: string
+  voo_data_ida: string
+  voo_data_volta: string
   aeroporto_saida_volta: string
   aeroporto_chegada_volta: string
   precisa_bagagem: string
@@ -57,10 +69,12 @@ type Form = {
   van_qtd_passageiros: string
   obs_transporte: string
   obs_locacao_carro: string
-  carro_condutor_nome: string
-  carro_condutor_cpf: string
-  carro_condutor_nascimento: string
-  carro_transmissao: string
+  carros: CarroForm[]
+  rodo_regiao_saida: string
+  rodo_cidade_estado: string
+  van_retorno_local: string
+  van_retorno_horario: string
+  van_retorno_destino: string
   equipe: string
   equipe_outro: string
   colaboradores: ColabForm[]
@@ -83,6 +97,8 @@ const VAZIO: Form = {
   aeroporto_saida: '',
   aeroporto_chegada: '',
   tipo_voo: '',
+  voo_data_ida: '',
+  voo_data_volta: '',
   aeroporto_saida_volta: '',
   aeroporto_chegada_volta: '',
   precisa_bagagem: '',
@@ -92,10 +108,12 @@ const VAZIO: Form = {
   van_qtd_passageiros: '',
   obs_transporte: '',
   obs_locacao_carro: '',
-  carro_condutor_nome: '',
-  carro_condutor_cpf: '',
-  carro_condutor_nascimento: '',
-  carro_transmissao: '',
+  carros: [{ nome: '', cpf: '', nascimento: '', transmissao: '', tipo: '', retirada: '' }],
+  rodo_regiao_saida: '',
+  rodo_cidade_estado: '',
+  van_retorno_local: '',
+  van_retorno_horario: '',
+  van_retorno_destino: '',
   equipe: '',
   equipe_outro: '',
   colaboradores: [{ nome_completo: '', cpf: '', data_nascimento: '' }],
@@ -250,11 +268,17 @@ export default function Solicitar() {
       const sel = edicoes
         .filter((e) => ids.includes(e.id))
         .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
+      const entrada = sel[0]?.data_inicio ?? ''
+      const saida = sel[sel.length - 1]?.data_fim ?? ''
       return {
         ...f,
         edicao_ids: ids,
-        data_entrada: sel[0]?.data_inicio ?? '',
-        data_saida: sel[sel.length - 1]?.data_fim ?? '',
+        data_entrada: entrada,
+        data_saida: saida,
+        // As datas do voo acompanham a estadia; o solicitante ajusta se
+        // precisar chegar antes ou voltar depois.
+        voo_data_ida: entrada,
+        voo_data_volta: saida,
       }
     })
     setErros((e) => ({ ...e, edicao_ids: '', data_entrada: '', data_saida: '' }))
@@ -272,6 +296,28 @@ export default function Solicitar() {
   }
 
   const temTransporte = form.servicos.some((s) => SERVICOS_TRANSPORTE.includes(s))
+
+  const setCarro = (i: number, k: keyof CarroForm, v: string) => {
+    setForm((f) => {
+      const cs = [...f.carros]
+      cs[i] = { ...cs[i], [k]: v }
+      return { ...f, carros: cs }
+    })
+    setErros((e) => {
+      const { [`carro.${i}.${k}`]: _, ...resto } = e
+      return resto
+    })
+  }
+
+  /** Atalho: o retorno da van costuma ser o inverso da ida. */
+  function inverterVanRetorno() {
+    setForm((f) => ({
+      ...f,
+      van_retorno_local: f.van_destino,
+      van_retorno_destino: f.van_local_saida,
+    }))
+    setErros((e) => ({ ...e, van_retorno_local: '', van_retorno_destino: '' }))
+  }
 
   /** Atalho: na volta os aeroportos costumam ser os mesmos, invertidos. */
   function inverterTrechoVolta() {
@@ -347,23 +393,37 @@ export default function Solicitar() {
         const n = Number(form.van_qtd_passageiros)
         if (!form.van_qtd_passageiros || !Number.isInteger(n) || n < 1 || n > 60)
           e.van_qtd_passageiros = 'Informe a quantidade de passageiros (1 a 60).'
+        if (!form.van_retorno_local.trim())
+          e.van_retorno_local = 'Informe o endereço de saída do retorno.'
+        if (!form.van_retorno_horario.trim())
+          e.van_retorno_horario = 'Informe o horário do retorno.'
+        if (!form.van_retorno_destino.trim())
+          e.van_retorno_destino = 'Informe o destino do retorno.'
       }
 
       if (form.servicos.includes('CARRO')) {
-        if (!form.obs_locacao_carro.trim())
-          e.obs_locacao_carro = 'Descreva a necessidade do carro.'
-        if (form.carro_condutor_nome.trim().split(/\s+/).length < 2)
-          e.carro_condutor_nome = 'Informe o nome completo do condutor.'
-        if (!cpfValido(form.carro_condutor_cpf))
-          e.carro_condutor_cpf = 'CPF do condutor inválido.'
-        if (!form.carro_condutor_nascimento)
-          e.carro_condutor_nascimento = 'Informe a data de nascimento do condutor.'
-        else {
-          const a = idade(form.carro_condutor_nascimento)
-          if (a < 18 || a > 90)
-            e.carro_condutor_nascimento = 'O condutor precisa ter ao menos 18 anos.'
-        }
-        if (!form.carro_transmissao) e.carro_transmissao = 'Selecione o tipo de câmbio.'
+        form.carros.forEach((c, i) => {
+          if (c.nome.trim().split(/\s+/).length < 2)
+            e[`carro.${i}.nome`] = 'Informe o nome completo do condutor.'
+          if (!cpfValido(c.cpf)) e[`carro.${i}.cpf`] = 'CPF inválido.'
+          if (!c.nascimento) e[`carro.${i}.nascimento`] = 'Informe a data de nascimento.'
+          else {
+            const a = idade(c.nascimento)
+            if (a < 18 || a > 90)
+              e[`carro.${i}.nascimento`] = 'O condutor precisa ter ao menos 18 anos.'
+          }
+          if (!c.tipo) e[`carro.${i}.tipo`] = 'Selecione o tipo de carro.'
+          if (!c.transmissao) e[`carro.${i}.transmissao`] = 'Selecione o câmbio.'
+          if (!c.retirada.trim())
+            e[`carro.${i}.retirada`] = 'Informe o local de retirada.'
+        })
+      }
+
+      if (form.servicos.includes('RODOVIARIO')) {
+        if (!form.rodo_regiao_saida.trim())
+          e.rodo_regiao_saida = 'Informe a região de saída.'
+        if (!form.rodo_cidade_estado.trim())
+          e.rodo_cidade_estado = 'Informe a cidade e o estado.'
       }
 
       if (
@@ -464,9 +524,37 @@ export default function Solicitar() {
             form.servicos.includes('AEREO') && form.tipo_voo === 'IDA_VOLTA'
               ? form.aeroporto_chegada_volta
               : null,
-          carro_condutor_nascimento: form.servicos.includes('CARRO')
-            ? form.carro_condutor_nascimento
+          voo_data_ida: form.servicos.includes('AEREO') ? form.voo_data_ida : null,
+          voo_data_volta:
+            form.servicos.includes('AEREO') && form.tipo_voo === 'IDA_VOLTA'
+              ? form.voo_data_volta
+              : null,
+          rodo_regiao_saida: form.servicos.includes('RODOVIARIO')
+            ? form.rodo_regiao_saida.trim()
             : null,
+          rodo_cidade_estado: form.servicos.includes('RODOVIARIO')
+            ? form.rodo_cidade_estado.trim()
+            : null,
+          van_retorno_local: form.servicos.includes('VAN')
+            ? form.van_retorno_local.trim()
+            : null,
+          van_retorno_horario: form.servicos.includes('VAN')
+            ? form.van_retorno_horario.trim()
+            : null,
+          van_retorno_destino: form.servicos.includes('VAN')
+            ? form.van_retorno_destino.trim()
+            : null,
+          carros: form.servicos.includes('CARRO')
+            ? form.carros.map((c, i) => ({
+                condutor_nome: c.nome.trim(),
+                condutor_cpf: soDigitos(c.cpf),
+                condutor_nascimento: c.nascimento,
+                transmissao: c.transmissao,
+                tipo_carro: c.tipo,
+                local_retirada: c.retirada.trim(),
+                ordem: i + 1,
+              }))
+            : [],
           aeroporto_saida: form.servicos.includes('AEREO')
             ? form.aeroporto_saida
             : null,
@@ -491,15 +579,6 @@ export default function Solicitar() {
             : null,
           obs_locacao_carro: form.servicos.includes('CARRO')
             ? form.obs_locacao_carro.trim()
-            : null,
-          carro_condutor_nome: form.servicos.includes('CARRO')
-            ? form.carro_condutor_nome.trim()
-            : null,
-          carro_condutor_cpf: form.servicos.includes('CARRO')
-            ? soDigitos(form.carro_condutor_cpf)
-            : null,
-          carro_transmissao: form.servicos.includes('CARRO')
-            ? form.carro_transmissao
             : null,
           colaboradores: form.colaboradores.map((c, i) => ({
             nome_completo: c.nome_completo.trim(),
@@ -547,8 +626,8 @@ export default function Solicitar() {
           k,
         )
           ? 0
-          : k === 'servicos' ||
-              ['aeroporto_saida','aeroporto_chegada','precisa_bagagem','obs_transporte','obs_locacao_carro','van_local_saida','van_horario_saida','van_destino','van_qtd_passageiros','carro_condutor_nome','carro_condutor_cpf','carro_transmissao'].includes(k)
+          : k === 'servicos' || k.startsWith('carro.') ||
+              ['aeroporto_saida','aeroporto_chegada','precisa_bagagem','obs_transporte','obs_locacao_carro','van_local_saida','van_horario_saida','van_destino','van_qtd_passageiros','rodo_regiao_saida','rodo_cidade_estado','van_retorno_local','van_retorno_horario','van_retorno_destino','voo_data_ida','voo_data_volta'].includes(k)
             ? 1
             : k.startsWith('colab.') || k === 'equipe'
               ? 2
@@ -795,9 +874,11 @@ export default function Solicitar() {
                                       type="date"
                                       value={form.data_entrada}
                                       erro={!!erros.data_entrada}
-                                      onChange={(ev) =>
+                                      onChange={(ev) => {
                                         set('data_entrada', ev.target.value)
-                                      }
+                                        if (!form.voo_data_ida)
+                                          set('voo_data_ida', ev.target.value)
+                                      }}
                                     />
                                   </Campo>
                                   <Campo label="Data de saída" erro={erros.data_saida}>
@@ -995,7 +1076,19 @@ export default function Solicitar() {
                             ? 'Trecho de volta'
                             : 'Trecho'}
                       </p>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                      <Campo
+                        label="Data do voo"
+                        erro={erros.voo_data_ida}
+                        dica="Preenchida com sua entrada. Ajuste se precisar."
+                      >
+                        <Input
+                          type="date"
+                          value={form.voo_data_ida}
+                          erro={!!erros.voo_data_ida}
+                          onChange={(e) => set('voo_data_ida', e.target.value)}
+                        />
+                      </Campo>
                       <Campo label="Aeroporto de saída" erro={erros.aeroporto_saida}>
                         <Select
                           value={form.aeroporto_saida}
@@ -1041,7 +1134,19 @@ export default function Solicitar() {
                             inverter a ida
                           </button>
                         </div>
-                        <div className="grid gap-4 sm:grid-cols-2">
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <Campo
+                            label="Data do voo"
+                            erro={erros.voo_data_volta}
+                            dica="Preenchida com sua saída. Ajuste se precisar."
+                          >
+                            <Input
+                              type="date"
+                              value={form.voo_data_volta}
+                              erro={!!erros.voo_data_volta}
+                              onChange={(e) => set('voo_data_volta', e.target.value)}
+                            />
+                          </Campo>
                           <Campo
                             label="Aeroporto de saída"
                             erro={erros.aeroporto_saida_volta}
@@ -1105,52 +1210,144 @@ export default function Solicitar() {
 
               {form.servicos.includes('VAN') && (
                 <Card titulo="Aluguel de van">
+                  <div className="mb-4 rounded-lg bg-red-50 px-3.5 py-3 text-sm font-semibold text-red-800 ring-1 ring-red-200">
+                    ⚠ A lista de passageiros precisa ser enviada com até uma semana de
+                    antecedência do embarque.
+                  </div>
+
                   <div className="space-y-4">
-                    <Campo label="Endereço de saída" erro={erros.van_local_saida}>
+                    <div className="rounded-lg border border-neutral-200 p-3.5">
+                      <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                        Ida
+                      </p>
+                      <div className="space-y-4">
+                        <Campo label="Endereço de saída" erro={erros.van_local_saida}>
+                          <Input
+                            value={form.van_local_saida}
+                            erro={!!erros.van_local_saida}
+                            maxLength={200}
+                            onChange={(e) => set('van_local_saida', e.target.value)}
+                            placeholder="Rua, número, bairro, cidade"
+                          />
+                        </Campo>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Campo
+                            label="Horário de saída"
+                            erro={erros.van_horario_saida}
+                            dica="Pode ser aproximado, ex.: 06h ou madrugada"
+                          >
+                            <Input
+                              value={form.van_horario_saida}
+                              erro={!!erros.van_horario_saida}
+                              maxLength={60}
+                              onChange={(e) => set('van_horario_saida', e.target.value)}
+                              placeholder="Ex.: 05/10 às 06h"
+                            />
+                          </Campo>
+                          <Campo
+                            label="Quantidade de passageiros"
+                            erro={erros.van_qtd_passageiros}
+                          >
+                            <Input
+                              type="number"
+                              min={1}
+                              max={60}
+                              inputMode="numeric"
+                              value={form.van_qtd_passageiros}
+                              erro={!!erros.van_qtd_passageiros}
+                              onChange={(e) => set('van_qtd_passageiros', e.target.value)}
+                            />
+                          </Campo>
+                        </div>
+                        <Campo label="Destino da van" erro={erros.van_destino}>
+                          <Input
+                            value={form.van_destino}
+                            erro={!!erros.van_destino}
+                            maxLength={200}
+                            onChange={(e) => set('van_destino', e.target.value)}
+                            placeholder="Para onde a van vai levar o grupo"
+                          />
+                        </Campo>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-neutral-200 p-3.5">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                          Retorno
+                        </p>
+                        <button
+                          type="button"
+                          onClick={inverterVanRetorno}
+                          className="text-xs font-semibold text-neutral-700 underline decoration-marca-500 decoration-2 underline-offset-2"
+                        >
+                          inverter a ida
+                        </button>
+                      </div>
+                      <div className="space-y-4">
+                        <Campo label="Endereço de saída" erro={erros.van_retorno_local}>
+                          <Input
+                            value={form.van_retorno_local}
+                            erro={!!erros.van_retorno_local}
+                            maxLength={200}
+                            onChange={(e) => set('van_retorno_local', e.target.value)}
+                            placeholder="De onde a van sai na volta"
+                          />
+                        </Campo>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Campo
+                            label="Horário de saída"
+                            erro={erros.van_retorno_horario}
+                          >
+                            <Input
+                              value={form.van_retorno_horario}
+                              erro={!!erros.van_retorno_horario}
+                              maxLength={60}
+                              onChange={(e) => set('van_retorno_horario', e.target.value)}
+                              placeholder="Ex.: 08/10 às 18h"
+                            />
+                          </Campo>
+                          <Campo label="Destino do retorno" erro={erros.van_retorno_destino}>
+                            <Input
+                              value={form.van_retorno_destino}
+                              erro={!!erros.van_retorno_destino}
+                              maxLength={200}
+                              onChange={(e) => set('van_retorno_destino', e.target.value)}
+                              placeholder="Para onde a van leva na volta"
+                            />
+                          </Campo>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {form.servicos.includes('RODOVIARIO') && (
+                <Card
+                  titulo="Rodoviário"
+                  descricao="A operação define terminal, horários e empresa. Aqui só precisamos saber de onde você sai."
+                >
+                  <div className="space-y-4">
+                    <Campo
+                      label="De qual região você sai?"
+                      erro={erros.rodo_regiao_saida}
+                      dica="Ex.: zona sul de SP, região do ABC, centro."
+                    >
                       <Input
-                        value={form.van_local_saida}
-                        erro={!!erros.van_local_saida}
-                        maxLength={200}
-                        onChange={(e) => set('van_local_saida', e.target.value)}
-                        placeholder="Rua, número, bairro, cidade"
+                        value={form.rodo_regiao_saida}
+                        erro={!!erros.rodo_regiao_saida}
+                        maxLength={120}
+                        onChange={(e) => set('rodo_regiao_saida', e.target.value)}
                       />
                     </Campo>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Campo
-                        label="Horário de saída"
-                        erro={erros.van_horario_saida}
-                        dica="Pode ser aproximado, ex.: 06h ou madrugada"
-                      >
-                        <Input
-                          value={form.van_horario_saida}
-                          erro={!!erros.van_horario_saida}
-                          maxLength={60}
-                          onChange={(e) => set('van_horario_saida', e.target.value)}
-                          placeholder="Ex.: 05/10 às 06h"
-                        />
-                      </Campo>
-                      <Campo
-                        label="Quantidade de passageiros"
-                        erro={erros.van_qtd_passageiros}
-                      >
-                        <Input
-                          type="number"
-                          min={1}
-                          max={60}
-                          inputMode="numeric"
-                          value={form.van_qtd_passageiros}
-                          erro={!!erros.van_qtd_passageiros}
-                          onChange={(e) => set('van_qtd_passageiros', e.target.value)}
-                        />
-                      </Campo>
-                    </div>
-                    <Campo label="Destino da van" erro={erros.van_destino}>
+                    <Campo label="Cidade / estado" erro={erros.rodo_cidade_estado}>
                       <Input
-                        value={form.van_destino}
-                        erro={!!erros.van_destino}
-                        maxLength={200}
-                        onChange={(e) => set('van_destino', e.target.value)}
-                        placeholder="Para onde a van vai levar o grupo"
+                        value={form.rodo_cidade_estado}
+                        erro={!!erros.rodo_cidade_estado}
+                        maxLength={120}
+                        onChange={(e) => set('rodo_cidade_estado', e.target.value)}
+                        placeholder="Ex.: São Paulo / SP"
                       />
                     </Campo>
                   </div>
@@ -1158,64 +1355,136 @@ export default function Solicitar() {
               )}
 
               {form.servicos.includes('CARRO') && (
-                <Card titulo="Aluguel de carro">
-                  <div className="space-y-4">
-                    <Campo
-                      label="Nome do condutor"
-                      erro={erros.carro_condutor_nome}
-                      dica="Quem vai dirigir. A locadora exige CNH em nome dessa pessoa."
+                <>
+                  {form.carros.map((c, i) => (
+                    <Card
+                      key={i}
+                      titulo={`Aluguel de carro ${form.carros.length > 1 ? i + 1 : ''}`.trim()}
+                      acao={
+                        form.carros.length > 1 ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              set(
+                                'carros',
+                                form.carros.filter((_, j) => j !== i),
+                              )
+                            }
+                            className="rounded px-2 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                          >
+                            Remover
+                          </button>
+                        ) : undefined
+                      }
                     >
-                      <Input
-                        value={form.carro_condutor_nome}
-                        erro={!!erros.carro_condutor_nome}
-                        onChange={(e) => set('carro_condutor_nome', e.target.value)}
-                      />
-                    </Campo>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Campo label="CPF do condutor" erro={erros.carro_condutor_cpf}>
-                        <Input
-                          value={form.carro_condutor_cpf}
-                          inputMode="numeric"
-                          erro={!!erros.carro_condutor_cpf}
-                          autoComplete="off"
-                          onChange={(e) =>
-                            set('carro_condutor_cpf', mascaraCpf(e.target.value))
-                          }
-                          placeholder="000.000.000-00"
-                        />
-                      </Campo>
-                      <Campo
-                        label="Data de nascimento do condutor"
-                        erro={erros.carro_condutor_nascimento}
-                        dica="Locadoras costumam exigir idade mínima."
-                      >
-                        <Input
-                          type="date"
-                          value={form.carro_condutor_nascimento}
-                          erro={!!erros.carro_condutor_nascimento}
-                          onChange={(e) =>
-                            set('carro_condutor_nascimento', e.target.value)
-                          }
-                        />
-                      </Campo>
-                    </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
-                      <Campo label="Câmbio" erro={erros.carro_transmissao}>
-                        <Select
-                          value={form.carro_transmissao}
-                          erro={!!erros.carro_transmissao}
-                          onChange={(e) => set('carro_transmissao', e.target.value)}
+                      <div className="space-y-4">
+                        <Campo
+                          label="Nome do condutor"
+                          erro={erros[`carro.${i}.nome`]}
+                          dica="A locadora exige CNH em nome dessa pessoa."
                         >
-                          <option value="">Selecione…</option>
-                          <option value="MANUAL">Manual</option>
-                          <option value="AUTOMATICO">Automático</option>
-                        </Select>
-                      </Campo>
-                    </div>
+                          <Input
+                            value={c.nome}
+                            erro={!!erros[`carro.${i}.nome`]}
+                            onChange={(e) => setCarro(i, 'nome', e.target.value)}
+                          />
+                        </Campo>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Campo label="CPF do condutor" erro={erros[`carro.${i}.cpf`]}>
+                            <Input
+                              value={c.cpf}
+                              inputMode="numeric"
+                              erro={!!erros[`carro.${i}.cpf`]}
+                              autoComplete="off"
+                              onChange={(e) =>
+                                setCarro(i, 'cpf', mascaraCpf(e.target.value))
+                              }
+                              placeholder="000.000.000-00"
+                            />
+                          </Campo>
+                          <Campo
+                            label="Data de nascimento"
+                            erro={erros[`carro.${i}.nascimento`]}
+                            dica="Locadoras exigem idade mínima."
+                          >
+                            <Input
+                              type="date"
+                              value={c.nascimento}
+                              erro={!!erros[`carro.${i}.nascimento`]}
+                              onChange={(e) => setCarro(i, 'nascimento', e.target.value)}
+                            />
+                          </Campo>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <Campo label="Tipo de carro" erro={erros[`carro.${i}.tipo`]}>
+                            <Select
+                              value={c.tipo}
+                              erro={!!erros[`carro.${i}.tipo`]}
+                              onChange={(e) => setCarro(i, 'tipo', e.target.value)}
+                            >
+                              <option value="">Selecione…</option>
+                              {TIPOS_CARRO.map((t) => (
+                                <option key={t.value} value={t.value}>
+                                  {t.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </Campo>
+                          <Campo label="Câmbio" erro={erros[`carro.${i}.transmissao`]}>
+                            <Select
+                              value={c.transmissao}
+                              erro={!!erros[`carro.${i}.transmissao`]}
+                              onChange={(e) =>
+                                setCarro(i, 'transmissao', e.target.value)
+                              }
+                            >
+                              <option value="">Selecione…</option>
+                              <option value="MANUAL">Manual</option>
+                              <option value="AUTOMATICO">Automático</option>
+                            </Select>
+                          </Campo>
+                        </div>
+                        <Campo
+                          label="Local de preferência para retirada"
+                          erro={erros[`carro.${i}.retirada`]}
+                          dica="Ex.: aeroporto de Cuiabá, centro de Goiânia, no hotel."
+                        >
+                          <Input
+                            value={c.retirada}
+                            erro={!!erros[`carro.${i}.retirada`]}
+                            maxLength={200}
+                            onChange={(e) => setCarro(i, 'retirada', e.target.value)}
+                          />
+                        </Campo>
+                      </div>
+                    </Card>
+                  ))}
+
+                  <Botao
+                    variante="secundario"
+                    className="w-full border-dashed"
+                    onClick={() =>
+                      set('carros', [
+                        ...form.carros,
+                        {
+                          nome: '',
+                          cpf: '',
+                          nascimento: '',
+                          transmissao: '',
+                          tipo: '',
+                          retirada: '',
+                        },
+                      ])
+                    }
+                  >
+                    + Adicionar outra reserva de carro
+                  </Botao>
+
+                  <Card titulo="Observações da locação">
                     <Campo
-                      label="Observações sobre a locação"
+                      label="Alguma particularidade?"
                       erro={erros.obs_locacao_carro}
-                      dica="Categoria desejada, período, local de retirada e devolução."
+                      dica="Período, devolução em local diferente, exigências da equipe."
                     >
                       <Textarea
                         maxLength={1000}
@@ -1224,8 +1493,8 @@ export default function Solicitar() {
                         onChange={(e) => set('obs_locacao_carro', e.target.value)}
                       />
                     </Campo>
-                  </div>
-                </Card>
+                  </Card>
+                </>
               )}
 
               {temTransporte && (
@@ -1496,15 +1765,29 @@ export default function Solicitar() {
                     </Linha>
                   )}
                   {form.servicos.includes('CARRO') && (
-                    <Linha rotulo="Carro" onEditar={() => setPasso(1)}>
-                      Condutor: {form.carro_condutor_nome} · {form.carro_condutor_cpf}
-                      <br />
-                      Nascimento: {dataBR(form.carro_condutor_nascimento)}
-                      <br />
-                      Câmbio:{' '}
-                      {form.carro_transmissao === 'AUTOMATICO' ? 'Automático' : 'Manual'}
-                      <br />
-                      <span className="text-neutral-500">{form.obs_locacao_carro}</span>
+                    <Linha
+                      rotulo={`Carro (${form.carros.length})`}
+                      onEditar={() => setPasso(1)}
+                    >
+                      <ul className="space-y-1.5">
+                        {form.carros.map((c, i) => (
+                          <li key={i}>
+                            <span className="block font-medium">{c.nome}</span>
+                            <span className="block text-xs text-neutral-500">
+                              {c.cpf} · nasc. {dataBR(c.nascimento)} ·{' '}
+                              {TIPOS_CARRO.find((t) => t.value === c.tipo)?.label ?? '—'}{' '}
+                              · {c.transmissao === 'AUTOMATICO' ? 'automático' : 'manual'}
+                              <br />
+                              retirada: {c.retirada}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                      {form.obs_locacao_carro && (
+                        <span className="mt-1 block text-neutral-500">
+                          {form.obs_locacao_carro}
+                        </span>
+                      )}
                     </Linha>
                   )}
                   {temTransporte && (
