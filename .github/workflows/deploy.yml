@@ -10,9 +10,12 @@ permissions:
   pages: write
   id-token: write
 
+# cancel-in-progress FICA FALSE de propósito: cancelar um deploy do Pages
+# no meio deixa a implantação em estado inconsistente e os próximos falham.
+# Melhor enfileirar do que interromper.
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
@@ -25,11 +28,10 @@ jobs:
           node-version: 20
           cache: npm
 
-      # Liga o GitHub Pages automaticamente na primeira execução, sem precisar
-      # mexer em Settings. Também expõe a URL final para o passo de deploy.
+      # O Pages já está ligado com origem "GitHub Actions". Rodar com
+      # enablement: true a cada execução tentava reconfigurá-lo e podia
+      # conflitar com o deploy — por isso ficou só a leitura da config.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
 
       - run: npm ci
 

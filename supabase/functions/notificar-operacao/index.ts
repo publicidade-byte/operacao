@@ -55,12 +55,18 @@ Deno.serve(async (req) => {
       else areas.add(sv)
     }
 
-    const { data: equipe } = await sb
-      .from('admin_users')
-      .select('nome, slack_user_id, areas, role, super_admin')
-      .eq('ativo', true)
+    // Quem recebe: usuários do sistema + pessoas cadastradas só para
+    // notificação (têm Slack mas não têm login, como a Carol).
+    const [{ data: equipe }, { data: extras }] = await Promise.all([
+      sb
+        .from('admin_users')
+        .select('nome, slack_user_id, areas')
+        .eq('ativo', true),
+      sb.from('notificacao_extra').select('nome, slack_user_id, areas').eq('ativo', true),
+    ])
 
-    const destinatarios = (equipe ?? []).filter((u) => {
+    const candidatos = [...(equipe ?? []), ...(extras ?? [])]
+    const destinatarios = candidatos.filter((u) => {
       const todas = !u.areas || u.areas.length === 0 // gestor: recebe tudo
       return todas || u.areas.some((a: string) => areas.has(a))
     })
