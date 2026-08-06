@@ -75,20 +75,21 @@ Deno.serve(async (req) => {
     const semSlack = destinatarios.filter((u) => !u.slack_user_id).map((u) => u.nome)
     const site = Deno.env.get('SITE_URL') ?? ''
 
+    const equipeTexto =
+      (EQUIPE_LABEL[s.equipe] ?? s.equipe) +
+      (s.equipe === 'OUTROS' && s.equipe_outro ? ` (${s.equipe_outro})` : '')
+
     const texto = [
       `:inbox_tray: *Nova solicitação ${s.protocolo}*`,
       mencoes,
       '',
-      `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel} (${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)})`,
+      `*Destino / Data:* ${s.edicoes.destino} — ${s.edicoes.hotel} · ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)}`,
+      `*Equipe / Pax:* ${equipeTexto} · ${s.colaboradores.length} pax`,
+      `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} (${s.tipo_hospedagem === 'HOTEL_PAX' ? 'hotel do pax' : 'fora do hotel do pax'})`,
       `*Solicitado:* ${servicos.map((v) => ROTULO[v] ?? v).join(' · ')}`,
-      `*Hospedagem:* ${s.tipo_hospedagem === 'HOTEL_PAX' ? 'hotel do pax' : 'fora do hotel do pax'}`,
-      `*Equipe:* ${EQUIPE_LABEL[s.equipe] ?? s.equipe}${s.equipe === 'OUTROS' && s.equipe_outro ? ` (${s.equipe_outro})` : ''}  ·  *Pax:* ${s.colaboradores.length}`,
-      `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
       `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
-      `*Aprovador:* ${s.diretores.nome}`,
       '',
-      site ? `<${site}/admin/solicitacoes/${s.id}|Abrir no painel>` : '',
-      '_Aviso de chegada — nenhuma ação é exigida por aqui._',
+      site ? `:link: <${site}/admin/solicitacoes/${s.id}|Abrir a solicitação no painel>` : '',
     ]
       .filter(Boolean)
       .join('\n')
