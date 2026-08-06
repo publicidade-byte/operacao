@@ -182,9 +182,21 @@ Deno.serve(async (req) => {
     if (erroExtras) console.error('notificacao_extra:', erroExtras.message)
 
     const candidatos = [...(equipe ?? []), ...(extras ?? [])]
-    const destinatarios = candidatos.filter((u) => {
+    const elegiveis = candidatos.filter((u) => {
       const todas = !u.areas || u.areas.length === 0 // gestor: recebe tudo
       return todas || u.areas.some((a: string) => areas.has(a))
+    })
+
+    // A mesma pessoa pode estar nas duas tabelas — foi o que aconteceu com a
+    // Carol, que ganhou login depois de já estar na lista extra. Sem isto ela
+    // aparecia duas vezes na mensagem: uma como menção, outra como texto.
+    // O Slack é a identidade real aqui; quem não tem, cai no nome.
+    const vistos = new Set<string>()
+    const destinatarios = elegiveis.filter((u) => {
+      const chave = u.slack_user_id || `nome:${u.nome}`
+      if (vistos.has(chave)) return false
+      vistos.add(chave)
+      return true
     })
 
     if (destinatarios.length === 0)
