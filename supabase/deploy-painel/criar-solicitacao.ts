@@ -212,8 +212,15 @@ Deno.serve(async (req) => {
           return erro('Selecione o tipo de cada carro.')
         if (!c.retirada_data || !c.devolucao_data)
           return erro('Informe as datas de retirada e devolução de cada carro.')
+        if (!c.retirada_hora || !c.devolucao_hora)
+          return erro('Informe os horários de retirada e devolução de cada carro.')
         if (String(c.devolucao_data) < String(c.retirada_data))
           return erro('A devolução do carro não pode ser antes da retirada.')
+        if (
+          String(c.devolucao_data) === String(c.retirada_data) &&
+          String(c.devolucao_hora) <= String(c.retirada_hora)
+        )
+          return erro('No mesmo dia, a devolução precisa ser depois da retirada.')
       }
     }
 
@@ -399,7 +406,9 @@ Deno.serve(async (req) => {
           tipo_carro: c.tipo_carro,
           local_retirada: c.local_retirada ?? null,
           retirada_data: c.retirada_data ?? null,
+          retirada_hora: c.retirada_hora ?? null,
           devolucao_data: c.devolucao_data ?? null,
+          devolucao_hora: c.devolucao_hora ?? null,
           ordem: (c.ordem as number) ?? i + 1,
         })),
       )
