@@ -178,7 +178,9 @@ Deno.serve(async (req) => {
         .in('colaborador_id', ids),
       sb
         .from('hospedagem_detalhe')
-        .select('colaborador_id, hotel, check_in, check_out, codigo_reserva')
+        .select(
+          'colaborador_id, hotel, hotel_hospedagem, check_in, check_out, codigo_reserva',
+        )
         .in('colaborador_id', ids),
     ])
 
