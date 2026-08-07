@@ -70,8 +70,11 @@ export type HospedagemDetalhe = {
   id?: string
   colaborador_id: string
   hotel: string | null
+  /** Fora do hotel do pax: onde a operação de fato hospedou a pessoa. */
+  hotel_hospedagem: string | null
   endereco: string | null
   tipo_quarto: string | null
+  alimentacao: string | null
   dividindo_com: string | null
   check_in: string | null
   check_out: string | null

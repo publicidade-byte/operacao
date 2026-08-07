@@ -21,6 +21,8 @@ import {
   STATUS_LABEL,
   aeroportoLabel,
   TIPOS_CARRO,
+  TIPOS_QUARTO,
+  ALIMENTACAO,
   alimentacaoLabel,
   corServico,
   tipoQuartoLabel,
@@ -167,6 +169,9 @@ export default function Detalhe() {
     ;(h.data ?? []).forEach((x: HospedagemDetalhe) => (mh[x.colaborador_id] = x))
     // Colaborador ainda sem hospedagem cadastrada já vem com as datas que o
     // solicitante pediu — a operação só confirma ou ajusta, não redigita.
+    // Fora do hotel do pax, o tipo de quarto e a alimentação também vêm do
+    // pedido — a operação confirma, não redigita.
+    const fora = sol.tipo_hospedagem === 'FORA_HOTEL_PAX'
     sol.colaboradores.forEach((c) => {
       if (!mh[c.id])
         mh[c.id] = {
@@ -174,6 +179,12 @@ export default function Detalhe() {
           hotel: sol.edicoes?.hotel ?? null,
           check_in: sol.data_entrada,
           check_out: sol.data_saida,
+          ...(fora
+            ? {
+                tipo_quarto: sol.hosp_tipo_quarto,
+                alimentacao: sol.hosp_alimentacao,
+              }
+            : {}),
         }
     })
     setHosp(mh)
@@ -895,6 +906,13 @@ export default function Detalhe() {
                   padraoHotel={s.edicoes.hotel}
                   padraoIn={s.data_entrada}
                   padraoOut={s.data_saida}
+                  fora={s.tipo_hospedagem === 'FORA_HOTEL_PAX'}
+                  pedido={{
+                    qtd: s.hosp_qtd_quartos,
+                    tipo: s.hosp_tipo_quarto,
+                    alimentacao: s.hosp_alimentacao,
+                    obs: s.hosp_externa_obs,
+                  }}
                   onChange={(v) => setHosp((p) => ({ ...p, [c.id]: v }))}
                 />
                 )}
@@ -1420,6 +1438,8 @@ function BlocoHospedagem({
   padraoHotel,
   padraoIn,
   padraoOut,
+  fora,
+  pedido,
   onChange,
 }: {
   valor: Partial<HospedagemDetalhe>
@@ -1427,6 +1447,14 @@ function BlocoHospedagem({
   padraoHotel: string
   padraoIn: string
   padraoOut: string
+  /** Hospedagem fora do hotel dos passageiros — muda o que a operação vê. */
+  fora: boolean
+  pedido: {
+    qtd: number | null
+    tipo: string | null
+    alimentacao: string | null
+    obs: string | null
+  }
   onChange: (v: Partial<HospedagemDetalhe>) => void
 }) {
   const up = (k: keyof HospedagemDetalhe, v: unknown) => onChange({ ...valor, [k]: v })
@@ -1435,17 +1463,51 @@ function BlocoHospedagem({
       <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
         Hospedagem
       </legend>
+
+      {/* Fora do hotel do pax: o que o solicitante pediu fica à vista, senão
+          quem reserva teria que voltar na aba anterior para conferir. */}
+      {fora && (
+        <div className="mb-3 rounded-lg bg-neutral-50 p-3 text-xs">
+          <p className="mb-1 font-semibold uppercase tracking-wide text-neutral-500">
+            Pedido pelo solicitante
+          </p>
+          <p className="text-neutral-700">
+            {pedido.qtd ?? '—'} quarto{pedido.qtd === 1 ? '' : 's'}{' '}
+            {tipoQuartoLabel(pedido.tipo).toLowerCase()} ·{' '}
+            {alimentacaoLabel(pedido.alimentacao).toLowerCase()}
+          </p>
+          {pedido.obs && (
+            <p className="mt-1 whitespace-pre-wrap text-neutral-600">{pedido.obs}</p>
+          )}
+        </div>
+      )}
+
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="lg:col-span-2">
-          <Campo label="Hotel" obrigatorio={false}>
+          <Campo
+            label={fora ? 'Hotel da operação (referência)' : 'Hotel'}
+            obrigatorio={false}
+          >
             <Input
-              disabled={!editavel}
+              disabled={!editavel || fora}
               value={valor.hotel ?? ''}
               placeholder={padraoHotel}
               onChange={(e) => up('hotel', e.target.value)}
             />
           </Campo>
         </div>
+        {fora && (
+          <div className="lg:col-span-2">
+            <Campo label="Hotel onde vamos hospedar" obrigatorio={false}>
+              <Input
+                disabled={!editavel}
+                value={valor.hotel_hospedagem ?? ''}
+                onChange={(e) => up('hotel_hospedagem', e.target.value)}
+                placeholder="Nome do hotel que a operação reservou"
+              />
+            </Campo>
+          </div>
+        )}
         <div className="lg:col-span-2">
           <Campo label="Endereço do hotel" obrigatorio={false}>
             <Input
@@ -1457,8 +1519,45 @@ function BlocoHospedagem({
           </Campo>
         </div>
         <Campo label="Tipo de quarto" obrigatorio={false}>
-          <Input disabled={!editavel} value={valor.tipo_quarto ?? ''} onChange={(e) => up('tipo_quarto', e.target.value)} />
+          {fora ? (
+            // Fora do hotel do pax o tipo veio do formulário, com opções
+            // fechadas. Texto livre aqui só criaria divergência com o pedido.
+            <Select
+              disabled={!editavel}
+              value={valor.tipo_quarto ?? ''}
+              onChange={(e) => up('tipo_quarto', e.target.value)}
+            >
+              <option value="">Selecione…</option>
+              {TIPOS_QUARTO.map((t) => (
+                <option key={t.value} value={t.value}>
+                  {t.label}
+                </option>
+              ))}
+            </Select>
+          ) : (
+            <Input
+              disabled={!editavel}
+              value={valor.tipo_quarto ?? ''}
+              onChange={(e) => up('tipo_quarto', e.target.value)}
+            />
+          )}
         </Campo>
+        {fora && (
+          <Campo label="Alimentação" obrigatorio={false}>
+            <Select
+              disabled={!editavel}
+              value={valor.alimentacao ?? ''}
+              onChange={(e) => up('alimentacao', e.target.value)}
+            >
+              <option value="">Selecione…</option>
+              {ALIMENTACAO.map((a) => (
+                <option key={a.value} value={a.value}>
+                  {a.label}
+                </option>
+              ))}
+            </Select>
+          </Campo>
+        )}
         <Campo label="Dividindo com" obrigatorio={false}>
           <Input disabled={!editavel} value={valor.dividindo_com ?? ''} onChange={(e) => up('dividindo_com', e.target.value)} />
         </Campo>

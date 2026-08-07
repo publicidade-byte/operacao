@@ -45,6 +45,14 @@ async function avisarCanal(texto: string) {
   }
 }
 
+const QUARTO: Record<string, string> = {
+  SINGLE: 'Single',
+  DUPLO: 'Duplo',
+  TRIPLO: 'Triplo',
+  QUADRUPLO: 'Quádruplo',
+  QUINTUPLO: 'Quíntuplo',
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
@@ -95,9 +103,13 @@ Deno.serve(async (req) => {
     const linhasHosp = colabs
       .map((c: { id: string; nome_completo: string }) => {
         const h = hosp?.find((x) => x.colaborador_id === c.id)
-        if (!h?.hotel) return ''
+        // Fora do hotel do pax, `hotel` é só a referência da operação — quem
+        // viaja precisa do endereço onde vai realmente dormir.
+        const hotel = h?.hotel_hospedagem || h?.hotel
+        if (!hotel) return ''
         return `<p style="margin:0 0 10px"><strong>${c.nome_completo}</strong><br>
-          ${h.hotel}${h.tipo_quarto ? ` · ${h.tipo_quarto}` : ''}<br>
+          ${hotel}${h.tipo_quarto ? ` · ${QUARTO[h.tipo_quarto] ?? h.tipo_quarto}` : ''}${h.alimentacao ? ` · ${h.alimentacao === 'COM_CAFE' ? 'com café' : 'sem café'}` : ''}<br>
+          ${h.endereco ? `${h.endereco}<br>` : ''}
           Check-in ${dataBR(h.check_in)} · Check-out ${dataBR(h.check_out)}
           ${h.codigo_reserva ? `<br>Reserva <strong>${h.codigo_reserva}</strong>` : ''}
           ${h.dividindo_com ? `<br>Dividindo quarto com ${h.dividindo_com}` : ''}</p>`
