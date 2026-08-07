@@ -49,7 +49,9 @@ type CarroForm = {
   tipo: string
   retirada: string
   retirada_data: string
+  retirada_hora: string
   devolucao_data: string
+  devolucao_hora: string
 }
 
 type Form = {
@@ -120,7 +122,7 @@ const VAZIO: Form = {
   van_qtd_passageiros: '',
   obs_transporte: '',
   obs_locacao_carro: '',
-  carros: [{ nome: '', cpf: '', nascimento: '', transmissao: '', tipo: '', retirada: '', retirada_data: '', devolucao_data: '' }],
+  carros: [{ nome: '', cpf: '', nascimento: '', transmissao: '', tipo: '', retirada: '', retirada_data: '', retirada_hora: '', devolucao_data: '', devolucao_hora: '' }],
   rodo_regiao_saida: '',
   rodo_cidade_estado: '',
   van_retorno_local: '',
@@ -460,10 +462,20 @@ export default function Solicitar() {
           if (!c.retirada.trim())
             e[`carro.${i}.retirada`] = 'Informe o local de retirada.'
           if (!c.retirada_data) e[`carro.${i}.retirada_data`] = 'Informe a data de retirada.'
+          if (!c.retirada_hora) e[`carro.${i}.retirada_hora`] = 'Informe o horário.'
+          if (!c.devolucao_hora) e[`carro.${i}.devolucao_hora`] = 'Informe o horário.'
           if (!c.devolucao_data)
             e[`carro.${i}.devolucao_data`] = 'Informe a data de devolução.'
           else if (c.retirada_data && c.devolucao_data < c.retirada_data)
             e[`carro.${i}.devolucao_data`] = 'A devolução não pode ser antes da retirada.'
+          // Mesmo dia: a hora precisa avançar, senão a locação dura zero.
+          else if (
+            c.retirada_data === c.devolucao_data &&
+            c.retirada_hora &&
+            c.devolucao_hora &&
+            c.devolucao_hora <= c.retirada_hora
+          )
+            e[`carro.${i}.devolucao_hora`] = 'No mesmo dia, precisa ser depois da retirada.'
         })
       }
 
@@ -608,7 +620,9 @@ export default function Solicitar() {
                 tipo_carro: c.tipo,
                 local_retirada: c.retirada.trim(),
                 retirada_data: c.retirada_data,
+                retirada_hora: c.retirada_hora,
                 devolucao_data: c.devolucao_data,
+                devolucao_hora: c.devolucao_hora,
                 ordem: i + 1,
               }))
             : [],
@@ -1594,6 +1608,18 @@ export default function Solicitar() {
                             />
                           </Campo>
                           <Campo
+                            label="Horário de retirada"
+                            erro={erros[`carro.${i}.retirada_hora`]}
+                            dica="A locadora cobra a diária a partir deste horário."
+                          >
+                            <Input
+                              type="time"
+                              value={c.retirada_hora}
+                              erro={!!erros[`carro.${i}.retirada_hora`]}
+                              onChange={(e) => setCarro(i, 'retirada_hora', e.target.value)}
+                            />
+                          </Campo>
+                          <Campo
                             label="Data de devolução"
                             erro={erros[`carro.${i}.devolucao_data`]}
                             dica="Sugerimos a saída; ajuste se devolver depois."
@@ -1603,6 +1629,20 @@ export default function Solicitar() {
                               value={c.devolucao_data}
                               erro={!!erros[`carro.${i}.devolucao_data`]}
                               onChange={(e) => setCarro(i, 'devolucao_data', e.target.value)}
+                            />
+                          </Campo>
+                          <Campo
+                            label="Horário de devolução"
+                            erro={erros[`carro.${i}.devolucao_hora`]}
+                            dica="Devolver depois deste horário costuma virar diária extra."
+                          >
+                            <Input
+                              type="time"
+                              value={c.devolucao_hora}
+                              erro={!!erros[`carro.${i}.devolucao_hora`]}
+                              onChange={(e) =>
+                                setCarro(i, 'devolucao_hora', e.target.value)
+                              }
                             />
                           </Campo>
                         </div>
@@ -1624,7 +1664,9 @@ export default function Solicitar() {
                           tipo: '',
                           retirada: '',
                           retirada_data: form.data_entrada,
+                          retirada_hora: '',
                           devolucao_data: form.data_saida,
+                          devolucao_hora: '',
                         },
                       ])
                     }
@@ -1960,7 +2002,8 @@ export default function Solicitar() {
                               <br />
                               retirada: {c.retirada}
                               <br />
-                              {dataBR(c.retirada_data)} a {dataBR(c.devolucao_data)}
+                              {dataBR(c.retirada_data)} {c.retirada_hora} a{' '}
+                              {dataBR(c.devolucao_data)} {c.devolucao_hora}
                             </span>
                           </li>
                         ))}

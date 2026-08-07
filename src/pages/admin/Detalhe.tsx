@@ -55,9 +55,14 @@ type CarroPedido = {
   tipo_carro: string | null
   local_retirada: string | null
   retirada_data: string | null
+  retirada_hora: string | null
   devolucao_data: string | null
+  devolucao_hora: string | null
   ordem: number
 }
+
+/** "14:00:00" → "14h00". Vazio vira string vazia, não "—" solto na frase. */
+const hora = (h?: string | null) => (h ? ` ${h.slice(0, 5).replace(':', 'h')}` : '')
 
 const ABAS = ['Solicitação', 'Operacional', 'Aprovação', 'Histórico'] as const
 
@@ -194,8 +199,14 @@ export default function Detalhe() {
     // estadia, que é o que existe.
     setCarro(
       (l.data as LocacaoCarro) ?? {
-        retirada_em: inicioDoDia(reservas[0]?.retirada_data ?? sol.data_entrada),
-        devolucao_em: inicioDoDia(reservas[0]?.devolucao_data ?? sol.data_saida),
+        retirada_em: inicioDoDia(
+          reservas[0]?.retirada_data ?? sol.data_entrada,
+          reservas[0]?.retirada_hora,
+        ),
+        devolucao_em: inicioDoDia(
+          reservas[0]?.devolucao_data ?? sol.data_saida,
+          reservas[0]?.devolucao_hora,
+        ),
         retirada_local: reservas[0]?.local_retirada ?? null,
         categoria: reservas[0]?.tipo_carro ?? null,
       },
@@ -1037,7 +1048,9 @@ export default function Detalhe() {
                         · {c.transmissao === 'AUTOMATICO' ? 'automático' : 'manual'}
                         <br />
                         <span className="text-neutral-500">
-                          {dataBR(c.retirada_data)} a {dataBR(c.devolucao_data)}
+                          {dataBR(c.retirada_data)}
+                          {hora(c.retirada_hora)} a {dataBR(c.devolucao_data)}
+                          {hora(c.devolucao_hora)}
                           {c.local_retirada ? ` · retirada: ${c.local_retirada}` : ''}
                         </span>
                       </li>
@@ -1236,8 +1249,10 @@ function tem(s: Solicitacao, servico: string) {
  * zerada, pronta para ser corrigida. Sem data, devolve nulo: melhor campo
  * vazio do que uma data inventada.
  */
-function inicioDoDia(data: string | null | undefined) {
-  return data ? `${data}T00:00` : null
+function inicioDoDia(data: string | null | undefined, hora?: string | null) {
+  if (!data) return null
+  // A hora vem como "14:00:00" do Postgres; o input só aceita "14:00".
+  return `${data}T${hora ? hora.slice(0, 5) : '00:00'}`
 }
 
 function limpar<T extends Record<string, unknown>>(o: T) {
