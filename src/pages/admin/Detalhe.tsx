@@ -1579,13 +1579,13 @@ function BlocoHospedagem({
             onChange={(e) => up('check_out', e.target.value || null)}
           />
         </Campo>
-        <Campo label="Valor da diária (R$)" obrigatorio={false}>
+        <Campo label="Valor total da hospedagem (R$)" obrigatorio={false}>
           <Input
             type="number"
             step="0.01"
             disabled={!editavel}
-            value={valor.valor_diaria ?? ''}
-            onChange={(e) => up('valor_diaria', e.target.value ? +e.target.value : null)}
+            value={valor.valor_total ?? ''}
+            onChange={(e) => up('valor_total', e.target.value ? +e.target.value : null)}
           />
         </Campo>
         <Campo label="Código da reserva" obrigatorio={false}>

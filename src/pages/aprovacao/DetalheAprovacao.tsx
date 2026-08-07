@@ -7,6 +7,8 @@ import {
   aeroportoLabel,
   equipeLabel,
   servicoCurto,
+  tipoQuartoLabel,
+  alimentacaoLabel,
 } from '../../lib/constants'
 import { dataBR, dataHoraBR, moeda } from '../../lib/format'
 import { Aviso, Botao, Card, Etiqueta, Textarea } from '../../components/ui'
@@ -30,6 +32,10 @@ type Sol = LinhaAprovacao & {
   van_qtd_passageiros: number | null
   rodo_regiao_saida: string | null
   rodo_cidade_estado: string | null
+  hosp_externa_obs: string | null
+  hosp_qtd_quartos: number | null
+  hosp_tipo_quarto: string | null
+  hosp_alimentacao: string | null
   observacoes_internas: string | null
 }
 
@@ -69,10 +75,12 @@ type Rodo = {
 type Hosp = {
   colaborador_id: string
   hotel: string | null
+  hotel_hospedagem: string | null
   tipo_quarto: string | null
+  alimentacao: string | null
   check_in: string | null
   check_out: string | null
-  valor_diaria: number | null
+  valor_total: number | null
 }
 type Carro = {
   locadora: string | null
@@ -173,19 +181,9 @@ export default function DetalheAprovacao() {
   const pendente = s.status === 'AGUARDANDO_APROVACAO'
   const totalVoos = voos.reduce((t, v) => t + Number(v.preco ?? 0), 0)
   const totalRodo = rodo.reduce((t, v) => t + Number(v.preco ?? 0), 0)
-  // Mesma regra do banco: sem as datas do detalhe, vale o período da
-  // solicitação, e o mínimo é 1 diária. Antes, faltando as datas, a diária
-  // sumia da composição e ela não fechava com o total exibido em cima.
-  const totalHosp = hosp.reduce((t, h) => {
-    if (!h.valor_diaria) return t
-    const entrada = h.check_in ?? s.data_entrada
-    const saida = h.check_out ?? s.data_saida
-    const dias = Math.max(
-      1,
-      (new Date(saida).getTime() - new Date(entrada).getTime()) / 86400000,
-    )
-    return t + Number(h.valor_diaria) * dias
-  }, 0)
+  // A operação lança o valor fechado da hospedagem — não há mais diária
+  // para multiplicar por noites.
+  const totalHosp = hosp.reduce((t, h) => t + Number(h.valor_total ?? 0), 0)
   const totalCarro = Number(carro?.preco ?? 0)
   const totalVan = Number(van?.preco ?? 0)
 
@@ -253,6 +251,20 @@ export default function DetalheAprovacao() {
               {s.tipo_hospedagem === 'HOTEL_PAX'
                 ? 'Hotel do pax'
                 : 'Fora do hotel do pax'}
+              {/* Fora do hotel do pax, o que se reserva é quarto — e é isso
+                  que o diretor está aprovando o custo. */}
+              {s.hosp_qtd_quartos != null && (
+                <span className="block font-medium text-neutral-800">
+                  {s.hosp_qtd_quartos} quarto{s.hosp_qtd_quartos === 1 ? '' : 's'}{' '}
+                  {tipoQuartoLabel(s.hosp_tipo_quarto).toLowerCase()} ·{' '}
+                  {alimentacaoLabel(s.hosp_alimentacao).toLowerCase()}
+                </span>
+              )}
+              {s.hosp_externa_obs && (
+                <span className="mt-1 block whitespace-pre-wrap text-neutral-600">
+                  {s.hosp_externa_obs}
+                </span>
+              )}
             </L>
             <L t="Solicitado">
               {(s.servicos ?? []).map(servicoCurto).join(' · ') || '—'}
@@ -295,6 +307,21 @@ export default function DetalheAprovacao() {
 
         <Card titulo={`Pessoas e viagem (${colabs.length})`}>
           <div className="space-y-3">
+            {/* Reserva por quarto: a lista de passageiros ainda não existe.
+                Sem isto o card apareceria vazio e pareceria erro. */}
+            {colabs.length === 0 && (
+              <p className="text-sm text-neutral-600">
+                A lista de passageiros ainda não chegou — nesta solicitação a operação
+                reserva os quartos e completa os nomes depois. O que está sendo
+                aprovado é a reserva de{' '}
+                <strong>
+                  {s.hosp_qtd_quartos ?? '—'} quarto
+                  {s.hosp_qtd_quartos === 1 ? '' : 's'}{' '}
+                  {tipoQuartoLabel(s.hosp_tipo_quarto).toLowerCase()}
+                </strong>
+                , {alimentacaoLabel(s.hosp_alimentacao).toLowerCase()}.
+              </p>
+            )}
             {colabs.map((c) => {
               const meusVoos = voos.filter((v) => v.colaborador_id === c.id)
               const meuBus = rodo.find((r) => r.colaborador_id === c.id)
@@ -326,23 +353,31 @@ export default function DetalheAprovacao() {
                       )}
                     </p>
                   )}
-                  {minhaHosp?.hotel && (
+                  {/* Fora do hotel do pax, `hotel` é só a referência da
+                      operação — o diretor precisa ver onde a pessoa dorme. */}
+                  {(minhaHosp?.hotel_hospedagem || minhaHosp?.hotel) && (
                     <p className="mt-1 text-neutral-600">
-                      {minhaHosp.hotel}
-                      {minhaHosp.tipo_quarto && ` · ${minhaHosp.tipo_quarto}`} ·{' '}
-                      {dataBR(minhaHosp.check_in)} a {dataBR(minhaHosp.check_out)}
-                      {minhaHosp.valor_diaria != null && (
+                      {minhaHosp.hotel_hospedagem || minhaHosp.hotel}
+                      {minhaHosp.tipo_quarto &&
+                        ` · ${tipoQuartoLabel(minhaHosp.tipo_quarto)}`}
+                      {minhaHosp.alimentacao &&
+                        ` · ${alimentacaoLabel(minhaHosp.alimentacao).toLowerCase()}`}{' '}
+                      · {dataBR(minhaHosp.check_in)} a {dataBR(minhaHosp.check_out)}
+                      {minhaHosp.valor_total != null && (
                         <span className="ml-1 text-neutral-500">
-                          ({moeda(minhaHosp.valor_diaria)}/diária)
+                          ({moeda(minhaHosp.valor_total)})
                         </span>
                       )}
                     </p>
                   )}
-                  {meusVoos.length === 0 && !meuBus?.empresa && !minhaHosp?.hotel && (
-                    <p className="mt-1 text-xs text-neutral-400">
-                      Sem dados de viagem preenchidos.
-                    </p>
-                  )}
+                  {meusVoos.length === 0 &&
+                    !meuBus?.empresa &&
+                    !minhaHosp?.hotel &&
+                    !minhaHosp?.hotel_hospedagem && (
+                      <p className="mt-1 text-xs text-neutral-400">
+                        Sem dados de viagem preenchidos.
+                      </p>
+                    )}
                 </div>
               )
             })}

@@ -78,7 +78,8 @@ export type HospedagemDetalhe = {
   dividindo_com: string | null
   check_in: string | null
   check_out: string | null
-  valor_diaria: number | null
+  /** Valor fechado da hospedagem. Substituiu `valor_diaria`, que era multiplicado por noites. */
+  valor_total: number | null
   codigo_reserva: string | null
   observacoes: string | null
 }
