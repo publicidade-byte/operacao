@@ -176,14 +176,9 @@ Deno.serve(async (req) => {
 
     const totalVoos = (voos ?? []).reduce((t, v) => t + Number(v.preco ?? 0), 0)
     const totalBus = (rodo ?? []).reduce((t, v) => t + Number(v.preco ?? 0), 0)
-    const totalHosp = (hosp ?? []).reduce((t, h) => {
-      if (!h.valor_diaria || !h.check_in || !h.check_out) return t
-      const noites = Math.max(
-        0,
-        (new Date(h.check_out).getTime() - new Date(h.check_in).getTime()) / 86400000,
-      )
-      return t + Number(h.valor_diaria) * noites
-    }, 0)
+    // A operação lança o valor fechado da hospedagem; não há mais diária
+    // para multiplicar por noites.
+    const totalHosp = (hosp ?? []).reduce((t, h) => t + Number(h.valor_total ?? 0), 0)
     const totalCarro = Number(carro?.preco ?? 0)
     const totalVan = Number(van?.preco ?? 0)
     const total =
