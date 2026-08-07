@@ -8,8 +8,12 @@ import {
   SERVICOS,
   SERVICOS_TRANSPORTE,
   TIPOS_CARRO,
+  TIPOS_QUARTO,
+  ALIMENTACAO,
+  alimentacaoLabel,
   equipeLabel,
   servicoLabel,
+  tipoQuartoLabel,
 } from '../lib/constants'
 import {
   cpfValido,
@@ -56,6 +60,9 @@ type Form = {
   tipo_hospedagem: string
   hosp_externa_operacao: string
   hosp_externa_obs: string
+  hosp_qtd_quartos: string
+  hosp_tipo_quarto: string
+  hosp_alimentacao: string
   servicos: string[]
   aeroporto_saida: string
   aeroporto_chegada: string
@@ -95,6 +102,9 @@ const VAZIO: Form = {
   tipo_hospedagem: '',
   hosp_externa_operacao: '',
   hosp_externa_obs: '',
+  hosp_qtd_quartos: '',
+  hosp_tipo_quarto: '',
+  hosp_alimentacao: '',
   servicos: [],
   aeroporto_saida: '',
   aeroporto_chegada: '',
@@ -306,6 +316,21 @@ export default function Solicitar() {
 
   const temTransporte = form.servicos.some((s) => SERVICOS_TRANSPORTE.includes(s))
 
+  /**
+   * Hospedagem fora do hotel dos passageiros, reservada pela operação.
+   *
+   * É o único caso em que a lista de pessoas pode não existir ainda — a
+   * empresa de ônibus manda os dados depois. Aqui se reserva quarto, não
+   * pessoa: por isso os colaboradores deixam de ser obrigatórios e entram
+   * quantidade, tipo de quarto e alimentação.
+   */
+  const reservaPorQuarto =
+    form.tipo_hospedagem === 'FORA_HOTEL_PAX' && form.hosp_externa_operacao === 'SIM'
+
+  /** Linha de colaborador em branco — ignorada quando a lista é opcional. */
+  const colabVazio = (c: ColabForm) =>
+    !c.nome_completo.trim() && !c.cpf.trim() && !c.data_nascimento
+
   const setCarro = (i: number, k: keyof CarroForm, v: string) => {
     setForm((f) => {
       const cs = [...f.carros]
@@ -365,6 +390,15 @@ export default function Solicitar() {
           e.hosp_externa_operacao = 'Informe se a operação precisa reservar.'
         if (form.hosp_externa_operacao === 'SIM' && !form.hosp_externa_obs.trim())
           e.hosp_externa_obs = 'Descreva o que a operação precisa reservar.'
+        if (form.hosp_externa_operacao === 'SIM') {
+          const q = Number(form.hosp_qtd_quartos)
+          if (!form.hosp_qtd_quartos.trim())
+            e.hosp_qtd_quartos = 'Informe quantos quartos.'
+          else if (!Number.isInteger(q) || q < 1 || q > 200)
+            e.hosp_qtd_quartos = 'Quantidade inválida.'
+          if (!form.hosp_tipo_quarto) e.hosp_tipo_quarto = 'Selecione o tipo de quarto.'
+          if (!form.hosp_alimentacao) e.hosp_alimentacao = 'Selecione a alimentação.'
+        }
       }
     }
     if (p === 1) {
@@ -452,6 +486,10 @@ export default function Solicitar() {
         e.equipe_outro = 'Informe qual é a sua área ou departamento.'
       const cpfs = new Set<string>()
       form.colaboradores.forEach((c, i) => {
+        // Reserva por quarto: linha em branco é aceita (a lista vem depois).
+        // Mas linha PELA METADE não passa — dado incompleto é pior que
+        // dado nenhum, porque parece preenchido.
+        if (reservaPorQuarto && colabVazio(c)) return
         if (c.nome_completo.trim().split(/\s+/).length < 2)
           e[`colab.${i}.nome_completo`] = 'Informe nome e sobrenome.'
         const d = soDigitos(c.cpf)
@@ -529,6 +567,9 @@ export default function Solicitar() {
               : null,
           hosp_externa_obs:
             form.hosp_externa_operacao === 'SIM' ? form.hosp_externa_obs.trim() : null,
+          hosp_qtd_quartos: reservaPorQuarto ? Number(form.hosp_qtd_quartos) : null,
+          hosp_tipo_quarto: reservaPorQuarto ? form.hosp_tipo_quarto : null,
+          hosp_alimentacao: reservaPorQuarto ? form.hosp_alimentacao : null,
           tipo_voo: form.servicos.includes('AEREO') ? form.tipo_voo : null,
           aeroporto_saida_volta:
             form.servicos.includes('AEREO') && form.tipo_voo === 'IDA_VOLTA'
@@ -596,12 +637,16 @@ export default function Solicitar() {
           obs_locacao_carro: form.servicos.includes('CARRO')
             ? form.obs_locacao_carro.trim()
             : null,
-          colaboradores: form.colaboradores.map((c, i) => ({
-            nome_completo: c.nome_completo.trim(),
-            cpf: soDigitos(c.cpf),
-            data_nascimento: c.data_nascimento,
-            ordem: i + 1,
-          })),
+          // Linhas em branco não viram colaborador: na reserva por quarto
+          // elas são o caso normal (a lista de passageiros vem depois).
+          colaboradores: form.colaboradores
+            .filter((c) => !colabVazio(c))
+            .map((c, i) => ({
+              nome_completo: c.nome_completo.trim(),
+              cpf: soDigitos(c.cpf),
+              data_nascimento: c.data_nascimento,
+              ordem: i + 1,
+            })),
         },
       )
       localStorage.removeItem(RASCUNHO)
@@ -964,11 +1009,67 @@ export default function Solicitar() {
                                     </Campo>
 
                                     {form.hosp_externa_operacao === 'SIM' && (
-                                      <div className="mt-3">
+                                      <div className="mt-3 space-y-3">
+                                        <div className="grid gap-3 sm:grid-cols-3">
+                                          <Campo
+                                            label="Quantidade de quartos"
+                                            erro={erros.hosp_qtd_quartos}
+                                          >
+                                            <Input
+                                              type="number"
+                                              min={1}
+                                              max={200}
+                                              value={form.hosp_qtd_quartos}
+                                              erro={!!erros.hosp_qtd_quartos}
+                                              onChange={(ev) =>
+                                                set('hosp_qtd_quartos', ev.target.value)
+                                              }
+                                            />
+                                          </Campo>
+                                          <Campo
+                                            label="Tipo de quarto"
+                                            erro={erros.hosp_tipo_quarto}
+                                          >
+                                            <Select
+                                              value={form.hosp_tipo_quarto}
+                                              erro={!!erros.hosp_tipo_quarto}
+                                              onChange={(ev) =>
+                                                set('hosp_tipo_quarto', ev.target.value)
+                                              }
+                                            >
+                                              <option value="">Selecione…</option>
+                                              {TIPOS_QUARTO.map((t) => (
+                                                <option key={t.value} value={t.value}>
+                                                  {t.label}
+                                                </option>
+                                              ))}
+                                            </Select>
+                                          </Campo>
+                                          <Campo
+                                            label="Alimentação"
+                                            erro={erros.hosp_alimentacao}
+                                          >
+                                            <Select
+                                              value={form.hosp_alimentacao}
+                                              erro={!!erros.hosp_alimentacao}
+                                              onChange={(ev) =>
+                                                set('hosp_alimentacao', ev.target.value)
+                                              }
+                                            >
+                                              <option value="">Selecione…</option>
+                                              {ALIMENTACAO.map((a) => (
+                                                <option key={a.value} value={a.value}>
+                                                  {a.label}
+                                                </option>
+                                              ))}
+                                            </Select>
+                                          </Campo>
+                                        </div>
+
                                         <Campo
                                           label="Observações sobre a hospedagem"
                                           erro={erros.hosp_externa_obs}
-                                          dica="Região, preferência de hotel, quantos quartos, quem divide."
+                                          dica="Região, preferência de hotel, quem divide."
                                         >
                                           <Textarea
                                             rows={3}
@@ -980,6 +1081,13 @@ export default function Solicitar() {
                                             }
                                           />
                                         </Campo>
+
+                                        <p className="rounded-lg bg-neutral-100 px-3 py-2 text-xs text-neutral-600">
+                                          Como a operação vai reservar, os dados dos
+                                          colaboradores <strong>não são obrigatórios</strong>{' '}
+                                          agora — se a lista de passageiros ainda não
+                                          chegou, é só deixar em branco e seguir.
+                                        </p>
                                       </div>
                                     )}
                                   </div>
@@ -1600,10 +1708,29 @@ export default function Solicitar() {
                 )}
               </Card>
 
+              {reservaPorQuarto && (
+                <Card>
+                  <p className="text-sm text-neutral-700">
+                    Você pediu <strong>{form.hosp_qtd_quartos || '—'}</strong>{' '}
+                    {tipoQuartoLabel(form.hosp_tipo_quarto).toLowerCase()}
+                    {form.hosp_qtd_quartos === '1' ? '' : 's'},{' '}
+                    {alimentacaoLabel(form.hosp_alimentacao).toLowerCase()}, com a operação
+                    fazendo a reserva.
+                  </p>
+                  <p className="mt-1.5 text-sm text-neutral-600">
+                    Por isso os dados abaixo <strong>não são obrigatórios</strong>. Se a
+                    lista de passageiros ainda não chegou, deixe em branco e envie — a
+                    operação completa depois. Se preencher, preencha por inteiro.
+                  </p>
+                </Card>
+              )}
+
               {form.colaboradores.map((c, i) => (
                 <Card
                   key={i}
-                  titulo={`Colaborador ${i + 1}${c.nome_completo ? ` — ${c.nome_completo}` : ''}`}
+                  titulo={`Colaborador ${i + 1}${c.nome_completo ? ` — ${c.nome_completo}` : ''}${
+                    reservaPorQuarto && colabVazio(c) ? ' (opcional)' : ''
+                  }`}
                   acao={
                     form.colaboradores.length > 1 ? (
                       <button
@@ -1763,6 +1890,15 @@ export default function Solicitar() {
                     {form.tipo_hospedagem === 'HOTEL_PAX'
                       ? 'Hotel do pax'
                       : 'Fora do hotel do pax'}
+                    {reservaPorQuarto && (
+                      <span className="block text-neutral-600">
+                        {form.hosp_qtd_quartos} quarto
+                        {form.hosp_qtd_quartos === '1' ? '' : 's'}{' '}
+                        {tipoQuartoLabel(form.hosp_tipo_quarto).toLowerCase()} ·{' '}
+                        {alimentacaoLabel(form.hosp_alimentacao).toLowerCase()} · a
+                        operação reserva
+                      </span>
+                    )}
                   </Linha>
                   <Linha
                     rotulo={`Serviços (${form.servicos.length})`}
@@ -1845,22 +1981,31 @@ export default function Solicitar() {
                     {form.equipe ? equipeLabel(form.equipe, form.equipe_outro) : '—'}
                   </Linha>
                   <Linha
-                    rotulo={`Colaboradores (${form.colaboradores.length})`}
+                    rotulo={`Colaboradores (${form.colaboradores.filter((c) => !colabVazio(c)).length})`}
                     onEditar={() => setPasso(2)}
                   >
-                    <ul className="space-y-1.5">
-                      {form.colaboradores.map((c, i) => (
-                        <li key={i}>
-                          <span className="block font-medium">
-                            {c.nome_completo || '—'}
-                          </span>
-                          <span className="block text-xs text-neutral-500">
-                            CPF {c.cpf || '—'} · nascimento{' '}
-                            {c.data_nascimento ? dataBR(c.data_nascimento) : '—'}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
+                    {form.colaboradores.every((c) => colabVazio(c)) ? (
+                      <span className="text-neutral-600">
+                        Nenhum informado — a operação reserva os quartos e completa a
+                        lista quando ela chegar.
+                      </span>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {form.colaboradores
+                          .filter((c) => !colabVazio(c))
+                          .map((c, i) => (
+                            <li key={i}>
+                              <span className="block font-medium">
+                                {c.nome_completo || '—'}
+                              </span>
+                              <span className="block text-xs text-neutral-500">
+                                CPF {c.cpf || '—'} · nascimento{' '}
+                                {c.data_nascimento ? dataBR(c.data_nascimento) : '—'}
+                              </span>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
                   </Linha>
                   <Linha rotulo="Solicitante" onEditar={() => setPasso(3)}>
                     {form.solicitante_nome} · {form.solicitante_email} ·{' '}

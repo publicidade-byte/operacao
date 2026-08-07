@@ -135,8 +135,25 @@ Deno.serve(async (req) => {
       return erro('E-mail do solicitante inválido.')
     if (!/^\d{10,11}$/.test(b.solicitante_whatsapp)) return erro('WhatsApp inválido.')
 
+    // Hospedagem fora do hotel dos passageiros com a operação reservando é o
+    // único caso em que a lista de pessoas pode faltar: a empresa de ônibus
+    // manda os dados depois. Aí se reserva quarto, não pessoa.
+    const reservaPorQuarto =
+      b.tipo_hospedagem === 'FORA_HOTEL_PAX' && b.hosp_externa_operacao === true
+
+    if (reservaPorQuarto) {
+      const q = Number(b.hosp_qtd_quartos)
+      if (!Number.isInteger(q) || q < 1 || q > 200)
+        return erro('Informe quantos quartos a operação precisa reservar.')
+      if (!['SINGLE', 'DUPLO', 'TRIPLO', 'QUADRUPLO', 'QUINTUPLO'].includes(b.hosp_tipo_quarto))
+        return erro('Selecione o tipo de quarto.')
+      if (!['COM_CAFE', 'SEM_CAFE'].includes(b.hosp_alimentacao))
+        return erro('Selecione a alimentação.')
+    }
+
     const colabs = Array.isArray(b.colaboradores) ? b.colaboradores : []
-    if (colabs.length === 0) return erro('Inclua ao menos um colaborador.')
+    if (colabs.length === 0 && !reservaPorQuarto)
+      return erro('Inclua ao menos um colaborador.')
     if (colabs.length > MAX_COLABORADORES)
       return erro(`Máximo de ${MAX_COLABORADORES} colaboradores por solicitação.`)
 
@@ -220,6 +237,9 @@ Deno.serve(async (req) => {
               : null,
         hosp_externa_operacao: b.hosp_externa_operacao ?? null,
         hosp_externa_obs: b.hosp_externa_obs ?? null,
+        hosp_qtd_quartos: reservaPorQuarto ? Number(b.hosp_qtd_quartos) : null,
+        hosp_tipo_quarto: reservaPorQuarto ? b.hosp_tipo_quarto : null,
+        hosp_alimentacao: reservaPorQuarto ? b.hosp_alimentacao : null,
         aeroporto_saida: servicos.includes('AEREO') ? b.aeroporto_saida : null,
         aeroporto_chegada: servicos.includes('AEREO') ? b.aeroporto_chegada : null,
         tipo_voo: servicos.includes('AEREO') ? (b.tipo_voo ?? null) : null,
@@ -288,15 +308,19 @@ Deno.serve(async (req) => {
       }
     }
 
-    const { error: e2 } = await sb.from('colaboradores').insert(
-      colabs.map((c: Record<string, unknown>, i: number) => ({
-        solicitacao_id: sol.id,
-        nome_completo: String(c.nome_completo).trim(),
-        cpf: c.cpf,
-        data_nascimento: c.data_nascimento,
-        ordem: (c.ordem as number) ?? i + 1,
-      })),
-    )
+    // Sem colaborador não há o que inserir — o insert com array vazio erra.
+    const { error: e2 } =
+      colabs.length === 0
+        ? { error: null }
+        : await sb.from('colaboradores').insert(
+            colabs.map((c: Record<string, unknown>, i: number) => ({
+              solicitacao_id: sol.id,
+              nome_completo: String(c.nome_completo).trim(),
+              cpf: c.cpf,
+              data_nascimento: c.data_nascimento,
+              ordem: (c.ordem as number) ?? i + 1,
+            })),
+          )
     if (e2) {
       await sb.from('solicitacoes').delete().eq('id', sol.id)
       throw new Error(e2.message)

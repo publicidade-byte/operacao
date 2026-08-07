@@ -90,6 +90,30 @@ const CORES_SERVICO: Record<string, string> = {
 export const corServico = (v: string) =>
   CORES_SERVICO[v] ?? 'bg-neutral-100 text-neutral-700 ring-neutral-300'
 
+/**
+ * Quando a operação reserva fora do hotel dos passageiros, a lista de nomes
+ * costuma demorar (a empresa de ônibus envia depois). Aí o que se reserva é
+ * quarto, não pessoa — por isso estes dois campos.
+ */
+export const TIPOS_QUARTO = [
+  { value: 'SINGLE', label: 'Single' },
+  { value: 'DUPLO', label: 'Duplo' },
+  { value: 'TRIPLO', label: 'Triplo' },
+  { value: 'QUADRUPLO', label: 'Quádruplo' },
+  { value: 'QUINTUPLO', label: 'Quíntuplo' },
+]
+
+export const ALIMENTACAO = [
+  { value: 'COM_CAFE', label: 'Com café' },
+  { value: 'SEM_CAFE', label: 'Sem café' },
+]
+
+export const tipoQuartoLabel = (v?: string | null) =>
+  TIPOS_QUARTO.find((t) => t.value === v)?.label ?? v ?? '—'
+
+export const alimentacaoLabel = (v?: string | null) =>
+  ALIMENTACAO.find((a) => a.value === v)?.label ?? v ?? '—'
+
 export const TIPOS_CARRO = [
   { value: 'HATCH', label: 'Hatch' },
   { value: 'SEDAN', label: 'Sedan' },

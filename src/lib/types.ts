@@ -119,6 +119,9 @@ export type Solicitacao = {
   van_qtd_passageiros: number | null
   hosp_externa_operacao: boolean | null
   hosp_externa_obs: string | null
+  hosp_qtd_quartos: number | null
+  hosp_tipo_quarto: string | null
+  hosp_alimentacao: string | null
   tipo_voo: string | null
   aeroporto_saida_volta: string | null
   aeroporto_chegada_volta: string | null

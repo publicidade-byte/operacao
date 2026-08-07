@@ -21,7 +21,9 @@ import {
   STATUS_LABEL,
   aeroportoLabel,
   TIPOS_CARRO,
+  alimentacaoLabel,
   corServico,
+  tipoQuartoLabel,
   equipeLabel,
 } from '../../lib/constants'
 import {
@@ -678,6 +680,13 @@ export default function Detalhe() {
                     {s.hosp_externa_operacao
                       ? 'A operação precisa reservar'
                       : 'Já resolvido pelo solicitante'}
+                    {s.hosp_qtd_quartos && (
+                      <span className="mt-1 block font-medium text-neutral-800">
+                        {s.hosp_qtd_quartos} quarto{s.hosp_qtd_quartos === 1 ? '' : 's'}{' '}
+                        {tipoQuartoLabel(s.hosp_tipo_quarto).toLowerCase()} ·{' '}
+                        {alimentacaoLabel(s.hosp_alimentacao).toLowerCase()}
+                      </span>
+                    )}
                     {s.hosp_externa_obs && (
                       <span className="mt-1 block whitespace-pre-wrap text-neutral-600">
                         {s.hosp_externa_obs}
@@ -800,6 +809,44 @@ export default function Detalhe() {
       {/* ---------- ABA OPERACIONAL ---------- */}
       {aba === 'Operacional' && (
         <div className="space-y-4">
+          {/* Reserva por quarto: a solicitação pode ter chegado sem ninguém
+              na lista. Os blocos por pessoa somem, então o que a operação
+              precisa para reservar tem que aparecer aqui. */}
+          {s.hosp_qtd_quartos != null && (
+            <Card titulo="Hospedagem a reservar">
+              <dl className="divide-y divide-neutral-100 text-sm">
+                <L t="Quartos">
+                  <span className="text-base font-bold text-neutral-900">
+                    {s.hosp_qtd_quartos}
+                  </span>{' '}
+                  {tipoQuartoLabel(s.hosp_tipo_quarto).toLowerCase()}
+                </L>
+                <L t="Alimentação">{alimentacaoLabel(s.hosp_alimentacao)}</L>
+                <L t="Período">
+                  {dataBR(s.data_entrada)} a {dataBR(s.data_saida)}
+                </L>
+                {s.hosp_externa_obs && (
+                  <L t="Observações">
+                    <span className="whitespace-pre-wrap">{s.hosp_externa_obs}</span>
+                  </L>
+                )}
+              </dl>
+            </Card>
+          )}
+
+          {s.colaboradores.length === 0 && (
+            <Card>
+              <p className="text-sm text-neutral-700">
+                Esta solicitação chegou <strong>sem a lista de passageiros</strong> — é o
+                combinado quando a operação reserva fora do hotel do pax, porque a
+                empresa de ônibus manda os dados depois.
+              </p>
+              <p className="mt-1.5 text-sm text-neutral-600">
+                Reserve pelos dados acima. Quando a lista chegar, os nomes entram aqui.
+              </p>
+            </Card>
+          )}
+
           {s.colaboradores.map((c, idx) => (
             <Card
               key={c.id}
