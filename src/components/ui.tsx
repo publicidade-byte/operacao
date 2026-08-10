@@ -273,11 +273,16 @@ export function Vazio({
 }
 
 /** Marca d'água textual usada nos cabeçalhos. */
+/**
+ * Cypher é o nome do PORTAL. "Forma 9" continua sendo o nome da operação —
+ * por isso ele segue aparecendo nos destinos, nos e-mails e no Slack, onde
+ * se fala do evento, não do sistema.
+ */
 export function Marca({ sub }: { sub?: string }) {
   return (
     <div className="flex items-baseline gap-2">
       <span className="relative text-sm font-black uppercase tracking-tight text-neutral-900">
-        Forma 9
+        Cypher
         <span className="absolute inset-x-0 -bottom-0.5 h-1 bg-marca-400" />
       </span>
       {sub && <span className="text-xs text-neutral-500">{sub}</span>}

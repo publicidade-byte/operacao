@@ -507,7 +507,7 @@ export default function Detalhe() {
                 )
               }
             >
-              Marcar como concluída
+              Concluir sem avisar
             </Botao>
           )}
           {s.status === 'APROVADA' && (
@@ -538,7 +538,7 @@ export default function Detalhe() {
               }}
               carregando={salvando}
             >
-              Concluir e enviar confirmação
+              Concluir e enviar confirmação ao solicitante
             </Botao>
           )}
           {s.status === 'CONCLUIDA' && (
