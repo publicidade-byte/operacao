@@ -176,7 +176,7 @@ Adicione:
 
 | Nome | Valor | Obrigatório agora? |
 |---|---|---|
-| `SITE_URL` | `https://seu-dominio.com.br` (sem barra no final) | Sim |
+| `SITE_URL` | `https://cypher.matrixforma.com.br` (sem barra no final) | Sim |
 | `RESEND_API_KEY` | chave do Resend (parte 3) | Depois |
 | `EMAIL_FROM` | `Forma 9 <viagens@seudominio.com.br>` | Depois |
 | `EMAIL_OPERACAO` | e-mail do time operacional | Depois |

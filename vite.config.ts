@@ -7,21 +7,21 @@ import tailwindcss from '@tailwindcss/vite'
 //
 // Depende de ONDE o site é servido, não do código:
 //
-//   GitHub Pages sem domínio → https://publicidade-byte.github.io/operacao/
-//                              o site vive dentro de /operacao/, então BASE
-//                              precisa ser '/operacao/'.
+//   Domínio próprio (cypher.matrixforma.com.br) → o site vive na raiz, então
+//                              BASE é '/'. É onde ele está, por isso é o padrão.
 //
-//   Cloudflare Pages, Netlify, Vercel ou domínio próprio → o site vive na
-//                              raiz, então BASE é '/'.
+//   GitHub Pages sem domínio → https://publicidade-byte.github.io/operacao/
+//                              ali o site viveria dentro de /operacao/, e BASE
+//                              precisaria ser '/operacao/'. Só vale para
+//                              publicar num fork sem domínio.
 //
 // Por isso vem de variável de ambiente: o mesmo commit publica nos dois
-// lugares sem precisar de edição. O padrão continua sendo o Pages, para não
-// mudar o que já está no ar.
+// lugares sem precisar de edição.
 //
 // O roteamento se ajusta sozinho — o BrowserRouter usa import.meta.env.BASE_URL
 // como basename.
 // ---------------------------------------------------------------------------
-const BASE = process.env.VITE_BASE ?? '/operacao/'
+const BASE = process.env.VITE_BASE ?? '/'
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
