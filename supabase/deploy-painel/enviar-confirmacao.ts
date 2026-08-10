@@ -348,7 +348,10 @@ Deno.serve(async (req) => {
     // dados é o solicitante, e o Slack não chega nele.
     if (!envio.enviado)
       return erro(
-        `A viagem está confirmada no sistema, mas o e-mail não foi enviado: ${envio.motivo}. Avise ${s.solicitante_email} por outro canal.`,
+        // O motivo já vem com pontuação própria — sem isto sai ".." no meio.
+        `A viagem está confirmada no sistema, mas o e-mail não foi enviado: ` +
+          `${(envio.motivo ?? '').replace(/\.\s*$/, '')}. ` +
+          `Avise ${s.solicitante_email} por outro canal.`,
         502,
       )
 
