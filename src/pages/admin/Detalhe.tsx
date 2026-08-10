@@ -61,6 +61,37 @@ type CarroPedido = {
   ordem: number
 }
 
+/** O que a `enviar-confirmacao` devolve: um resultado por canal. */
+type Confirmacao = {
+  destinatario?: string
+  email?: string
+  slack_solicitante?: string
+  canal_operacao?: string
+}
+
+/**
+ * Diz por onde o solicitante foi avisado — e por onde não foi.
+ *
+ * Sem isto, a tela dizia "confirmação enviada" mesmo quando só um dos
+ * canais tinha funcionado, e a operação não sabia se precisava correr
+ * atrás por fora.
+ */
+function resumoEnvio(r: Confirmacao, email: string) {
+  const ok: string[] = []
+  const falhou: string[] = []
+  ;(r.email === 'enviado' ? ok : falhou).push(`e-mail (${email})`)
+  ;(r.slack_solicitante?.startsWith('enviado') ? ok : falhou).push('Slack')
+
+  const partes = [`${r.destinatario ?? email} avisado por ${ok.join(' e ')}.`]
+  if (falhou.length)
+    partes.push(
+      `Não saiu por ${falhou.join(' e ')}: ${
+        falhou[0].startsWith('e-mail') ? r.email : r.slack_solicitante
+      }`,
+    )
+  return partes.join(' ')
+}
+
 /** "14:00:00" → "14h00". Vazio vira string vazia, não "—" solto na frase. */
 const hora = (h?: string | null) => (h ? ` ${h.slice(0, 5).replace(':', 'h')}` : '')
 
@@ -519,18 +550,14 @@ export default function Detalhe() {
                 // operação precisa saber para avisar por outro canal.
                 await mudarStatus('CONCLUIDA', 'Solicitação concluída')
                 try {
-                  const r = await invocar<{ destinatario?: string }>(
-                    'enviar-confirmacao',
-                    { solicitacao_id: s.id },
-                  )
-                  setMsg({
-                    tom: 'sucesso',
-                    texto: `Confirmação enviada para ${r.destinatario ?? s.solicitante_email}.`,
+                  const r = await invocar<Confirmacao>('enviar-confirmacao', {
+                    solicitacao_id: s.id,
                   })
+                  setMsg({ tom: 'sucesso', texto: resumoEnvio(r, s.solicitante_email) })
                 } catch (e) {
                   setMsg({
                     tom: 'erro',
-                    texto: e instanceof Error ? e.message : 'Falha ao enviar e-mail',
+                    texto: e instanceof Error ? e.message : 'Falha ao avisar o solicitante',
                   })
                 } finally {
                   setSalvando(false)
@@ -548,25 +575,21 @@ export default function Detalhe() {
               onClick={async () => {
                 setSalvando(true)
                 try {
-                  const r = await invocar<{ destinatario?: string }>(
-                    'enviar-confirmacao',
-                    { solicitacao_id: s.id },
-                  )
-                  setMsg({
-                    tom: 'sucesso',
-                    texto: `Confirmação reenviada para ${r.destinatario ?? s.solicitante_email}.`,
+                  const r = await invocar<Confirmacao>('enviar-confirmacao', {
+                    solicitacao_id: s.id,
                   })
+                  setMsg({ tom: 'sucesso', texto: resumoEnvio(r, s.solicitante_email) })
                 } catch (e) {
                   setMsg({
                     tom: 'erro',
-                    texto: e instanceof Error ? e.message : 'Falha ao enviar e-mail',
+                    texto: e instanceof Error ? e.message : 'Falha ao avisar o solicitante',
                   })
                 } finally {
                   setSalvando(false)
                 }
               }}
             >
-              Reenviar confirmação por e-mail
+              Reenviar confirmação ao solicitante
             </Botao>
           )}
           {s.status === 'REPROVADA' && (

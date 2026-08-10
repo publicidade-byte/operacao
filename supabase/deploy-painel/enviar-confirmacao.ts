@@ -180,6 +180,58 @@ async function avisarCanal(texto: string) {
   }
 }
 
+/**
+ * Manda a confirmação no Slack do próprio solicitante.
+ *
+ * Quem pede pelo formulário está no mesmo workspace, então dá para achar a
+ * pessoa pelo e-mail que ela informou e mandar direto no privado. Isso não
+ * substitui o e-mail — mas enquanto o domínio não estiver verificado no
+ * provedor, é o único caminho que chega em quem pediu.
+ *
+ * `users.lookupByEmail` exige o escopo users:read.email no app do Slack.
+ * Sem ele a resposta é `missing_scope`, e a mensagem diz isso por extenso
+ * em vez de "não enviado" seco.
+ */
+async function dmSolicitante(email: string, texto: string) {
+  const token = Deno.env.get('SLACK_BOT_TOKEN')
+  if (!token) return { enviado: false, motivo: 'Slack não configurado' }
+
+  try {
+    const busca = await fetch(
+      `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    )
+    const achado = await busca.json()
+
+    if (!achado.ok) {
+      if (achado.error === 'users_not_found')
+        return { enviado: false, motivo: `${email} não tem conta neste Slack` }
+      if (achado.error === 'missing_scope')
+        return {
+          enviado: false,
+          motivo:
+            'falta o escopo users:read.email no app do Slack — sem ele não dá para achar a pessoa pelo e-mail',
+        }
+      return { enviado: false, motivo: `Slack: ${achado.error}` }
+    }
+
+    const envio = await fetch('https://slack.com/api/chat.postMessage', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      },
+      body: JSON.stringify({ channel: achado.user.id, text: texto, unfurl_links: false }),
+    })
+    const r = await envio.json()
+    return r.ok
+      ? { enviado: true, para: achado.user.name as string }
+      : { enviado: false, motivo: `Slack recusou a mensagem: ${r.error}` }
+  } catch (e) {
+    return { enviado: false, motivo: e instanceof Error ? e.message : 'falha no Slack' }
+  }
+}
+
 const QUARTO: Record<string, string> = {
   SINGLE: 'Single',
   DUPLO: 'Duplo',
@@ -310,15 +362,60 @@ Deno.serve(async (req) => {
 
     corpo += `<p style="margin-top:24px">Dúvidas? Responda este e-mail ou fale com a equipe operacional.</p>`
 
-    // Os dois canais saem juntos e um não depende do outro: e-mail para o
-    // solicitante, Slack para a equipe. Se um falhar, o outro já foi.
+    // Versões de uma linha para o Slack — o e-mail já leva o detalhe todo.
+    const resumoVoos = (voos ?? [])
+      .map(
+        (v) =>
+          `${v.trecho === 'IDA' ? 'ida' : 'volta'} ${dataHoraBR(v.partida)}` +
+          `${v.companhia ? ` ${v.companhia}` : ''}${v.numero_voo ? ` ${v.numero_voo}` : ''}` +
+          `${v.localizador ? ` (loc. ${v.localizador})` : ''}`,
+      )
+      .join(' · ')
+
+    const resumoHosp = [
+      ...new Set(
+        (hosp ?? [])
+          .map((h) => h.hotel_hospedagem || h.hotel)
+          .filter((x): x is string => !!x),
+      ),
+    ].join(' · ')
+
+    const resumoCarro = carro?.locadora
+      ? `${carro.locadora}${carro.retirada_em ? ` · retirada ${dataHoraBR(carro.retirada_em)}` : ''}`
+      : ''
+
+    // Três canais, todos em paralelo e independentes: e-mail e Slack para
+    // quem pediu, e o canal da operação para a equipe. Um falhar não impede
+    // os outros — e é justamente por isso que existe mais de um.
     const site = Deno.env.get('SITE_URL') ?? ''
-    const [envio, aviso] = await Promise.all([
+
+    // Resumo curto para o Slack de quem pediu. O e-mail leva tudo; aqui vai
+    // o essencial e o link, que é o que se olha no celular.
+    const resumoSolicitante = [
+      `:white_check_mark: *Sua viagem está confirmada — ${s.protocolo}*`,
+      '',
+      `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel}`,
+      `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
+      `*Pessoas:* ${colabs.map((c: { nome_completo: string }) => c.nome_completo).join(', ')}`,
+      resumoVoos ? `*Voos:* ${resumoVoos}` : '',
+      resumoHosp ? `*Hospedagem:* ${resumoHosp}` : '',
+      resumoCarro ? `*Carro:* ${resumoCarro}` : '',
+      '',
+      site
+        ? `:mag: <${site}/s/${s.token_acompanhamento}|Ver todos os detalhes>`
+        : '',
+      `Dúvidas? Fale com a equipe operacional.`,
+    ]
+      .filter(Boolean)
+      .join('\n')
+
+    const [envio, dm, aviso] = await Promise.all([
       enviarEmail(
         s.solicitante_email,
         `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
         layoutEmail('Viagem confirmada', corpo),
       ),
+      dmSolicitante(s.solicitante_email, resumoSolicitante),
       avisarCanal(
         [
           `:white_check_mark: *${s.protocolo} confirmada*`,
@@ -340,17 +437,21 @@ Deno.serve(async (req) => {
         envio.enviado
           ? `E-mail enviado para ${s.solicitante_email}`
           : `E-mail NÃO enviado para ${s.solicitante_email}: ${envio.motivo}`,
-        aviso.enviado ? 'Slack avisado' : `Slack NÃO avisado: ${aviso.motivo}`,
+        dm.enviado
+          ? `Slack do solicitante avisado (@${(dm as { para?: string }).para ?? '?'})`
+          : `Slack do solicitante NÃO avisado: ${dm.motivo}`,
+        aviso.enviado ? 'Canal da operação avisado' : `Canal NÃO avisado: ${aviso.motivo}`,
       ].join(' · '),
     })
 
-    // Não damos ok silencioso quando o e-mail não saiu: quem precisa dos
-    // dados é o solicitante, e o Slack não chega nele.
-    if (!envio.enviado)
+    // Só é falha quando o solicitante NÃO foi avisado por nenhum caminho.
+    // Se o e-mail não saiu mas o Slack dele chegou, a informação chegou —
+    // dizer "erro" aqui faria a operação correr atrás à toa.
+    const limpar = (m?: string) => (m ?? '').replace(/\.\s*$/, '')
+    if (!envio.enviado && !dm.enviado)
       return erro(
-        // O motivo já vem com pontuação própria — sem isto sai ".." no meio.
-        `A viagem está confirmada no sistema, mas o e-mail não foi enviado: ` +
-          `${(envio.motivo ?? '').replace(/\.\s*$/, '')}. ` +
+        `A viagem está confirmada no sistema, mas ${s.solicitante_nome} não foi avisado. ` +
+          `E-mail: ${limpar(envio.motivo)}. Slack: ${limpar(dm.motivo)}. ` +
           `Avise ${s.solicitante_email} por outro canal.`,
         502,
       )
@@ -358,7 +459,11 @@ Deno.serve(async (req) => {
     return json({
       ok: true,
       destinatario: s.solicitante_email,
-      slack: aviso.enviado ? 'avisado' : aviso.motivo,
+      email: envio.enviado ? 'enviado' : envio.motivo,
+      slack_solicitante: dm.enviado
+        ? `enviado para @${(dm as { para?: string }).para ?? s.solicitante_email}`
+        : dm.motivo,
+      canal_operacao: aviso.enviado ? 'avisado' : aviso.motivo,
     })
   } catch (e) {
     console.error(e)
