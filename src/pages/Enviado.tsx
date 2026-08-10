@@ -13,6 +13,11 @@ export default function Enviado() {
     ? `${window.location.origin}${import.meta.env.BASE_URL}s/${token}`
     : null
 
+  // Painel público de consulta. Montado a partir da URL do próprio site em
+  // vez de fixo no código: continua certo em produção, em teste local e no
+  // dia em que o domínio próprio entrar.
+  const linkConsulta = `${window.location.origin}${import.meta.env.BASE_URL}consulta`
+
   return (
     <div className="mx-auto max-w-2xl px-4 py-12">
       <div className="mb-6 text-center">
@@ -66,7 +71,20 @@ export default function Enviado() {
             <ol className="mt-2 ml-4 list-decimal space-y-1 text-neutral-600">
               <li>A operação cota voos, hospedagem e locação.</li>
               <li>A solicitação vai para aprovação do diretor que você escolheu.</li>
-              <li>Aprovada, você recebe por e-mail todos os dados da viagem.</li>
+              <li>
+                Acompanhe a sua solicitação através do link:{' '}
+                {/* Montado a partir da própria URL do site: assim continua
+                    certo em produção, em teste local e no dia em que o
+                    domínio próprio for configurado. */}
+                <a
+                  href={linkConsulta}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="break-all font-medium text-neutral-800 underline decoration-marca-400 decoration-2 underline-offset-2"
+                >
+                  {linkConsulta}
+                </a>
+              </li>
             </ol>
           </Aviso>
         </div>
