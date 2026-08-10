@@ -2268,15 +2268,22 @@ export default function Solicitar() {
           icone={<span aria-hidden>🐇</span>}
         >
           <p>
-            No universo <strong className="text-white">Matrix</strong>, o cypher é o
-            código — aquela chuva de caracteres verdes que, para quem não foi treinado,
-            é só ruído. Para quem aprende a ler, é o mundo inteiro descrito em ordem.
+            No <strong className="text-white">Matrix</strong>,{' '}
+            <strong className="text-white">Cypher</strong> é o operador da
+            Nebuchadnezzar: o cara que fica atrás dos monitores, lendo aquela chuva de
+            código verde. Enquanto a tripulação está em campo, é ele quem enxerga o
+            todo, avisa o que vem pela frente e mostra a saída.
+          </p>
+          <p>
+            Ele conhece tanto aquilo que nem vê mais os símbolos —{' '}
+            <em>“já não vejo o código, só vejo loira, morena, ruiva”</em>. O que para os
+            outros é ruído, para ele já virou informação.
           </p>
           <p>
             Aqui na Forma, o <strong className="text-white">Cypher</strong> faz esse
-            trabalho: transforma pedidos soltos — um voo aqui, um hotel ali, um carro no
-            grupo do WhatsApp — em solicitações organizadas, com protocolo, responsável
-            e prazo.
+            papel: fica atrás da tela lendo o que chega solto — um voo aqui, um hotel
+            ali, um carro pedido no grupo do WhatsApp — e devolve isso organizado, com
+            protocolo, responsável e prazo. Você pede; ele mostra o caminho.
           </p>
           <p className="text-white">Neste formulário você vai:</p>
           <ul className="ml-4 list-disc space-y-1">
