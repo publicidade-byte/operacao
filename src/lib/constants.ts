@@ -192,7 +192,7 @@ export const SERVICOS = [
   {
     value: 'HOSPEDAGEM',
     label: 'Solicitação de hospedagem',
-    descricao: 'Reserva de hotel para o período informado acima',
+    descricao: 'Reserva de hotel para o período da operação',
   },
   {
     value: 'CARRO',

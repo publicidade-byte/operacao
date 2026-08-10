@@ -138,7 +138,12 @@ const VAZIO: Form = {
   consentimento: false,
 }
 
-const PASSOS = ['Destino', 'Serviços', 'Equipe', 'Solicitante', 'Revisão']
+// Serviços vem antes do destino de propósito: muita gente entra aqui só
+// para pedir um carro, que está vinculado à operação mas não à hospedagem.
+// Perguntar "o que você precisa?" antes de "para qual operação?" deixa o
+// resto do formulário se ajustar — inclusive a pergunta de hospedagem, que
+// só faz sentido para quem pediu hospedagem.
+const PASSOS = ['Serviços', 'Destino', 'Equipe', 'Solicitante', 'Revisão']
 const RASCUNHO = 'f9:rascunho'
 
 type Erros = Record<string, string>
@@ -146,6 +151,18 @@ type Erros = Record<string, string>
 export default function Solicitar() {
   const navigate = useNavigate()
   const [passo, setPasso] = useState(0)
+
+  /**
+   * Últimas datas que NÓS preenchemos automaticamente a partir da operação.
+   * Serve para distinguir "campo intocado" de "campo que a pessoa digitou":
+   * o primeiro pode ser atualizado quando ela troca de operação, o segundo não.
+   */
+  const auto = useRef<{
+    voo_ida?: string
+    voo_volta?: string
+    retirada?: string
+    devolucao?: string
+  }>({})
   const [form, setForm] = useState<Form>(() => {
     try {
       const salvo = localStorage.getItem(RASCUNHO)
@@ -284,23 +301,34 @@ export default function Solicitar() {
         .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio))
       const entrada = sel[0]?.data_inicio ?? ''
       const saida = sel[sel.length - 1]?.data_fim ?? ''
-      return {
+      // Com serviços vindo antes do destino, voo e carro podem já ter data
+      // digitada quando a operação é escolhida. Só sobrescrevemos o que
+      // ainda está vazio ou o que fomos nós que preenchemos — o que a
+      // pessoa digitou fica.
+      const nosso = auto.current
+      const manter = (atual: string, anterior: string | undefined, novo: string) =>
+        !atual || atual === anterior ? novo : atual
+
+      const novoForm = {
         ...f,
         edicao_ids: ids,
         data_entrada: entrada,
         data_saida: saida,
-        // As datas do voo acompanham a estadia; o solicitante ajusta se
-        // precisar chegar antes ou voltar depois.
-        voo_data_ida: entrada,
-        voo_data_volta: saida,
-        // O carro segue a mesma lógica: por padrão pega na chegada e
-        // devolve na saída.
+        voo_data_ida: manter(f.voo_data_ida, nosso.voo_ida, entrada),
+        voo_data_volta: manter(f.voo_data_volta, nosso.voo_volta, saida),
         carros: f.carros.map((c) => ({
           ...c,
-          retirada_data: entrada,
-          devolucao_data: saida,
+          retirada_data: manter(c.retirada_data, nosso.retirada, entrada),
+          devolucao_data: manter(c.devolucao_data, nosso.devolucao, saida),
         })),
       }
+      auto.current = {
+        voo_ida: entrada,
+        voo_volta: saida,
+        retirada: entrada,
+        devolucao: saida,
+      }
+      return novoForm
     })
     setErros((e) => ({ ...e, edicao_ids: '', data_entrada: '', data_saida: '' }))
   }
@@ -332,6 +360,34 @@ export default function Solicitar() {
   /** Linha de colaborador em branco — ignorada quando a lista é opcional. */
   const colabVazio = (c: ColabForm) =>
     !c.nome_completo.trim() && !c.cpf.trim() && !c.data_nascimento
+
+  /**
+   * Pedido só de carro: quem viaja são os condutores.
+   *
+   * Nome, CPF e nascimento já foram digitados no bloco do carro — pedir de
+   * novo no passo da equipe é a mesma informação duas vezes, e abre espaço
+   * para digitar diferente nos dois lugares. Vale só quando CARRO é o único
+   * serviço: com aéreo ou hospedagem junto, pode viajar gente que não dirige.
+   */
+  const soCarro = form.servicos.length === 1 && form.servicos[0] === 'CARRO'
+
+  /** Condutores viram colaboradores, sem repetir quem dirige dois carros. */
+  const colaboradoresDosCondutores = () => {
+    const vistos = new Set<string>()
+    return form.carros
+      .filter((c) => {
+        const cpf = soDigitos(c.cpf)
+        if (!cpf || vistos.has(cpf)) return false
+        vistos.add(cpf)
+        return true
+      })
+      .map((c, i) => ({
+        nome_completo: c.nome.trim(),
+        cpf: soDigitos(c.cpf),
+        data_nascimento: c.nascimento,
+        ordem: i + 1,
+      }))
+  }
 
   const setCarro = (i: number, k: keyof CarroForm, v: string) => {
     setForm((f) => {
@@ -378,7 +434,8 @@ export default function Solicitar() {
 
   function validar(p: number): Erros {
     const e: Erros = {}
-    if (p === 0) {
+    // p === 1 é o destino: serviços passaram a vir primeiro.
+    if (p === 1) {
       if (!form.destino) e.destino = 'Selecione o destino.'
       else if (form.edicao_ids.length === 0)
         e.edicao_ids = 'Selecione ao menos uma data da operação.'
@@ -386,8 +443,10 @@ export default function Solicitar() {
       if (!form.data_saida) e.data_saida = 'Informe a data de saída.'
       if (form.data_entrada && form.data_saida && form.data_saida <= form.data_entrada)
         e.data_saida = 'A saída precisa ser depois da entrada.'
-      if (!form.tipo_hospedagem) e.tipo_hospedagem = 'Selecione o tipo de hospedagem.'
-      if (form.tipo_hospedagem === 'FORA_HOTEL_PAX') {
+      // Só cobra hospedagem de quem pediu hospedagem.
+      if (form.servicos.includes('HOSPEDAGEM') && !form.tipo_hospedagem)
+        e.tipo_hospedagem = 'Selecione o tipo de hospedagem.'
+      if (form.servicos.includes('HOSPEDAGEM') && form.tipo_hospedagem === 'FORA_HOTEL_PAX') {
         if (!form.hosp_externa_operacao)
           e.hosp_externa_operacao = 'Informe se a operação precisa reservar.'
         if (form.hosp_externa_operacao === 'SIM' && !form.hosp_externa_obs.trim())
@@ -403,7 +462,7 @@ export default function Solicitar() {
         }
       }
     }
-    if (p === 1) {
+    if (p === 0) {
       if (form.servicos.length === 0)
         e.servicos = 'Selecione ao menos um serviço.'
 
@@ -496,8 +555,9 @@ export default function Solicitar() {
       if (!form.equipe) e.equipe = 'Selecione a equipe.'
       if (form.equipe === 'OUTROS' && !form.equipe_outro.trim())
         e.equipe_outro = 'Informe qual é a sua área ou departamento.'
+      // Só carro: os condutores são as pessoas, já validadas no passo 1.
       const cpfs = new Set<string>()
-      form.colaboradores.forEach((c, i) => {
+      if (!soCarro) form.colaboradores.forEach((c, i) => {
         // Reserva por quarto: linha em branco é aceita (a lista vem depois).
         // Mas linha PELA METADE não passa — dado incompleto é pior que
         // dado nenhum, porque parece preenchido.
@@ -571,7 +631,10 @@ export default function Solicitar() {
           solicitante_whatsapp: soDigitos(form.solicitante_whatsapp),
           data_entrada: form.data_entrada,
           data_saida: form.data_saida,
-          tipo_hospedagem: form.tipo_hospedagem,
+          // A coluna não aceita nulo. Quem não pediu hospedagem não respondeu
+          // a pergunta — mandamos o padrão, que não é usado em lugar nenhum
+          // quando HOSPEDAGEM não está entre os serviços.
+          tipo_hospedagem: form.tipo_hospedagem || 'HOTEL_PAX',
           servicos: form.servicos,
           hosp_externa_operacao:
             form.tipo_hospedagem === 'FORA_HOTEL_PAX'
@@ -651,16 +714,19 @@ export default function Solicitar() {
           obs_locacao_carro: form.servicos.includes('CARRO')
             ? form.obs_locacao_carro.trim()
             : null,
-          // Linhas em branco não viram colaborador: na reserva por quarto
-          // elas são o caso normal (a lista de passageiros vem depois).
-          colaboradores: form.colaboradores
-            .filter((c) => !colabVazio(c))
-            .map((c, i) => ({
-              nome_completo: c.nome_completo.trim(),
-              cpf: soDigitos(c.cpf),
-              data_nascimento: c.data_nascimento,
-              ordem: i + 1,
-            })),
+          // Só carro: os condutores são as pessoas da viagem.
+          // Senão: linhas em branco não viram colaborador — na reserva por
+          // quarto elas são o caso normal (a lista de passageiros vem depois).
+          colaboradores: soCarro
+            ? colaboradoresDosCondutores()
+            : form.colaboradores
+                .filter((c) => !colabVazio(c))
+                .map((c, i) => ({
+                  nome_completo: c.nome_completo.trim(),
+                  cpf: soDigitos(c.cpf),
+                  data_nascimento: c.data_nascimento,
+                  ordem: i + 1,
+                })),
         },
       )
       localStorage.removeItem(RASCUNHO)
@@ -778,8 +844,8 @@ export default function Solicitar() {
         </nav>
 
         <div className="space-y-5">
-          {/* ---------------- PASSO 1: DESTINO ---------------- */}
-          {passo === 0 && (
+          {/* ---------------- PASSO 2: DESTINO ---------------- */}
+          {passo === 1 && (
             <>
               <Card
                 titulo="1. Para qual destino?"
@@ -968,6 +1034,10 @@ export default function Solicitar() {
                                   </Campo>
                                 </div>
 
+                                {/* Só para quem pediu hospedagem: quem entra
+                                    aqui só para alugar carro não tem o que
+                                    responder. */}
+                                {form.servicos.includes('HOSPEDAGEM') && (
                                 <div className="mt-4">
                                   <Campo
                                     label="Onde será a hospedagem?"
@@ -993,11 +1063,13 @@ export default function Solicitar() {
                                     />
                                   </Campo>
                                 </div>
+                                )}
 
                                 {/* Fora do hotel do pax pode ser reserva da
                                     operação ou por conta própria — muda quem
                                     faz o trabalho e quem paga. */}
-                                {form.tipo_hospedagem === 'FORA_HOTEL_PAX' && (
+                                {form.servicos.includes('HOSPEDAGEM') &&
+                                  form.tipo_hospedagem === 'FORA_HOTEL_PAX' && (
                                   <div className="mt-4">
                                     <Campo
                                       label="A operação precisa reservar essa hospedagem?"
@@ -1131,8 +1203,8 @@ export default function Solicitar() {
             </>
           )}
 
-          {/* ---------------- PASSO 2: SERVIÇOS ---------------- */}
-          {passo === 1 && (
+          {/* ---------------- PASSO 1: SERVIÇOS ---------------- */}
+          {passo === 0 && (
             <>
               <Card
                 titulo="O que você deseja solicitar?"
@@ -1750,7 +1822,34 @@ export default function Solicitar() {
                 )}
               </Card>
 
-              {reservaPorQuarto && (
+              {soCarro && (
+                <Card titulo="Quem vai viajar">
+                  <p className="text-sm text-neutral-700">
+                    Como o pedido é só de aluguel de carro, quem viaja são os
+                    condutores que você já informou. Não precisa digitar de novo.
+                  </p>
+                  <ul className="mt-2 space-y-1.5 text-sm">
+                    {form.carros.map((c, i) => (
+                      <li key={i} className="text-neutral-700">
+                        <span className="font-medium">{c.nome || '—'}</span>
+                        <span className="block text-xs text-neutral-500">
+                          CPF {c.cpf || '—'} · nascimento{' '}
+                          {c.nascimento ? dataBR(c.nascimento) : '—'}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  <button
+                    type="button"
+                    onClick={() => setPasso(0)}
+                    className="mt-2 text-xs font-semibold text-neutral-700 underline decoration-marca-400 decoration-2 underline-offset-2"
+                  >
+                    Alterar os condutores
+                  </button>
+                </Card>
+              )}
+
+              {reservaPorQuarto && !soCarro && (
                 <Card>
                   <p className="text-sm text-neutral-700">
                     Você pediu <strong>{form.hosp_qtd_quartos || '—'}</strong>{' '}
@@ -1767,7 +1866,7 @@ export default function Solicitar() {
                 </Card>
               )}
 
-              {form.colaboradores.map((c, i) => (
+              {!soCarro && form.colaboradores.map((c, i) => (
                 <Card
                   key={i}
                   titulo={`Colaborador ${i + 1}${c.nome_completo ? ` — ${c.nome_completo}` : ''}${
@@ -1827,18 +1926,20 @@ export default function Solicitar() {
                 </Card>
               ))}
 
-              <Botao
-                variante="secundario"
-                className="w-full border-dashed"
-                onClick={() =>
-                  set('colaboradores', [
-                    ...form.colaboradores,
-                    { nome_completo: '', cpf: '', data_nascimento: '' },
-                  ])
-                }
-              >
-                + Adicionar novo colaborador
-              </Botao>
+              {!soCarro && (
+                <Botao
+                  variante="secundario"
+                  className="w-full border-dashed"
+                  onClick={() =>
+                    set('colaboradores', [
+                      ...form.colaboradores,
+                      { nome_completo: '', cpf: '', data_nascimento: '' },
+                    ])
+                  }
+                >
+                  + Adicionar novo colaborador
+                </Botao>
+              )}
             </>
           )}
 
@@ -1906,7 +2007,7 @@ export default function Solicitar() {
             <>
               <Card titulo="Revise antes de enviar">
                 <dl className="divide-y divide-neutral-100 text-sm">
-                  <Linha rotulo="Destino" onEditar={() => setPasso(0)}>
+                  <Linha rotulo="Destino" onEditar={() => setPasso(1)}>
                     {edicao ? `${edicao.destino} — ${edicao.hotel}` : '—'}
                   </Linha>
                   <Linha
@@ -1915,7 +2016,7 @@ export default function Solicitar() {
                         ? `Operações (${selecionadas.length})`
                         : 'Operação'
                     }
-                    onEditar={() => setPasso(0)}
+                    onEditar={() => setPasso(1)}
                   >
                     <ul className="space-y-0.5">
                       {selecionadas.map((e) => (
@@ -1925,10 +2026,13 @@ export default function Solicitar() {
                       ))}
                     </ul>
                   </Linha>
-                  <Linha rotulo="Sua estadia" onEditar={() => setPasso(0)}>
+                  <Linha rotulo="Sua estadia" onEditar={() => setPasso(1)}>
                     {dataBR(form.data_entrada)} a {dataBR(form.data_saida)}
                   </Linha>
-                  <Linha rotulo="Hospedagem" onEditar={() => setPasso(0)}>
+                  {/* Sem hospedagem pedida não há o que mostrar — a linha
+                      caía no "Fora do hotel do pax" por falta de valor. */}
+                  {form.servicos.includes('HOSPEDAGEM') && (
+                  <Linha rotulo="Hospedagem" onEditar={() => setPasso(1)}>
                     {form.tipo_hospedagem === 'HOTEL_PAX'
                       ? 'Hotel do pax'
                       : 'Fora do hotel do pax'}
@@ -1942,9 +2046,10 @@ export default function Solicitar() {
                       </span>
                     )}
                   </Linha>
+                  )}
                   <Linha
                     rotulo={`Serviços (${form.servicos.length})`}
-                    onEditar={() => setPasso(1)}
+                    onEditar={() => setPasso(0)}
                   >
                     {form.servicos.length === 0 ? (
                       '—'
@@ -1957,7 +2062,7 @@ export default function Solicitar() {
                     )}
                   </Linha>
                   {form.servicos.includes('AEREO') && (
-                    <Linha rotulo="Aéreo" onEditar={() => setPasso(1)}>
+                    <Linha rotulo="Aéreo" onEditar={() => setPasso(0)}>
                       {form.tipo_voo === 'IDA_VOLTA'
                         ? 'Ida e volta'
                         : form.tipo_voo === 'VOLTA'
@@ -1979,7 +2084,7 @@ export default function Solicitar() {
                     </Linha>
                   )}
                   {form.servicos.includes('VAN') && (
-                    <Linha rotulo="Van" onEditar={() => setPasso(1)}>
+                    <Linha rotulo="Van" onEditar={() => setPasso(0)}>
                       Saída de {form.van_local_saida} · {form.van_horario_saida}
                       <br />
                       Destino: {form.van_destino} · {form.van_qtd_passageiros}{' '}
@@ -1989,7 +2094,7 @@ export default function Solicitar() {
                   {form.servicos.includes('CARRO') && (
                     <Linha
                       rotulo={`Carro (${form.carros.length})`}
-                      onEditar={() => setPasso(1)}
+                      onEditar={() => setPasso(0)}
                     >
                       <ul className="space-y-1.5">
                         {form.carros.map((c, i) => (
@@ -2016,7 +2121,7 @@ export default function Solicitar() {
                     </Linha>
                   )}
                   {temTransporte && (
-                    <Linha rotulo="Obs. transporte" onEditar={() => setPasso(1)}>
+                    <Linha rotulo="Obs. transporte" onEditar={() => setPasso(0)}>
                       <span className="whitespace-pre-wrap">{form.obs_transporte}</span>
                     </Linha>
                   )}
@@ -2024,10 +2129,26 @@ export default function Solicitar() {
                     {form.equipe ? equipeLabel(form.equipe, form.equipe_outro) : '—'}
                   </Linha>
                   <Linha
-                    rotulo={`Colaboradores (${form.colaboradores.filter((c) => !colabVazio(c)).length})`}
-                    onEditar={() => setPasso(2)}
+                    rotulo={
+                      soCarro
+                        ? `Quem viaja (${colaboradoresDosCondutores().length})`
+                        : `Colaboradores (${form.colaboradores.filter((c) => !colabVazio(c)).length})`
+                    }
+                    onEditar={() => setPasso(soCarro ? 0 : 2)}
                   >
-                    {form.colaboradores.every((c) => colabVazio(c)) ? (
+                    {soCarro ? (
+                      <ul className="space-y-1.5">
+                        {colaboradoresDosCondutores().map((c, i) => (
+                          <li key={i}>
+                            <span className="block font-medium">{c.nome_completo}</span>
+                            <span className="block text-xs text-neutral-500">
+                              condutor · CPF {c.cpf} · nascimento{' '}
+                              {dataBR(c.data_nascimento)}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : form.colaboradores.every((c) => colabVazio(c)) ? (
                       <span className="text-neutral-600">
                         Nenhum informado — a operação reserva os quartos e completa a
                         lista quando ela chegar.
