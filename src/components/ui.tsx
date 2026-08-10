@@ -1,3 +1,4 @@
+import { useEffect } from 'react'
 import type {
   ButtonHTMLAttributes,
   InputHTMLAttributes,
@@ -273,6 +274,75 @@ export function Vazio({
 }
 
 /** Marca d'água textual usada nos cabeçalhos. */
+/**
+ * Modal escuro, para conteúdo que interrompe a tarefa de propósito.
+ *
+ * Fecha no Esc e no clique fora — quem abriu por curiosidade precisa poder
+ * sair sem procurar botão. O `aria-modal` e o rótulo existem para quem
+ * navega por leitor de tela não ficar preso na página de trás.
+ */
+export function Modal({
+  aberto,
+  aoFechar,
+  titulo,
+  icone,
+  children,
+  rotuloBotao = 'Entendi',
+}: {
+  aberto: boolean
+  aoFechar: () => void
+  titulo: string
+  icone?: ReactNode
+  children: ReactNode
+  rotuloBotao?: string
+}) {
+  useEffect(() => {
+    if (!aberto) return
+    const sair = (e: KeyboardEvent) => e.key === 'Escape' && aoFechar()
+    document.addEventListener('keydown', sair)
+    // Trava a rolagem do fundo enquanto o modal está aberto.
+    const antes = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.removeEventListener('keydown', sair)
+      document.body.style.overflow = antes
+    }
+  }, [aberto, aoFechar])
+
+  if (!aberto) return null
+
+  return (
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4 backdrop-blur-sm"
+      onClick={aoFechar}
+      role="presentation"
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={titulo}
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-md rounded-2xl bg-neutral-900 p-6 text-neutral-300 shadow-2xl sm:p-7"
+      >
+        {icone && (
+          <div className="mb-5 grid size-11 place-items-center rounded-xl bg-marca-400 text-xl">
+            {icone}
+          </div>
+        )}
+        <h2 className="mb-3 text-lg font-bold text-white">{titulo}</h2>
+        <div className="space-y-3 text-sm leading-relaxed">{children}</div>
+        <button
+          type="button"
+          onClick={aoFechar}
+          className="mt-6 w-full rounded-xl bg-marca-400 px-4 py-3 text-sm font-bold text-neutral-900 transition hover:bg-marca-300"
+        >
+          {rotuloBotao}
+        </button>
+      </div>
+    </div>
+  )
+}
+
 /**
  * Cypher é o nome do PORTAL. "Forma 9" continua sendo o nome da operação —
  * por isso ele segue aparecendo nos destinos, nos e-mails e no Slack, onde

@@ -33,6 +33,7 @@ import {
   Card,
   Input,
   Marca,
+  Modal,
   Radios,
   Select,
   Textarea,
@@ -151,6 +152,7 @@ type Erros = Record<string, string>
 export default function Solicitar() {
   const navigate = useNavigate()
   const [passo, setPasso] = useState(0)
+  const [porQueCypher, setPorQueCypher] = useState(false)
 
   /**
    * Últimas datas que NÓS preenchemos automaticamente a partir da operação.
@@ -2244,10 +2246,62 @@ export default function Solicitar() {
         </div>
 
         <footer className="mt-12 border-t border-neutral-200 pt-5 text-center text-xs text-neutral-400">
-          <Link to="/login" className="hover:text-neutral-700">
-            Área restrita — operação e diretoria
-          </Link>
+          <p className="text-neutral-500">Cypher · Forma Turismo</p>
+          <button
+            type="button"
+            onClick={() => setPorQueCypher(true)}
+            className="mt-1 underline decoration-neutral-300 underline-offset-4 transition hover:text-neutral-700"
+          >
+            Por que me chamo Cypher?
+          </button>
+          <p className="mt-4">
+            <Link to="/login" className="hover:text-neutral-700">
+              Área restrita — operação e diretoria
+            </Link>
+          </p>
         </footer>
+
+        <Modal
+          aberto={porQueCypher}
+          aoFechar={() => setPorQueCypher(false)}
+          titulo={'Por que "Cypher"?'}
+          icone={<span aria-hidden>🐇</span>}
+        >
+          <p>
+            No universo <strong className="text-white">Matrix</strong>, o cypher é o
+            código — aquela chuva de caracteres verdes que, para quem não foi treinado,
+            é só ruído. Para quem aprende a ler, é o mundo inteiro descrito em ordem.
+          </p>
+          <p>
+            Aqui na Forma, o <strong className="text-white">Cypher</strong> faz esse
+            trabalho: transforma pedidos soltos — um voo aqui, um hotel ali, um carro no
+            grupo do WhatsApp — em solicitações organizadas, com protocolo, responsável
+            e prazo.
+          </p>
+          <p className="text-white">Neste formulário você vai:</p>
+          <ul className="ml-4 list-disc space-y-1">
+            <li>
+              escolher <strong className="text-white">o que precisa</strong>: aéreo,
+              hospedagem, aluguel de carro, van ou rodoviário
+            </li>
+            <li>
+              dizer <strong className="text-white">para qual operação</strong> e em
+              quais datas
+            </li>
+            <li>
+              informar <strong className="text-white">quem viaja</strong>
+            </li>
+            <li>
+              escolher <strong className="text-white">qual diretor aprova</strong>
+            </li>
+          </ul>
+          <p>
+            Ao enviar, você recebe um protocolo e um link de acompanhamento. A operação
+            cota, o diretor aprova, e você segue tudo pelo mesmo link — sem precisar
+            perguntar a ninguém como está.
+          </p>
+          <p className="pt-1 font-semibold text-marca-400">Bem-vindo ao Cypher.</p>
+        </Modal>
       </div>
     </div>
   )
