@@ -86,11 +86,47 @@ export async function enviarEmail(
     body: JSON.stringify({ from, to: para, subject: assunto, html }),
   })
   if (!res.ok) {
-    const motivo = `Resend recusou o envio: ${await res.text()}`
-    console.error(motivo)
-    return { enviado: false, motivo }
+    const bruto = await res.text()
+    console.error('Resend recusou o envio:', bruto)
+    return { enviado: false, motivo: explicarFalhaEmail(bruto, from) }
   }
   return { enviado: true }
+}
+
+/**
+ * Traduz a recusa do provedor para algo acionável.
+ *
+ * O texto do Resend vem em JSON e em inglês. Jogado direto na tela, quem
+ * opera lê um parágrafo técnico e não descobre o que fazer — e o que fazer
+ * quase nunca é com ela: é configuração de domínio, feita uma vez só.
+ */
+function explicarFalhaEmail(bruto: string, remetente: string) {
+  let msg = bruto
+  try {
+    msg = JSON.parse(bruto)?.message ?? bruto
+  } catch {
+    // resposta não-JSON: fica o texto bruto mesmo
+  }
+
+  if (/domain is not verified/i.test(msg)) {
+    const dominio = msg.match(/The (\S+) domain/i)?.[1] ?? remetente.split('@').pop()
+    return (
+      `o domínio ${dominio} ainda não foi verificado no provedor de e-mail. ` +
+      `Enquanto isso, nenhum e-mail sai para fora. Quem resolve: adicionar o ` +
+      `domínio em resend.com/domains e publicar os registros de DNS que eles indicam.`
+    )
+  }
+
+  if (/only send testing emails to your own email/i.test(msg)) {
+    const dono = msg.match(/\(([^)]+@[^)]+)\)/)?.[1] ?? 'o e-mail dono da conta'
+    return (
+      `a conta de e-mail ainda está em modo de teste: só entrega em ${dono}. ` +
+      `Para enviar a qualquer destinatário é preciso verificar um domínio em ` +
+      `resend.com/domains e usar um remetente desse domínio.`
+    )
+  }
+
+  return `o provedor recusou o envio — ${msg}`
 }
 
 // Amarelo da marca (--color-marca-400) sobre preto. O layout usava azul,
