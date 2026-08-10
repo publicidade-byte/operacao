@@ -12,6 +12,7 @@ export const EQUIPES = [
   { value: 'SEGURANCA', label: 'Segurança' },
   { value: 'SALVA_VIDAS', label: 'Salva-Vidas' },
   { value: 'DJ', label: 'DJ' },
+  { value: 'OPERACIONAL', label: 'Operacional' },
   { value: 'OUTROS', label: 'Outros — informar a área' },
 ] as const
 
