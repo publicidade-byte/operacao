@@ -1,3 +1,8 @@
-# Sistema interno da Forma. Não deve aparecer em buscador nenhum.
+# Sistema interno da Forma Turismo.
+#
+# Não bloqueamos o rastreamento de propósito. O "noindex" que existe na página
+# e no cabeçalho HTTP só é obedecido se o buscador conseguir entrar e lê-lo —
+# um "Disallow" aqui esconderia a instrução, e o endereço poderia acabar
+# listado assim mesmo, sem descrição.
 User-agent: *
-Disallow: /
+Allow: /
