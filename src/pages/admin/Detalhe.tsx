@@ -779,7 +779,7 @@ export default function Detalhe() {
                 <span className="whitespace-pre-wrap">{s.obs_transporte}</span>
               </L>
               {tem(s, 'VAN') && (
-                <L t="Van solicitada">
+                <L t="Van ou ônibus solicitado">
                   Saída de {s.van_local_saida} · {s.van_horario_saida}
                   <br />
                   Destino: {s.van_destino} · {s.van_qtd_passageiros} passageiro(s)
@@ -968,7 +968,7 @@ export default function Detalhe() {
 
           {tem(s, 'VAN') && (
             <Card
-              titulo="Locação de van"
+              titulo="Locação de van ou ônibus"
               descricao={`Pedido: saída de ${s.van_local_saida ?? '—'} · ${s.van_horario_saida ?? '—'} · destino ${s.van_destino ?? '—'} · ${s.van_qtd_passageiros ?? '—'} passageiro(s)`}
             >
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

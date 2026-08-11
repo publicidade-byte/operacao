@@ -1504,7 +1504,7 @@ export default function Solicitar() {
               )}
 
               {form.servicos.includes('VAN') && (
-                <Card titulo="Aluguel de van">
+                <Card titulo="Aluguel de van ou ônibus">
                   <div className="mb-4 rounded-lg bg-red-50 px-3.5 py-3 text-sm font-semibold text-red-800 ring-1 ring-red-200">
                     ⚠ A lista de passageiros precisa ser enviada com até uma semana de
                     antecedência do embarque.
@@ -1554,13 +1554,13 @@ export default function Solicitar() {
                             />
                           </Campo>
                         </div>
-                        <Campo label="Destino da van" erro={erros.van_destino}>
+                        <Campo label="Destino" erro={erros.van_destino}>
                           <Input
                             value={form.van_destino}
                             erro={!!erros.van_destino}
                             maxLength={200}
                             onChange={(e) => set('van_destino', e.target.value)}
-                            placeholder="Para onde a van vai levar o grupo"
+                            placeholder="Para onde o veículo vai levar o grupo"
                           />
                         </Campo>
                       </div>
@@ -1586,7 +1586,7 @@ export default function Solicitar() {
                             erro={!!erros.van_retorno_local}
                             maxLength={200}
                             onChange={(e) => set('van_retorno_local', e.target.value)}
-                            placeholder="De onde a van sai na volta"
+                            placeholder="De onde o veículo sai na volta"
                           />
                         </Campo>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -1608,7 +1608,7 @@ export default function Solicitar() {
                               erro={!!erros.van_retorno_destino}
                               maxLength={200}
                               onChange={(e) => set('van_retorno_destino', e.target.value)}
-                              placeholder="Para onde a van leva na volta"
+                              placeholder="Para onde o veículo leva na volta"
                             />
                           </Campo>
                         </div>
@@ -2177,7 +2177,7 @@ export default function Solicitar() {
                     </Linha>
                   )}
                   {form.servicos.includes('VAN') && (
-                    <Linha rotulo="Van" onEditar={() => setPasso(0)}>
+                    <Linha rotulo="Van ou ônibus" onEditar={() => setPasso(0)}>
                       Saída de {form.van_local_saida} · {form.van_horario_saida}
                       <br />
                       Destino: {form.van_destino} · {form.van_qtd_passageiros}{' '}

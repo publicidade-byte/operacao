@@ -224,7 +224,7 @@ export default function DetalheAprovacao() {
           <Custo rotulo="Rodoviário" valor={totalRodo} />
           <Custo rotulo="Hospedagem" valor={totalHosp} />
           <Custo rotulo="Locação de carro" valor={totalCarro} />
-          <Custo rotulo="Locação de van" valor={totalVan} />
+          <Custo rotulo="Locação de van ou ônibus" valor={totalVan} />
         </div>
       </Card>
 
@@ -290,7 +290,7 @@ export default function DetalheAprovacao() {
               </L>
             )}
             {tem(s, 'VAN') && (
-              <L t="Van">
+              <L t="Van ou ônibus">
                 Saída de {s.van_local_saida ?? '—'} · {s.van_horario_saida ?? '—'} ·
                 destino {s.van_destino ?? '—'} · {s.van_qtd_passageiros ?? '—'}{' '}
                 passageiro(s)

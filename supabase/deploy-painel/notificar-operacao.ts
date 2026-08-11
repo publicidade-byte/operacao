@@ -183,7 +183,7 @@ const linhaEmail = (rotulo: string, valor: string) =>
 const ROTULO: Record<string, string> = {
   AEREO: 'aéreo',
   RODOVIARIO: 'rodoviário',
-  VAN: 'van',
+  VAN: 'van ou ônibus',
   CARRO: 'aluguel de carro',
   HOSPEDAGEM: 'hospedagem',
 }

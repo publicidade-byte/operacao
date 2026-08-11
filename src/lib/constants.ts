@@ -217,8 +217,8 @@ export const SERVICOS = [
   },
   {
     value: 'VAN',
-    label: 'Solicitação de aluguel de van',
-    descricao: 'Van fretada para levar o grupo',
+    label: 'Solicitação de aluguel de van ou ônibus',
+    descricao: 'Van ou ônibus fretado para levar o grupo',
   },
   {
     value: 'RODOVIARIO',

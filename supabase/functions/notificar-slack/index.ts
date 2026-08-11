@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       : s.modal === 'AEREO'
         ? `aéreo ${s.aeroporto_saida} → ${s.aeroporto_chegada}`
         : s.modal === 'VAN'
-          ? `van de ${s.van_local_saida} para ${s.van_destino} (${s.van_qtd_passageiros} pax)`
+          ? `van/ônibus de ${s.van_local_saida} para ${s.van_destino} (${s.van_qtd_passageiros} pax)`
           : 'rodoviário'
 
     const texto = [

@@ -27,7 +27,7 @@ const SERVICO_CURTO: Record<string, string> = {
   AEREO: 'Aéreo',
   HOSPEDAGEM: 'Hospedagem',
   CARRO: 'Carro',
-  VAN: 'Van',
+  VAN: 'Van/Ônibus',
   RODOVIARIO: 'Rodoviário',
 }
 

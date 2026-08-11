@@ -344,7 +344,7 @@ function DetalheConsulta({ dados }: { dados: any }) {
       )}
 
       {dados.van && (dados.van.empresa || dados.van.saida_em) && (
-        <Bloco titulo="Van">
+        <Bloco titulo="Van ou ônibus">
           <p className="text-neutral-700">
             {dados.van.empresa}
             {dados.van.motorista && ` · motorista ${dados.van.motorista}`}
