@@ -9,11 +9,13 @@ import {
   SERVICOS_TRANSPORTE,
   TIPOS_CARRO,
   TIPOS_QUARTO,
+  TIPOS_VEICULO,
   ALIMENTACAO,
   alimentacaoLabel,
   equipeLabel,
   servicoLabel,
   tipoQuartoLabel,
+  tipoVeiculoLabel,
 } from '../lib/constants'
 import {
   cpfValido,
@@ -80,6 +82,8 @@ type Form = {
   van_horario_saida: string
   van_destino: string
   van_qtd_passageiros: string
+  van_tipo_veiculo: string // VAN ou ONIBUS
+  van_qtd_veiculos: string
   obs_transporte: string
   obs_locacao_carro: string
   carros: CarroForm[]
@@ -123,6 +127,8 @@ const VAZIO: Form = {
   van_horario_saida: '',
   van_destino: '',
   van_qtd_passageiros: '',
+  van_tipo_veiculo: '',
+  van_qtd_veiculos: '',
   obs_transporte: '',
   obs_locacao_carro: '',
   carros: [{ nome: '', cpf: '', nascimento: '', transmissao: '', tipo: '', retirada: '', retirada_data: '', retirada_hora: '', devolucao_data: '', devolucao_hora: '' }],
@@ -534,6 +540,11 @@ export default function Solicitar() {
       }
 
       if (form.servicos.includes('VAN')) {
+        if (!form.van_tipo_veiculo)
+          e.van_tipo_veiculo = 'Selecione se é van ou ônibus.'
+        const v = Number(form.van_qtd_veiculos)
+        if (!form.van_qtd_veiculos || !Number.isInteger(v) || v < 1 || v > 50)
+          e.van_qtd_veiculos = 'Informe a quantidade de veículos (1 a 50).'
         if (!form.van_local_saida.trim())
           e.van_local_saida = 'Informe o endereço de saída.'
         if (!form.van_horario_saida.trim())
@@ -756,6 +767,12 @@ export default function Solicitar() {
           van_destino: form.servicos.includes('VAN') ? form.van_destino.trim() : null,
           van_qtd_passageiros: form.servicos.includes('VAN')
             ? Number(form.van_qtd_passageiros)
+            : null,
+          van_tipo_veiculo: form.servicos.includes('VAN')
+            ? form.van_tipo_veiculo
+            : null,
+          van_qtd_veiculos: form.servicos.includes('VAN')
+            ? Number(form.van_qtd_veiculos)
             : null,
           obs_locacao_carro: form.servicos.includes('CARRO')
             ? form.obs_locacao_carro.trim()
@@ -1510,6 +1527,39 @@ export default function Solicitar() {
                     antecedência do embarque.
                   </div>
 
+                  {/* Porte e quantidade descrevem a frota toda, então vêm antes
+                      dos trechos — ida e volta usam os mesmos veículos. */}
+                  <div className="mb-4 grid gap-4 sm:grid-cols-2">
+                    <Campo label="Tipo de transporte" erro={erros.van_tipo_veiculo}>
+                      <Select
+                        value={form.van_tipo_veiculo}
+                        erro={!!erros.van_tipo_veiculo}
+                        onChange={(e) => set('van_tipo_veiculo', e.target.value)}
+                      >
+                        <option value="">Selecione…</option>
+                        {TIPOS_VEICULO.map((t) => (
+                          <option key={t.value} value={t.value}>
+                            {t.label}
+                          </option>
+                        ))}
+                      </Select>
+                    </Campo>
+                    <Campo
+                      label="Quantidade de veículos"
+                      erro={erros.van_qtd_veiculos}
+                      dica="Quantas vans ou ônibus a operação precisa contratar."
+                    >
+                      <Input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={form.van_qtd_veiculos}
+                        erro={!!erros.van_qtd_veiculos}
+                        onChange={(e) => set('van_qtd_veiculos', e.target.value)}
+                      />
+                    </Campo>
+                  </div>
+
                   <div className="space-y-4">
                     <div className="rounded-lg border border-neutral-200 p-3.5">
                       <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -2178,10 +2228,14 @@ export default function Solicitar() {
                   )}
                   {form.servicos.includes('VAN') && (
                     <Linha rotulo="Van ou ônibus" onEditar={() => setPasso(0)}>
+                      {form.van_qtd_veiculos}{' '}
+                      {tipoVeiculoLabel(form.van_tipo_veiculo).toLowerCase()}
+                      {form.van_qtd_veiculos === '1' ? '' : '(s)'} ·{' '}
+                      {form.van_qtd_passageiros} passageiro(s)
+                      <br />
                       Saída de {form.van_local_saida} · {form.van_horario_saida}
                       <br />
-                      Destino: {form.van_destino} · {form.van_qtd_passageiros}{' '}
-                      passageiro(s)
+                      Destino: {form.van_destino}
                     </Linha>
                   )}
                   {form.servicos.includes('CARRO') && (

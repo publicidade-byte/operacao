@@ -94,6 +94,12 @@ Deno.serve(async (req) => {
         n > 60
       )
         return erro('Preencha os dados da van: saída, horário, destino e passageiros.')
+
+      if (!['VAN', 'ONIBUS'].includes(b.van_tipo_veiculo))
+        return erro('Selecione se o fretamento é van ou ônibus.')
+      const veiculos = Number(b.van_qtd_veiculos)
+      if (!Number.isInteger(veiculos) || veiculos < 1 || veiculos > 50)
+        return erro('Informe a quantidade de veículos (1 a 50).')
     }
 
     const carros = Array.isArray(b.carros) ? b.carros : []
@@ -288,6 +294,8 @@ Deno.serve(async (req) => {
         van_local_saida: servicos.includes('VAN') ? b.van_local_saida : null,
         van_horario_saida: servicos.includes('VAN') ? b.van_horario_saida : null,
         van_destino: servicos.includes('VAN') ? b.van_destino : null,
+        van_tipo_veiculo: servicos.includes('VAN') ? b.van_tipo_veiculo : null,
+        van_qtd_veiculos: servicos.includes('VAN') ? Number(b.van_qtd_veiculos) : null,
         van_qtd_passageiros: servicos.includes('VAN')
           ? Number(b.van_qtd_passageiros)
           : null,

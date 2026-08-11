@@ -96,6 +96,15 @@ export const corServico = (v: string) =>
  * costuma demorar (a empresa de ônibus envia depois). Aí o que se reserva é
  * quarto, não pessoa — por isso estes dois campos.
  */
+/** O mesmo serviço atende van e ônibus fretado — muda o porte do veículo. */
+export const TIPOS_VEICULO = [
+  { value: 'VAN', label: 'Van' },
+  { value: 'ONIBUS', label: 'Ônibus' },
+]
+
+export const tipoVeiculoLabel = (v?: string | null) =>
+  TIPOS_VEICULO.find((t) => t.value === v)?.label ?? v ?? '—'
+
 export const TIPOS_QUARTO = [
   { value: 'SINGLE', label: 'Single' },
   { value: 'DUPLO', label: 'Duplo' },

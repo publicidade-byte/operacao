@@ -8,6 +8,7 @@ import {
   equipeLabel,
   servicoCurto,
   tipoQuartoLabel,
+  tipoVeiculoLabel,
   alimentacaoLabel,
 } from '../../lib/constants'
 import { dataBR, dataHoraBR, moeda } from '../../lib/format'
@@ -30,6 +31,8 @@ type Sol = LinhaAprovacao & {
   van_horario_saida: string | null
   van_destino: string | null
   van_qtd_passageiros: number | null
+  van_tipo_veiculo: string | null
+  van_qtd_veiculos: number | null
   rodo_regiao_saida: string | null
   rodo_cidade_estado: string | null
   hosp_externa_obs: string | null
@@ -291,9 +294,13 @@ export default function DetalheAprovacao() {
             )}
             {tem(s, 'VAN') && (
               <L t="Van ou ônibus">
+                {s.van_qtd_veiculos ?? '—'}{' '}
+                {tipoVeiculoLabel(s.van_tipo_veiculo).toLowerCase()}
+                {s.van_qtd_veiculos === 1 ? '' : '(s)'} ·{' '}
+                {s.van_qtd_passageiros ?? '—'} passageiro(s)
+                <br />
                 Saída de {s.van_local_saida ?? '—'} · {s.van_horario_saida ?? '—'} ·
-                destino {s.van_destino ?? '—'} · {s.van_qtd_passageiros ?? '—'}{' '}
-                passageiro(s)
+                destino {s.van_destino ?? '—'}
               </L>
             )}
             <L t="Observações">

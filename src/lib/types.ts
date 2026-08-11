@@ -123,6 +123,8 @@ export type Solicitacao = {
   van_horario_saida: string | null
   van_destino: string | null
   van_qtd_passageiros: number | null
+  van_tipo_veiculo: string | null
+  van_qtd_veiculos: number | null
   hosp_externa_operacao: boolean | null
   hosp_externa_obs: string | null
   centro_custo: string | null

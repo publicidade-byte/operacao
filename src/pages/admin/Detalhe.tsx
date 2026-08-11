@@ -26,6 +26,7 @@ import {
   alimentacaoLabel,
   corServico,
   tipoQuartoLabel,
+  tipoVeiculoLabel,
   equipeLabel,
   nomeDestino,
 } from '../../lib/constants'
@@ -780,9 +781,16 @@ export default function Detalhe() {
               </L>
               {tem(s, 'VAN') && (
                 <L t="Van ou ônibus solicitado">
+                  <span className="font-medium text-neutral-800">
+                    {s.van_qtd_veiculos ?? '—'}{' '}
+                    {tipoVeiculoLabel(s.van_tipo_veiculo).toLowerCase()}
+                    {s.van_qtd_veiculos === 1 ? '' : '(s)'} ·{' '}
+                    {s.van_qtd_passageiros ?? '—'} passageiro(s)
+                  </span>
+                  <br />
                   Saída de {s.van_local_saida} · {s.van_horario_saida}
                   <br />
-                  Destino: {s.van_destino} · {s.van_qtd_passageiros} passageiro(s)
+                  Destino: {s.van_destino}
                 </L>
               )}
               <L t="Locação de carro">
@@ -969,7 +977,14 @@ export default function Detalhe() {
           {tem(s, 'VAN') && (
             <Card
               titulo="Locação de van ou ônibus"
-              descricao={`Pedido: saída de ${s.van_local_saida ?? '—'} · ${s.van_horario_saida ?? '—'} · destino ${s.van_destino ?? '—'} · ${s.van_qtd_passageiros ?? '—'} passageiro(s)`}
+              descricao={
+                `Pedido: ${s.van_qtd_veiculos ?? '—'} ` +
+                `${tipoVeiculoLabel(s.van_tipo_veiculo).toLowerCase()}` +
+                `${s.van_qtd_veiculos === 1 ? '' : '(s)'} para ` +
+                `${s.van_qtd_passageiros ?? '—'} passageiro(s) · ` +
+                `saída de ${s.van_local_saida ?? '—'} às ${s.van_horario_saida ?? '—'} · ` +
+                `destino ${s.van_destino ?? '—'}`
+              }
             >
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Campo label="Empresa / locadora" obrigatorio={false}>
