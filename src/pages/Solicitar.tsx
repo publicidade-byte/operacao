@@ -15,7 +15,7 @@ import {
   equipeLabel,
   servicoLabel,
   tipoQuartoLabel,
-  tipoVeiculoLabel,
+  veiculosTexto,
 } from '../lib/constants'
 import {
   cpfValido,
@@ -2228,9 +2228,7 @@ export default function Solicitar() {
                   )}
                   {form.servicos.includes('VAN') && (
                     <Linha rotulo="Van ou ônibus" onEditar={() => setPasso(0)}>
-                      {form.van_qtd_veiculos}{' '}
-                      {tipoVeiculoLabel(form.van_tipo_veiculo).toLowerCase()}
-                      {form.van_qtd_veiculos === '1' ? '' : '(s)'} ·{' '}
+                      {veiculosTexto(form.van_qtd_veiculos, form.van_tipo_veiculo)} ·{' '}
                       {form.van_qtd_passageiros} passageiro(s)
                       <br />
                       Saída de {form.van_local_saida} · {form.van_horario_saida}

@@ -26,7 +26,7 @@ import {
   alimentacaoLabel,
   corServico,
   tipoQuartoLabel,
-  tipoVeiculoLabel,
+  veiculosTexto,
   equipeLabel,
   nomeDestino,
 } from '../../lib/constants'
@@ -782,9 +782,7 @@ export default function Detalhe() {
               {tem(s, 'VAN') && (
                 <L t="Van ou ônibus solicitado">
                   <span className="font-medium text-neutral-800">
-                    {s.van_qtd_veiculos ?? '—'}{' '}
-                    {tipoVeiculoLabel(s.van_tipo_veiculo).toLowerCase()}
-                    {s.van_qtd_veiculos === 1 ? '' : '(s)'} ·{' '}
+                    {veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} ·{' '}
                     {s.van_qtd_passageiros ?? '—'} passageiro(s)
                   </span>
                   <br />
@@ -978,9 +976,7 @@ export default function Detalhe() {
             <Card
               titulo="Locação de van ou ônibus"
               descricao={
-                `Pedido: ${s.van_qtd_veiculos ?? '—'} ` +
-                `${tipoVeiculoLabel(s.van_tipo_veiculo).toLowerCase()}` +
-                `${s.van_qtd_veiculos === 1 ? '' : '(s)'} para ` +
+                `Pedido: ${veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} para ` +
                 `${s.van_qtd_passageiros ?? '—'} passageiro(s) · ` +
                 `saída de ${s.van_local_saida ?? '—'} às ${s.van_horario_saida ?? '—'} · ` +
                 `destino ${s.van_destino ?? '—'}`

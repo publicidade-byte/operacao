@@ -105,6 +105,20 @@ export const TIPOS_VEICULO = [
 export const tipoVeiculoLabel = (v?: string | null) =>
   TIPOS_VEICULO.find((t) => t.value === v)?.label ?? v ?? '—'
 
+/**
+ * "1 van", "3 vans", "2 ônibus".
+ *
+ * Um "(s)" genérico resolveria a van e estragaria o ônibus, que não muda no
+ * plural — e é justamente o caso mais comum quando se pede mais de um.
+ */
+export function veiculosTexto(qtd?: number | string | null, tipo?: string | null) {
+  const n = Number(qtd)
+  if (!Number.isFinite(n) || n <= 0) return '—'
+  if (tipo === 'ONIBUS') return `${n} ônibus`
+  if (tipo === 'VAN') return `${n} ${n === 1 ? 'van' : 'vans'}`
+  return `${n} veículo${n === 1 ? '' : 's'}`
+}
+
 export const TIPOS_QUARTO = [
   { value: 'SINGLE', label: 'Single' },
   { value: 'DUPLO', label: 'Duplo' },

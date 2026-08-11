@@ -8,7 +8,7 @@ import {
   equipeLabel,
   servicoCurto,
   tipoQuartoLabel,
-  tipoVeiculoLabel,
+  veiculosTexto,
   alimentacaoLabel,
 } from '../../lib/constants'
 import { dataBR, dataHoraBR, moeda } from '../../lib/format'
@@ -294,9 +294,7 @@ export default function DetalheAprovacao() {
             )}
             {tem(s, 'VAN') && (
               <L t="Van ou ônibus">
-                {s.van_qtd_veiculos ?? '—'}{' '}
-                {tipoVeiculoLabel(s.van_tipo_veiculo).toLowerCase()}
-                {s.van_qtd_veiculos === 1 ? '' : '(s)'} ·{' '}
+                {veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} ·{' '}
                 {s.van_qtd_passageiros ?? '—'} passageiro(s)
                 <br />
                 Saída de {s.van_local_saida ?? '—'} · {s.van_horario_saida ?? '—'} ·
