@@ -965,20 +965,35 @@ export default function Solicitar() {
                           >
                             ›
                           </span>
+                          {/* A avulsa sai em vermelho de propósito: ela não é
+                              um destino do calendário, e quem procura um
+                              destino precisa perceber isso antes de clicar. */}
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-sm font-semibold text-neutral-900">
+                            <span
+                              className={
+                                'block truncate text-sm font-semibold ' +
+                                (d.avulsa ? 'text-red-700' : 'text-neutral-900')
+                              }
+                            >
                               {d.destino}
                             </span>
-                            <span className="block truncate text-xs text-neutral-500">
+                            <span
+                              className={
+                                'block truncate text-xs ' +
+                                (d.avulsa ? 'text-red-600' : 'text-neutral-500')
+                              }
+                            >
                               {d.hotel}
                             </span>
                           </span>
                           <span
                             className={
                               'shrink-0 rounded px-2 py-0.5 text-[11px] font-semibold ' +
-                              (marcadas > 0
-                                ? 'bg-neutral-900 text-white'
-                                : 'bg-neutral-100 text-neutral-600')
+                              (d.avulsa
+                                ? 'bg-red-100 text-red-700 ring-1 ring-inset ring-red-200'
+                                : marcadas > 0
+                                  ? 'bg-neutral-900 text-white'
+                                  : 'bg-neutral-100 text-neutral-600')
                             }
                           >
                             {d.avulsa
