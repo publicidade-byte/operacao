@@ -84,16 +84,21 @@ Deno.serve(async (req) => {
       return erro('Informe os aeroportos de saída e chegada.')
 
     if (servicos.includes('VAN')) {
-      const n = Number(b.van_qtd_passageiros)
       if (
         !String(b.van_local_saida ?? '').trim() ||
-        !String(b.van_horario_saida ?? '').trim() ||
         !String(b.van_destino ?? '').trim() ||
-        !Number.isInteger(n) ||
-        n < 1 ||
-        n > 60
+        !b.van_data_saida ||
+        !b.van_hora_saida
       )
-        return erro('Preencha os dados da van: saída, horário, destino e passageiros.')
+        return erro('Preencha os dados da van: saída, data, horário e destino.')
+
+      // Passageiros é opcional: num ônibus fretado a lista costuma vir depois,
+      // e o número pode passar de qualquer teto. Só recusa o que não é número.
+      if (b.van_qtd_passageiros != null && b.van_qtd_passageiros !== '') {
+        const n = Number(b.van_qtd_passageiros)
+        if (!Number.isInteger(n) || n < 1)
+          return erro('Quantidade de passageiros inválida.')
+      }
 
       if (!['VAN', 'ONIBUS'].includes(b.van_tipo_veiculo))
         return erro('Selecione se o fretamento é van ou ônibus.')
@@ -139,10 +144,13 @@ Deno.serve(async (req) => {
     if (servicos.includes('VAN')) {
       if (
         !String(b.van_retorno_local ?? '').trim() ||
-        !String(b.van_retorno_horario ?? '').trim() ||
+        !b.van_retorno_data ||
+        !b.van_retorno_hora ||
         !String(b.van_retorno_destino ?? '').trim()
       )
         return erro('Preencha os dados de retorno da van.')
+      if (String(b.van_retorno_data) < String(b.van_data_saida))
+        return erro('O retorno da van não pode ser antes da ida.')
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(b.solicitante_email))
       return erro('E-mail do solicitante inválido.')
@@ -282,7 +290,8 @@ Deno.serve(async (req) => {
           ? b.rodo_cidade_estado
           : null,
         van_retorno_local: servicos.includes('VAN') ? b.van_retorno_local : null,
-        van_retorno_horario: servicos.includes('VAN') ? b.van_retorno_horario : null,
+        van_retorno_data: servicos.includes('VAN') ? b.van_retorno_data : null,
+        van_retorno_hora: servicos.includes('VAN') ? b.van_retorno_hora : null,
         van_retorno_destino: servicos.includes('VAN') ? b.van_retorno_destino : null,
         // Campos legados do condutor único: preenchidos com a primeira
         // reserva, para relatórios antigos continuarem funcionando.
@@ -292,13 +301,17 @@ Deno.serve(async (req) => {
           : null,
         obs_transporte: b.obs_transporte,
         van_local_saida: servicos.includes('VAN') ? b.van_local_saida : null,
-        van_horario_saida: servicos.includes('VAN') ? b.van_horario_saida : null,
+        van_data_saida: servicos.includes('VAN') ? b.van_data_saida : null,
+        van_hora_saida: servicos.includes('VAN') ? b.van_hora_saida : null,
         van_destino: servicos.includes('VAN') ? b.van_destino : null,
         van_tipo_veiculo: servicos.includes('VAN') ? b.van_tipo_veiculo : null,
         van_qtd_veiculos: servicos.includes('VAN') ? Number(b.van_qtd_veiculos) : null,
-        van_qtd_passageiros: servicos.includes('VAN')
-          ? Number(b.van_qtd_passageiros)
-          : null,
+        // Passageiros pode vir em branco — Number('') daria 0 e o banco
+        // recusa, então o vazio precisa virar nulo de verdade.
+        van_qtd_passageiros:
+          servicos.includes('VAN') && b.van_qtd_passageiros
+            ? Number(b.van_qtd_passageiros)
+            : null,
         precisa_locacao_carro: servicos.includes('CARRO'),
         obs_locacao_carro: b.obs_locacao_carro ?? null,
         carro_condutor_nome: carros[0]?.condutor_nome ?? null,

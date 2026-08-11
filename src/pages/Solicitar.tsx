@@ -79,7 +79,8 @@ type Form = {
   aeroporto_chegada_volta: string
   precisa_bagagem: string
   van_local_saida: string
-  van_horario_saida: string
+  van_data_saida: string
+  van_hora_saida: string
   van_destino: string
   van_qtd_passageiros: string
   van_tipo_veiculo: string // VAN ou ONIBUS
@@ -90,7 +91,8 @@ type Form = {
   rodo_regiao_saida: string
   rodo_cidade_estado: string
   van_retorno_local: string
-  van_retorno_horario: string
+  van_retorno_data: string
+  van_retorno_hora: string
   van_retorno_destino: string
   equipe: string
   equipe_outro: string
@@ -124,7 +126,8 @@ const VAZIO: Form = {
   aeroporto_chegada_volta: '',
   precisa_bagagem: '',
   van_local_saida: '',
-  van_horario_saida: '',
+  van_data_saida: '',
+  van_hora_saida: '',
   van_destino: '',
   van_qtd_passageiros: '',
   van_tipo_veiculo: '',
@@ -135,7 +138,8 @@ const VAZIO: Form = {
   rodo_regiao_saida: '',
   rodo_cidade_estado: '',
   van_retorno_local: '',
-  van_retorno_horario: '',
+  van_retorno_data: '',
+  van_retorno_hora: '',
   van_retorno_destino: '',
   equipe: '',
   equipe_outro: '',
@@ -547,16 +551,27 @@ export default function Solicitar() {
           e.van_qtd_veiculos = 'Informe a quantidade de veículos (1 a 50).'
         if (!form.van_local_saida.trim())
           e.van_local_saida = 'Informe o endereço de saída.'
-        if (!form.van_horario_saida.trim())
-          e.van_horario_saida = 'Informe o horário de saída.'
+        if (!form.van_data_saida) e.van_data_saida = 'Informe a data de saída.'
+        if (!form.van_hora_saida) e.van_hora_saida = 'Informe o horário de saída.'
         if (!form.van_destino.trim()) e.van_destino = 'Informe o destino.'
-        const n = Number(form.van_qtd_passageiros)
-        if (!form.van_qtd_passageiros || !Number.isInteger(n) || n < 1 || n > 60)
-          e.van_qtd_passageiros = 'Informe a quantidade de passageiros (1 a 60).'
+        // Passageiros é opcional: num ônibus fretado a lista costuma vir
+        // depois, e o número pode passar de qualquer teto que eu chutasse.
+        // Só recusa o que não é número.
+        if (form.van_qtd_passageiros.trim()) {
+          const n = Number(form.van_qtd_passageiros)
+          if (!Number.isInteger(n) || n < 1)
+            e.van_qtd_passageiros = 'Se for informar, use um número inteiro.'
+        }
         if (!form.van_retorno_local.trim())
           e.van_retorno_local = 'Informe o endereço de saída do retorno.'
-        if (!form.van_retorno_horario.trim())
-          e.van_retorno_horario = 'Informe o horário do retorno.'
+        if (!form.van_retorno_data) e.van_retorno_data = 'Informe a data do retorno.'
+        if (!form.van_retorno_hora) e.van_retorno_hora = 'Informe o horário do retorno.'
+        else if (
+          form.van_data_saida &&
+          form.van_retorno_data &&
+          form.van_retorno_data < form.van_data_saida
+        )
+          e.van_retorno_data = 'O retorno não pode ser antes da ida.'
         if (!form.van_retorno_destino.trim())
           e.van_retorno_destino = 'Informe o destino do retorno.'
       }
@@ -725,9 +740,8 @@ export default function Solicitar() {
           van_retorno_local: form.servicos.includes('VAN')
             ? form.van_retorno_local.trim()
             : null,
-          van_retorno_horario: form.servicos.includes('VAN')
-            ? form.van_retorno_horario.trim()
-            : null,
+          van_retorno_data: form.servicos.includes('VAN') ? form.van_retorno_data : null,
+          van_retorno_hora: form.servicos.includes('VAN') ? form.van_retorno_hora : null,
           van_retorno_destino: form.servicos.includes('VAN')
             ? form.van_retorno_destino.trim()
             : null,
@@ -761,9 +775,8 @@ export default function Solicitar() {
           van_local_saida: form.servicos.includes('VAN')
             ? form.van_local_saida.trim()
             : null,
-          van_horario_saida: form.servicos.includes('VAN')
-            ? form.van_horario_saida.trim()
-            : null,
+          van_data_saida: form.servicos.includes('VAN') ? form.van_data_saida : null,
+          van_hora_saida: form.servicos.includes('VAN') ? form.van_hora_saida : null,
           van_destino: form.servicos.includes('VAN') ? form.van_destino.trim() : null,
           van_qtd_passageiros: form.servicos.includes('VAN')
             ? Number(form.van_qtd_passageiros)
@@ -831,7 +844,7 @@ export default function Solicitar() {
         )
           ? 0
           : k === 'servicos' || k.startsWith('carro.') ||
-              ['aeroporto_saida','aeroporto_chegada','precisa_bagagem','obs_transporte','obs_locacao_carro','van_local_saida','van_horario_saida','van_destino','van_qtd_passageiros','rodo_regiao_saida','rodo_cidade_estado','van_retorno_local','van_retorno_horario','van_retorno_destino','voo_data_ida','voo_data_volta'].includes(k)
+              ['aeroporto_saida','aeroporto_chegada','precisa_bagagem','obs_transporte','obs_locacao_carro','van_local_saida','van_data_saida','van_hora_saida','van_destino','van_qtd_passageiros','van_tipo_veiculo','van_qtd_veiculos','rodo_regiao_saida','rodo_cidade_estado','van_retorno_local','van_retorno_data','van_retorno_hora','van_retorno_destino','voo_data_ida','voo_data_volta'].includes(k)
             ? 1
             : k.startsWith('colab.') || k === 'equipe'
               ? 2
@@ -1575,28 +1588,32 @@ export default function Solicitar() {
                             placeholder="Rua, número, bairro, cidade"
                           />
                         </Campo>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <Campo
-                            label="Horário de saída"
-                            erro={erros.van_horario_saida}
-                            dica="Pode ser aproximado, ex.: 06h ou madrugada"
-                          >
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <Campo label="Data de saída" erro={erros.van_data_saida}>
                             <Input
-                              value={form.van_horario_saida}
-                              erro={!!erros.van_horario_saida}
-                              maxLength={60}
-                              onChange={(e) => set('van_horario_saida', e.target.value)}
-                              placeholder="Ex.: 05/10 às 06h"
+                              type="date"
+                              value={form.van_data_saida}
+                              erro={!!erros.van_data_saida}
+                              onChange={(e) => set('van_data_saida', e.target.value)}
+                            />
+                          </Campo>
+                          <Campo label="Horário de saída" erro={erros.van_hora_saida}>
+                            <Input
+                              type="time"
+                              value={form.van_hora_saida}
+                              erro={!!erros.van_hora_saida}
+                              onChange={(e) => set('van_hora_saida', e.target.value)}
                             />
                           </Campo>
                           <Campo
                             label="Quantidade de passageiros"
+                            obrigatorio={false}
                             erro={erros.van_qtd_passageiros}
+                            dica="Se ainda não souber, deixe em branco."
                           >
                             <Input
                               type="number"
                               min={1}
-                              max={60}
                               inputMode="numeric"
                               value={form.van_qtd_passageiros}
                               erro={!!erros.van_qtd_passageiros}
@@ -1639,17 +1656,21 @@ export default function Solicitar() {
                             placeholder="De onde o veículo sai na volta"
                           />
                         </Campo>
-                        <div className="grid gap-4 sm:grid-cols-2">
-                          <Campo
-                            label="Horário de saída"
-                            erro={erros.van_retorno_horario}
-                          >
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <Campo label="Data do retorno" erro={erros.van_retorno_data}>
                             <Input
-                              value={form.van_retorno_horario}
-                              erro={!!erros.van_retorno_horario}
-                              maxLength={60}
-                              onChange={(e) => set('van_retorno_horario', e.target.value)}
-                              placeholder="Ex.: 08/10 às 18h"
+                              type="date"
+                              value={form.van_retorno_data}
+                              erro={!!erros.van_retorno_data}
+                              onChange={(e) => set('van_retorno_data', e.target.value)}
+                            />
+                          </Campo>
+                          <Campo label="Horário de saída" erro={erros.van_retorno_hora}>
+                            <Input
+                              type="time"
+                              value={form.van_retorno_hora}
+                              erro={!!erros.van_retorno_hora}
+                              onChange={(e) => set('van_retorno_hora', e.target.value)}
                             />
                           </Campo>
                           <Campo label="Destino do retorno" erro={erros.van_retorno_destino}>
@@ -2231,7 +2252,10 @@ export default function Solicitar() {
                       {veiculosTexto(form.van_qtd_veiculos, form.van_tipo_veiculo)} ·{' '}
                       {form.van_qtd_passageiros} passageiro(s)
                       <br />
-                      Saída de {form.van_local_saida} · {form.van_horario_saida}
+                      Ida: {dataBR(form.van_data_saida)} {form.van_hora_saida} · saída de{' '}
+                      {form.van_local_saida}
+                      <br />
+                      Retorno: {dataBR(form.van_retorno_data)} {form.van_retorno_hora}
                       <br />
                       Destino: {form.van_destino}
                     </Linha>

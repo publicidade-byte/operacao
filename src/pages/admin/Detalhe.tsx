@@ -244,10 +244,15 @@ export default function Detalhe() {
         categoria: reservas[0]?.tipo_carro ?? null,
       },
     )
+    // A van chega com a data e a hora que o solicitante informou — antes só
+    // vinha o dia da estadia, e a hora ficava zerada para alguém perguntar.
     setVan(
       (vn.data as LocacaoVan) ?? {
-        saida_em: inicioDoDia(sol.data_entrada),
-        chegada_em: inicioDoDia(sol.data_entrada),
+        saida_em: inicioDoDia(sol.van_data_saida ?? sol.data_entrada, sol.van_hora_saida),
+        chegada_em: inicioDoDia(
+          sol.van_retorno_data ?? sol.data_saida,
+          sol.van_retorno_hora,
+        ),
         local_saida: sol.van_local_saida,
         local_chegada: sol.van_destino,
         qtd_passageiros: sol.van_qtd_passageiros,
@@ -786,9 +791,14 @@ export default function Detalhe() {
                     {s.van_qtd_passageiros ?? '—'} passageiro(s)
                   </span>
                   <br />
-                  Saída de {s.van_local_saida} · {s.van_horario_saida}
+                  Ida: {dataBR(s.van_data_saida ?? undefined)}
+                  {hora(s.van_hora_saida)} · saída de {s.van_local_saida}
                   <br />
                   Destino: {s.van_destino}
+                  <br />
+                  Retorno: {dataBR(s.van_retorno_data ?? undefined)}
+                  {hora(s.van_retorno_hora)} · de {s.van_retorno_local} para{' '}
+                  {s.van_retorno_destino}
                 </L>
               )}
               <L t="Locação de carro">
@@ -978,7 +988,8 @@ export default function Detalhe() {
               descricao={
                 `Pedido: ${veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} para ` +
                 `${s.van_qtd_passageiros ?? '—'} passageiro(s) · ` +
-                `saída de ${s.van_local_saida ?? '—'} às ${s.van_horario_saida ?? '—'} · ` +
+                `saída ${dataBR(s.van_data_saida ?? undefined)}${hora(s.van_hora_saida)} ` +
+                `de ${s.van_local_saida ?? '—'} · ` +
                 `destino ${s.van_destino ?? '—'}`
               }
             >

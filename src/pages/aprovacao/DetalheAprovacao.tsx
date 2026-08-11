@@ -29,6 +29,10 @@ type Sol = LinhaAprovacao & {
   solicitante_whatsapp: string | null
   van_local_saida: string | null
   van_horario_saida: string | null
+  van_data_saida: string | null
+  van_hora_saida: string | null
+  van_retorno_data: string | null
+  van_retorno_hora: string | null
   van_destino: string | null
   van_qtd_passageiros: number | null
   van_tipo_veiculo: string | null
@@ -297,8 +301,11 @@ export default function DetalheAprovacao() {
                 {veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} ·{' '}
                 {s.van_qtd_passageiros ?? '—'} passageiro(s)
                 <br />
-                Saída de {s.van_local_saida ?? '—'} · {s.van_horario_saida ?? '—'} ·
-                destino {s.van_destino ?? '—'}
+                Ida {dataBR(s.van_data_saida)} {s.van_hora_saida?.slice(0, 5) ?? ''} · de{' '}
+                {s.van_local_saida ?? '—'} para {s.van_destino ?? '—'}
+                <br />
+                Retorno {dataBR(s.van_retorno_data)}{' '}
+                {s.van_retorno_hora?.slice(0, 5) ?? ''}
               </L>
             )}
             <L t="Observações">

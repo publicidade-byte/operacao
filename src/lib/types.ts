@@ -120,7 +120,12 @@ export type Solicitacao = {
   aeroporto_chegada: string | null
   precisa_bagagem: boolean | null
   van_local_saida: string | null
+  /** OBSOLETO: texto livre antigo. Use van_data_saida + van_hora_saida. */
   van_horario_saida: string | null
+  van_data_saida: string | null
+  van_hora_saida: string | null
+  van_retorno_data: string | null
+  van_retorno_hora: string | null
   van_destino: string | null
   van_qtd_passageiros: number | null
   van_tipo_veiculo: string | null
