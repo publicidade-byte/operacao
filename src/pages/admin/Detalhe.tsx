@@ -788,7 +788,9 @@ export default function Detalhe() {
                 <L t="Van ou ônibus solicitado">
                   <span className="font-medium text-neutral-800">
                     {veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} ·{' '}
-                    {s.van_qtd_passageiros ?? '—'} passageiro(s)
+                    {s.van_qtd_passageiros
+                      ? `${s.van_qtd_passageiros} passageiro(s)`
+                      : 'passageiros a definir'}
                   </span>
                   <br />
                   Ida: {dataBR(s.van_data_saida ?? undefined)}
@@ -986,8 +988,8 @@ export default function Detalhe() {
             <Card
               titulo="Locação de van ou ônibus"
               descricao={
-                `Pedido: ${veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} para ` +
-                `${s.van_qtd_passageiros ?? '—'} passageiro(s) · ` +
+                `Pedido: ${veiculosTexto(s.van_qtd_veiculos, s.van_tipo_veiculo)} · ` +
+                `${s.van_qtd_passageiros ? `${s.van_qtd_passageiros} passageiro(s)` : 'passageiros a definir'} · ` +
                 `saída ${dataBR(s.van_data_saida ?? undefined)}${hora(s.van_hora_saida)} ` +
                 `de ${s.van_local_saida ?? '—'} · ` +
                 `destino ${s.van_destino ?? '—'}`
@@ -1061,6 +1063,19 @@ export default function Detalhe() {
                     disabled={!podeEditar}
                     value={paraInputDateTime(van.saida_em)}
                     onChange={(e) => setVan((v) => ({ ...v, saida_em: e.target.value || null }))}
+                  />
+                </Campo>
+                {/* O retorno chega preenchido com a data e a hora do pedido —
+                    antes ele só existia no resumo e não tinha onde ser
+                    ajustado quando a operação fechava com a empresa. */}
+                <Campo label="Retorno em" obrigatorio={false}>
+                  <Input
+                    type="datetime-local"
+                    disabled={!podeEditar}
+                    value={paraInputDateTime(van.chegada_em)}
+                    onChange={(e) =>
+                      setVan((v) => ({ ...v, chegada_em: e.target.value || null }))
+                    }
                   />
                 </Campo>
                 <Campo label="Local de chegada" obrigatorio={false}>
