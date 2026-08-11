@@ -1,0 +1,3 @@
+# Sistema interno da Forma. Não deve aparecer em buscador nenhum.
+User-agent: *
+Disallow: /
