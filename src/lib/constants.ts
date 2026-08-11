@@ -246,7 +246,7 @@ export const SERVICOS = [
   {
     value: 'RODOVIARIO',
     label: 'Solicitação de rodoviário',
-    descricao: 'Passagem de ônibus',
+    descricao: 'Ônibus da Operação',
   },
 ] as const
 
