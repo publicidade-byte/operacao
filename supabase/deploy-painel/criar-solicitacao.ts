@@ -130,6 +130,26 @@ function explicarFalhaEmail(bruto: string, remetente: string) {
   return `o provedor recusou o envio — ${msg}`
 }
 
+/**
+ * Como a solicitação se identifica: destino do calendário ou centro de custo.
+ *
+ * Na operação avulsa o "destino" é uma linha de fachada — mostrar o nome dela
+ * e o período fictício (01/01 a 31/12) confundiria quem lê o aviso. O que
+ * importa ali é de qual centro de custo veio a demanda.
+ */
+export function descreverDestino(
+  s: {
+    centro_custo?: string | null
+    edicoes?: { destino?: string; hotel?: string; avulsa?: boolean } | null
+  },
+  { comHotel = true } = {},
+) {
+  const e = s.edicoes
+  if (e?.avulsa) return `Outras operações — ${s.centro_custo ?? 'centro de custo não informado'}`
+  if (!e?.destino) return '—'
+  return comHotel && e.hotel ? `${e.destino} — ${e.hotel}` : e.destino
+}
+
 // Amarelo da marca (--color-marca-400) sobre preto. O layout usava azul,
 // que não é da paleta — branco, cinza, preto e amarelo.
 export const AMARELO = '#ffd21a'
@@ -321,6 +341,20 @@ Deno.serve(async (req) => {
         ? [b.edicao_id]
         : []
     if (edicaoIds.length === 0) return erro('Selecione ao menos uma data da operação.')
+
+    // Operação avulsa (Colab, Universidade Forma, Porto Seguro…): não está no
+    // calendário, então o que a identifica é o centro de custo. Sem ele a
+    // solicitação chegaria na operação sem dizer de onde veio.
+    const { data: avulsas } = await sb
+      .from('edicoes')
+      .select('id')
+      .in('id', edicaoIds)
+      .eq('avulsa', true)
+    const ehAvulsa = (avulsas ?? []).length > 0
+    if (ehAvulsa && !String(b.centro_custo ?? '').trim())
+      return erro('Informe o centro de custo desta demanda.')
+    if (ehAvulsa && edicaoIds.length > 1)
+      return erro('A operação avulsa não pode ser combinada com destinos do calendário.')
     if (edicaoIds.length > 20)
       return erro('Máximo de 20 operações por solicitação.')
 
@@ -369,6 +403,7 @@ Deno.serve(async (req) => {
         data_entrada: b.data_entrada,
         data_saida: b.data_saida,
         tipo_hospedagem: b.tipo_hospedagem,
+        centro_custo: ehAvulsa ? String(b.centro_custo).trim() : null,
         servicos,
         // `precisa_transporte` e `modal` seguem preenchidos por compatibilidade
         // com o que já existia; a fonte de verdade agora é `servicos`.

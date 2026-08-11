@@ -7,6 +7,8 @@ export type Edicao = {
   data_fim: string
   noites: number
   ativa: boolean
+  /** Operação fora do calendário — o solicitante informa centro de custo e datas. */
+  avulsa?: boolean
 }
 
 export type Diretor = {
@@ -123,6 +125,7 @@ export type Solicitacao = {
   van_qtd_passageiros: number | null
   hosp_externa_operacao: boolean | null
   hosp_externa_obs: string | null
+  centro_custo: string | null
   hosp_qtd_quartos: number | null
   hosp_tipo_quarto: string | null
   hosp_alimentacao: string | null

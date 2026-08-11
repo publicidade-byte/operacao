@@ -130,6 +130,26 @@ function explicarFalhaEmail(bruto: string, remetente: string) {
   return `o provedor recusou o envio — ${msg}`
 }
 
+/**
+ * Como a solicitação se identifica: destino do calendário ou centro de custo.
+ *
+ * Na operação avulsa o "destino" é uma linha de fachada — mostrar o nome dela
+ * e o período fictício (01/01 a 31/12) confundiria quem lê o aviso. O que
+ * importa ali é de qual centro de custo veio a demanda.
+ */
+export function descreverDestino(
+  s: {
+    centro_custo?: string | null
+    edicoes?: { destino?: string; hotel?: string; avulsa?: boolean } | null
+  },
+  { comHotel = true } = {},
+) {
+  const e = s.edicoes
+  if (e?.avulsa) return `Outras operações — ${s.centro_custo ?? 'centro de custo não informado'}`
+  if (!e?.destino) return '—'
+  return comHotel && e.hotel ? `${e.destino} — ${e.hotel}` : e.destino
+}
+
 // Amarelo da marca (--color-marca-400) sobre preto. O layout usava azul,
 // que não é da paleta — branco, cinza, preto e amarelo.
 export const AMARELO = '#ffd21a'
@@ -233,7 +253,10 @@ Deno.serve(async (req) => {
       `:airplane: *Solicitação ${s.protocolo} aguarda sua aprovação no sistema*`,
       `Olá, ${primeiroNome}! Há uma pendência para você:`,
       '',
-      `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel} (${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)})`,
+      `*Destino:* ${descreverDestino(s)}` +
+        (s.edicoes.avulsa
+          ? ''
+          : ` (${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)})`),
       `*Equipe:* ${EQUIPE_LABEL[s.equipe] ?? s.equipe}  ·  *Pax:* ${s.colaboradores.length}`,
       `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
       `*Hospedagem:* ${s.tipo_hospedagem === 'HOTEL_PAX' ? 'hotel do pax' : 'fora do hotel do pax'}`,
@@ -272,7 +295,7 @@ Deno.serve(async (req) => {
       } else {
         const envio = await enviarEmail(
           s.diretores.email,
-          `[${s.protocolo}] Aprovação pendente — ${s.edicoes.destino} · ${moeda(total)}`,
+          `[${s.protocolo}] Aprovação pendente — ${descreverDestino(s, { comHotel: false })} · ${moeda(total)}`,
           layoutEmail(
             'Solicitação aguardando sua aprovação',
             `<p>Olá, ${s.diretores.nome.split(' ')[0]}!</p>
@@ -280,7 +303,7 @@ Deno.serve(async (req) => {
                 <strong style="font-family:monospace">${s.protocolo}</strong> e ela está
                 aguardando sua decisão no sistema.</p>
              <table style="width:100%;font-size:14px;border-collapse:collapse;margin:16px 0">
-               <tr><td style="padding:6px 0;color:#64748b;width:150px">Destino</td><td>${s.edicoes.destino} — ${s.edicoes.hotel}</td></tr>
+               <tr><td style="padding:6px 0;color:#64748b;width:150px">Destino</td><td>${descreverDestino(s)}</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Equipe</td><td>${EQUIPE_LABEL[s.equipe] ?? s.equipe} · ${s.colaboradores.length} pax</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Estadia</td><td>${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Transporte</td><td>${transporte}</td></tr>

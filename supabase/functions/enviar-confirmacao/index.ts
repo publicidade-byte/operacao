@@ -12,6 +12,7 @@ import {
   layoutEmail,
   EQUIPE_LABEL,
   AMARELO,
+  descreverDestino,
 } from '../_shared/comum.ts'
 
 const secao = (titulo: string, corpo: string) => `
@@ -146,8 +147,8 @@ Deno.serve(async (req) => {
 
     corpo += secao(
       'Destino',
-      `<strong>${s.edicoes.destino}</strong> — ${s.edicoes.hotel}<br>
-       Evento: ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)} ·
+      `<strong>${descreverDestino(s)}</strong><br>
+       ${s.edicoes.avulsa ? '' : `Evento: ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)} · `}
        Sua estadia: ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}<br>
        ${EQUIPE_LABEL[s.equipe] ?? s.equipe} · ${colabs.length} colaborador(es)`,
     )
@@ -259,7 +260,7 @@ Deno.serve(async (req) => {
     const resumoSolicitante = [
       `:white_check_mark: *Sua viagem está confirmada — ${s.protocolo}*`,
       '',
-      `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel}`,
+      `*Destino:* ${descreverDestino(s)}`,
       `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
       `*Pessoas:* ${colabs.map((c: { nome_completo: string }) => c.nome_completo).join(', ')}`,
       resumoVoos ? `*Voos:* ${resumoVoos}` : '',
@@ -277,7 +278,7 @@ Deno.serve(async (req) => {
     const [envio, dm, aviso] = await Promise.all([
       enviarEmail(
         s.solicitante_email,
-        `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
+        `[${s.protocolo}] Sua viagem para ${descreverDestino(s, { comHotel: false })} está confirmada`,
         layoutEmail('Viagem confirmada', corpo),
       ),
       dmSolicitante(s.solicitante_email, resumoSolicitante),
@@ -285,7 +286,7 @@ Deno.serve(async (req) => {
         [
           `:white_check_mark: *${s.protocolo} confirmada*`,
           '',
-          `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel}`,
+          `*Destino:* ${descreverDestino(s)}`,
           `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} · ${colabs.length} pax`,
           `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
           site ? `:link: <${site}/admin/solicitacoes/${s.id}|Ver no painel>` : '',

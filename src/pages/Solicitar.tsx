@@ -57,6 +57,7 @@ type CarroForm = {
 
 type Form = {
   destino: string // destino escolhido; abre o toggle com as datas
+  centro_custo: string // só na operação avulsa: Colab, Universidade Forma…
   edicao_ids: string[] // uma solicitação pode cobrir várias operações
   data_entrada: string
   data_saida: string
@@ -99,6 +100,7 @@ type Form = {
 
 const VAZIO: Form = {
   destino: '',
+  centro_custo: '',
   edicao_ids: [],
   data_entrada: '',
   data_saida: '',
@@ -240,14 +242,37 @@ export default function Solicitar() {
 
   /** Destinos únicos, com a quantidade de datas disponíveis em cada um. */
   const destinos = useMemo(() => {
-    const m = new Map<string, { destino: string; hotel: string; quantas: number }>()
+    const m = new Map<
+      string,
+      { destino: string; hotel: string; quantas: number; avulsa: boolean }
+    >()
     for (const e of edicoes) {
       const atual = m.get(e.destino)
       if (atual) atual.quantas++
-      else m.set(e.destino, { destino: e.destino, hotel: e.hotel, quantas: 1 })
+      else
+        m.set(e.destino, {
+          destino: e.destino,
+          hotel: e.hotel,
+          quantas: 1,
+          avulsa: !!e.avulsa,
+        })
     }
-    return [...m.values()].sort((a, b) => a.destino.localeCompare(b.destino, 'pt-BR'))
+    // "Outras operações" fica no topo: quem entra por causa dela não pertence
+    // a destino nenhum e não deve ter que rolar a lista inteira até o fim.
+    return [...m.values()].sort((a, b) =>
+      a.avulsa === b.avulsa
+        ? a.destino.localeCompare(b.destino, 'pt-BR')
+        : a.avulsa
+          ? -1
+          : 1,
+    )
   }, [edicoes])
+
+  /** A operação avulsa escolhida — muda o que o passo do destino pergunta. */
+  const destinoAvulso = useMemo(
+    () => destinos.find((d) => d.destino === form.destino)?.avulsa ?? false,
+    [destinos, form.destino],
+  )
 
   const destinosFiltrados = useMemo(() => {
     const q = buscaDestino.trim().toLowerCase()
@@ -280,10 +305,24 @@ export default function Solicitar() {
 
   /** Abre/fecha o toggle de datas do destino. Trocar de destino limpa a seleção. */
   function alternarDestino(destino: string) {
+    const avulsa = destinos.find((d) => d.destino === destino)?.avulsa
+    // Na operação avulsa não há datas de calendário para escolher: a edição
+    // é uma só e entra sozinha, e quem informa o período é o solicitante.
+    const idAvulso = avulsa
+      ? edicoes.find((e) => e.destino === destino)?.id
+      : undefined
+
     setForm((f) =>
       f.destino === destino
         ? { ...f, destino: '' }
-        : { ...f, destino, edicao_ids: [], data_entrada: '', data_saida: '' },
+        : {
+            ...f,
+            destino,
+            edicao_ids: idAvulso ? [idAvulso] : [],
+            data_entrada: '',
+            data_saida: '',
+            centro_custo: avulsa ? f.centro_custo : '',
+          },
     )
     setErros((e) => ({ ...e, destino: '', edicao_ids: '' }))
   }
@@ -439,7 +478,11 @@ export default function Solicitar() {
     // p === 1 é o destino: serviços passaram a vir primeiro.
     if (p === 1) {
       if (!form.destino) e.destino = 'Selecione o destino.'
-      else if (form.edicao_ids.length === 0)
+      else if (destinoAvulso) {
+        // Avulsa: a edição já entra sozinha, o que falta é o centro de custo.
+        if (!form.centro_custo.trim())
+          e.centro_custo = 'Informe o centro de custo desta demanda.'
+      } else if (form.edicao_ids.length === 0)
         e.edicao_ids = 'Selecione ao menos uma data da operação.'
       if (!form.data_entrada) e.data_entrada = 'Informe a data de entrada.'
       if (!form.data_saida) e.data_saida = 'Informe a data de saída.'
@@ -637,6 +680,7 @@ export default function Solicitar() {
           // a pergunta — mandamos o padrão, que não é usado em lugar nenhum
           // quando HOSPEDAGEM não está entre os serviços.
           tipo_hospedagem: form.tipo_hospedagem || 'HOTEL_PAX',
+          centro_custo: destinoAvulso ? form.centro_custo.trim() : null,
           servicos: form.servicos,
           hosp_externa_operacao:
             form.tipo_hospedagem === 'FORA_HOTEL_PAX'
@@ -907,15 +951,36 @@ export default function Solicitar() {
                                 : 'bg-neutral-100 text-neutral-600')
                             }
                           >
-                            {marcadas > 0
-                              ? `${marcadas} de ${d.quantas}`
-                              : `${d.quantas} ${d.quantas === 1 ? 'data' : 'datas'}`}
+                            {d.avulsa
+                              ? 'avulsa'
+                              : marcadas > 0
+                                ? `${marcadas} de ${d.quantas}`
+                                : `${d.quantas} ${d.quantas === 1 ? 'data' : 'datas'}`}
                           </span>
                         </button>
 
                         {/* Toggle aberto: datas em multiseleção */}
                         {aberto && (
                           <div className="border-t border-marca-200 bg-marca-50/50 px-3.5 py-3">
+                            {/* Operação avulsa não tem datas de calendário:
+                                o que a identifica é o centro de custo. */}
+                            {d.avulsa && (
+                              <Campo
+                                label="Qual o centro de custo?"
+                                erro={erros.centro_custo}
+                                dica="Ex.: Colab, Universidade Forma, Porto Seguro."
+                              >
+                                <Input
+                                  value={form.centro_custo}
+                                  erro={!!erros.centro_custo}
+                                  maxLength={120}
+                                  autoFocus
+                                  onChange={(ev) => set('centro_custo', ev.target.value)}
+                                />
+                              </Campo>
+                            )}
+                            {!d.avulsa && (
+                            <>
                             <div className="mb-2 flex items-center justify-between gap-2">
                               <p className="text-xs text-neutral-600">
                                 Marque todas as operações desta solicitação.
@@ -981,32 +1046,50 @@ export default function Solicitar() {
                                 {erros.edicao_ids}
                               </p>
                             )}
+                            </>
+                            )}
 
                             {/* Período e hospedagem ficam aqui dentro: a pessoa
                                 acabou de escolher a data e responde na sequência,
                                 sem precisar procurar outro bloco na página. */}
                             {selecionadas.length > 0 && (
-                              <div className="mt-4 border-t border-marca-200 pt-4">
-                                <div className="mb-3 rounded-lg bg-white px-3.5 py-2.5 text-sm ring-1 ring-neutral-200">
-                                  <span className="font-semibold text-neutral-900">
-                                    {selecionadas.length}{' '}
-                                    {selecionadas.length === 1
-                                      ? 'operação marcada'
-                                      : 'operações marcadas'}
-                                  </span>
-                                  <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
-                                    {selecionadas.map((e) => (
-                                      <li key={e.id}>
-                                        {dataBR(e.data_inicio)} a {dataBR(e.data_fim)}
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-
-                                <p className="mb-2 text-xs text-neutral-600">
-                                  Preenchemos com as datas da operação. Ajuste se você
-                                  chega antes ou sai depois.
-                                </p>
+                              <div
+                                className={
+                                  d.avulsa ? '' : 'mt-4 border-t border-marca-200 pt-4'
+                                }
+                              >
+                                {/* A avulsa não tem datas de calendário para
+                                    resumir nem para sugerir — o período vem
+                                    todo de quem está pedindo. */}
+                                {!d.avulsa && (
+                                  <>
+                                    <div className="mb-3 rounded-lg bg-white px-3.5 py-2.5 text-sm ring-1 ring-neutral-200">
+                                      <span className="font-semibold text-neutral-900">
+                                        {selecionadas.length}{' '}
+                                        {selecionadas.length === 1
+                                          ? 'operação marcada'
+                                          : 'operações marcadas'}
+                                      </span>
+                                      <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
+                                        {selecionadas.map((e) => (
+                                          <li key={e.id}>
+                                            {dataBR(e.data_inicio)} a{' '}
+                                            {dataBR(e.data_fim)}
+                                          </li>
+                                        ))}
+                                      </ul>
+                                    </div>
+                                    <p className="mb-2 text-xs text-neutral-600">
+                                      Preenchemos com as datas da operação. Ajuste se
+                                      você chega antes ou sai depois.
+                                    </p>
+                                  </>
+                                )}
+                                {d.avulsa && (
+                                  <p className="mb-2 mt-3 text-xs text-neutral-600">
+                                    Informe o período desta demanda.
+                                  </p>
+                                )}
 
                                 <div className="grid gap-4 sm:grid-cols-2">
                                   <Campo
@@ -2010,8 +2093,15 @@ export default function Solicitar() {
               <Card titulo="Revise antes de enviar">
                 <dl className="divide-y divide-neutral-100 text-sm">
                   <Linha rotulo="Destino" onEditar={() => setPasso(1)}>
-                    {edicao ? `${edicao.destino} — ${edicao.hotel}` : '—'}
+                    {destinoAvulso
+                      ? `Outras operações — ${form.centro_custo || '—'}`
+                      : edicao
+                        ? `${edicao.destino} — ${edicao.hotel}`
+                        : '—'}
                   </Linha>
+                  {/* A avulsa não tem operação de calendário para listar; o
+                      período dela já aparece em "Sua estadia". */}
+                  {!destinoAvulso && (
                   <Linha
                     rotulo={
                       selecionadas.length > 1
@@ -2028,6 +2118,7 @@ export default function Solicitar() {
                       ))}
                     </ul>
                   </Linha>
+                  )}
                   <Linha rotulo="Sua estadia" onEditar={() => setPasso(1)}>
                     {dataBR(form.data_entrada)} a {dataBR(form.data_saida)}
                   </Linha>

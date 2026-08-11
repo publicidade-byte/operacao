@@ -10,6 +10,7 @@ import {
   corResponsavel,
   corServico,
   equipeLabel,
+  nomeDestino,
 } from '../../lib/constants'
 import { dataBR, dataCurta, moeda, soDigitos } from '../../lib/format'
 import { Botao, Card, Etiqueta, Input, Select, Vazio } from '../../components/ui'
@@ -156,7 +157,7 @@ export default function Lista() {
     const linhas = filtrados.map((d) => [
       d.protocolo,
       STATUS_LABEL[d.status],
-      d.edicoes?.destino ?? '',
+      nomeDestino(d),
       d.edicoes?.hotel ?? '',
       d.data_entrada,
       d.data_saida,
@@ -192,7 +193,7 @@ export default function Lista() {
 
   async function excluir(d: Linha) {
     const ok = confirm(
-      `Excluir a solicitação ${d.protocolo} (${d.edicoes?.destino})?\n\n` +
+      `Excluir a solicitação ${d.protocolo} (${nomeDestino(d)})?\n\n` +
         'Apaga colaboradores, voos, hospedagem e histórico junto. Não tem volta.\n' +
         'Se a ideia é apenas encerrar, use Cancelar dentro da solicitação.',
     )
@@ -323,7 +324,7 @@ export default function Lista() {
                       </Link>
                     </td>
                     <td className="px-4 py-2.5">
-                      <span className="font-medium">{d.edicoes?.destino}</span>
+                      <span className="font-medium">{nomeDestino(d)}</span>
                       <span className="block text-xs text-neutral-500">
                         {d.edicoes?.hotel}
                       </span>

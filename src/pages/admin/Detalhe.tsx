@@ -27,6 +27,7 @@ import {
   corServico,
   tipoQuartoLabel,
   equipeLabel,
+  nomeDestino,
 } from '../../lib/constants'
 import {
   cpfMascarado,
@@ -431,7 +432,8 @@ export default function Detalhe() {
             <Etiqueta className={STATUS_CLASS[s.status]}>{STATUS_LABEL[s.status]}</Etiqueta>
           </div>
           <p className="mt-1 text-sm text-neutral-600">
-            {s.edicoes.destino} — {s.edicoes.hotel} · {dataBR(s.data_entrada)} a{' '}
+            {s.edicoes.avulsa ? nomeDestino(s) : `${s.edicoes.destino} — ${s.edicoes.hotel}`} ·{' '}
+            {dataBR(s.data_entrada)} a{' '}
             {dataBR(s.data_saida)} · {s.colaboradores.length} pax ·{' '}
             {equipeLabel(s.equipe, s.equipe_outro)}
             {operacoes.length > 1 && (
@@ -678,7 +680,17 @@ export default function Detalhe() {
           <Card titulo="Pedido">
             <dl className="divide-y divide-neutral-100 text-sm">
               <L t="Destino">
-                {s.edicoes.destino} — {s.edicoes.hotel}
+                {s.edicoes.avulsa ? (
+                  <>
+                    Outras operações
+                    <br />
+                    <span className="font-medium text-neutral-800">
+                      Centro de custo: {s.centro_custo ?? '—'}
+                    </span>
+                  </>
+                ) : (
+                  `${s.edicoes.destino} — ${s.edicoes.hotel}`
+                )}
               </L>
               <L
                 t={

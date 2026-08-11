@@ -130,6 +130,26 @@ function explicarFalhaEmail(bruto: string, remetente: string) {
   return `o provedor recusou o envio — ${msg}`
 }
 
+/**
+ * Como a solicitação se identifica: destino do calendário ou centro de custo.
+ *
+ * Na operação avulsa o "destino" é uma linha de fachada — mostrar o nome dela
+ * e o período fictício (01/01 a 31/12) confundiria quem lê o aviso. O que
+ * importa ali é de qual centro de custo veio a demanda.
+ */
+export function descreverDestino(
+  s: {
+    centro_custo?: string | null
+    edicoes?: { destino?: string; hotel?: string; avulsa?: boolean } | null
+  },
+  { comHotel = true } = {},
+) {
+  const e = s.edicoes
+  if (e?.avulsa) return `Outras operações — ${s.centro_custo ?? 'centro de custo não informado'}`
+  if (!e?.destino) return '—'
+  return comHotel && e.hotel ? `${e.destino} — ${e.hotel}` : e.destino
+}
+
 // Amarelo da marca (--color-marca-400) sobre preto. O layout usava azul,
 // que não é da paleta — branco, cinza, preto e amarelo.
 export const AMARELO = '#ffd21a'

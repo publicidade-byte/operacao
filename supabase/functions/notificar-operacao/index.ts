@@ -16,6 +16,7 @@ import {
   EQUIPE_LABEL,
   enviarEmail,
   layoutEmail,
+  descreverDestino,
 } from '../_shared/comum.ts'
 
 /** Uma linha rótulo/valor no corpo do e-mail. */
@@ -126,7 +127,10 @@ Deno.serve(async (req) => {
       `:inbox_tray: *Nova solicitação ${s.protocolo}*`,
       mencoes,
       '',
-      `*Destino / Data:* ${s.edicoes.destino} — ${s.edicoes.hotel} · ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)}`,
+      `*Destino:* ${descreverDestino(s)}` +
+        (s.edicoes.avulsa
+          ? ''
+          : ` · ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)}`),
       `*Equipe / Pax:* ${equipeTexto} · ${s.colaboradores.length} pax`,
       `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} (${s.tipo_hospedagem === 'HOTEL_PAX' ? 'hotel do pax' : 'fora do hotel do pax'})`,
       `*Solicitado:* ${servicos.map((v) => ROTULO[v] ?? v).join(' · ')}`,
@@ -166,12 +170,12 @@ Deno.serve(async (req) => {
         ? Promise.resolve({ enviado: false, motivo: 'nenhum responsável com e-mail' })
         : enviarEmail(
             emails,
-            `[${s.protocolo}] Nova solicitação — ${s.edicoes.destino}`,
+            `[${s.protocolo}] Nova solicitação — ${descreverDestino(s, { comHotel: false })}`,
             layoutEmail(
               'Nova solicitação',
               `<p>Chegou uma solicitação da sua área.</p>
                ${linhaEmail('Protocolo', s.protocolo)}
-               ${linhaEmail('Destino', `${s.edicoes.destino} — ${s.edicoes.hotel}`)}
+               ${linhaEmail('Destino', descreverDestino(s))}
                ${linhaEmail('Estadia', `${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`)}
                ${linhaEmail('Equipe / Pax', `${equipeTexto} · ${s.colaboradores.length} pax`)}
                ${linhaEmail('Solicitado', servicos.map((v) => ROTULO[v] ?? v).join(' · '))}

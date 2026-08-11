@@ -115,6 +115,21 @@ export const tipoQuartoLabel = (v?: string | null) =>
 export const alimentacaoLabel = (v?: string | null) =>
   ALIMENTACAO.find((a) => a.value === v)?.label ?? v ?? '—'
 
+/**
+ * Como a solicitação se identifica na tela.
+ *
+ * A "operação avulsa" (Colab, Universidade Forma, Porto Seguro…) é uma linha
+ * de fachada no calendário: mostrar o nome dela e o período fictício não diz
+ * nada a quem lê. O que identifica essas demandas é o centro de custo.
+ */
+export function nomeDestino(s: {
+  centro_custo?: string | null
+  edicoes?: { destino?: string; avulsa?: boolean } | null
+}) {
+  if (s.edicoes?.avulsa) return s.centro_custo || 'Outras operações'
+  return s.edicoes?.destino ?? '—'
+}
+
 export const TIPOS_CARRO = [
   { value: 'HATCH', label: 'Hatch' },
   { value: 'SEDAN', label: 'Sedan' },

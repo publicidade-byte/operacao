@@ -183,6 +183,20 @@ Deno.serve(async (req) => {
         ? [b.edicao_id]
         : []
     if (edicaoIds.length === 0) return erro('Selecione ao menos uma data da operação.')
+
+    // Operação avulsa (Colab, Universidade Forma, Porto Seguro…): não está no
+    // calendário, então o que a identifica é o centro de custo. Sem ele a
+    // solicitação chegaria na operação sem dizer de onde veio.
+    const { data: avulsas } = await sb
+      .from('edicoes')
+      .select('id')
+      .in('id', edicaoIds)
+      .eq('avulsa', true)
+    const ehAvulsa = (avulsas ?? []).length > 0
+    if (ehAvulsa && !String(b.centro_custo ?? '').trim())
+      return erro('Informe o centro de custo desta demanda.')
+    if (ehAvulsa && edicaoIds.length > 1)
+      return erro('A operação avulsa não pode ser combinada com destinos do calendário.')
     if (edicaoIds.length > 20)
       return erro('Máximo de 20 operações por solicitação.')
 
@@ -231,6 +245,7 @@ Deno.serve(async (req) => {
         data_entrada: b.data_entrada,
         data_saida: b.data_saida,
         tipo_hospedagem: b.tipo_hospedagem,
+        centro_custo: ehAvulsa ? String(b.centro_custo).trim() : null,
         servicos,
         // `precisa_transporte` e `modal` seguem preenchidos por compatibilidade
         // com o que já existia; a fonte de verdade agora é `servicos`.

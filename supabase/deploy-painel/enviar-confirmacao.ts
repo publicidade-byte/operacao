@@ -130,6 +130,26 @@ function explicarFalhaEmail(bruto: string, remetente: string) {
   return `o provedor recusou o envio — ${msg}`
 }
 
+/**
+ * Como a solicitação se identifica: destino do calendário ou centro de custo.
+ *
+ * Na operação avulsa o "destino" é uma linha de fachada — mostrar o nome dela
+ * e o período fictício (01/01 a 31/12) confundiria quem lê o aviso. O que
+ * importa ali é de qual centro de custo veio a demanda.
+ */
+export function descreverDestino(
+  s: {
+    centro_custo?: string | null
+    edicoes?: { destino?: string; hotel?: string; avulsa?: boolean } | null
+  },
+  { comHotel = true } = {},
+) {
+  const e = s.edicoes
+  if (e?.avulsa) return `Outras operações — ${s.centro_custo ?? 'centro de custo não informado'}`
+  if (!e?.destino) return '—'
+  return comHotel && e.hotel ? `${e.destino} — ${e.hotel}` : e.destino
+}
+
 // Amarelo da marca (--color-marca-400) sobre preto. O layout usava azul,
 // que não é da paleta — branco, cinza, preto e amarelo.
 export const AMARELO = '#ffd21a'
@@ -282,8 +302,8 @@ Deno.serve(async (req) => {
 
     corpo += secao(
       'Destino',
-      `<strong>${s.edicoes.destino}</strong> — ${s.edicoes.hotel}<br>
-       Evento: ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)} ·
+      `<strong>${descreverDestino(s)}</strong><br>
+       ${s.edicoes.avulsa ? '' : `Evento: ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)} · `}
        Sua estadia: ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}<br>
        ${EQUIPE_LABEL[s.equipe] ?? s.equipe} · ${colabs.length} colaborador(es)`,
     )
@@ -395,7 +415,7 @@ Deno.serve(async (req) => {
     const resumoSolicitante = [
       `:white_check_mark: *Sua viagem está confirmada — ${s.protocolo}*`,
       '',
-      `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel}`,
+      `*Destino:* ${descreverDestino(s)}`,
       `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
       `*Pessoas:* ${colabs.map((c: { nome_completo: string }) => c.nome_completo).join(', ')}`,
       resumoVoos ? `*Voos:* ${resumoVoos}` : '',
@@ -413,7 +433,7 @@ Deno.serve(async (req) => {
     const [envio, dm, aviso] = await Promise.all([
       enviarEmail(
         s.solicitante_email,
-        `[${s.protocolo}] Sua viagem para ${s.edicoes.destino} está confirmada`,
+        `[${s.protocolo}] Sua viagem para ${descreverDestino(s, { comHotel: false })} está confirmada`,
         layoutEmail('Viagem confirmada', corpo),
       ),
       dmSolicitante(s.solicitante_email, resumoSolicitante),
@@ -421,7 +441,7 @@ Deno.serve(async (req) => {
         [
           `:white_check_mark: *${s.protocolo} confirmada*`,
           '',
-          `*Destino:* ${s.edicoes.destino} — ${s.edicoes.hotel}`,
+          `*Destino:* ${descreverDestino(s)}`,
           `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} · ${colabs.length} pax`,
           `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
           site ? `:link: <${site}/admin/solicitacoes/${s.id}|Ver no painel>` : '',
