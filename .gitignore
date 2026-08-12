@@ -14,3 +14,12 @@ supabase/.branches
 # Ficam só no banco (Supabase) e em backup local fora do repositório.
 supabase/seed.sql
 data/
+
+# Planilhas e exportações de trabalho — mesmo motivo do seed.sql: o calendário
+# de operações é dado da empresa e o repositório é público.
+*.xlsx
+notion-*.csv
+notion-*.md
+painel-operacao.html
+registro-automatico.gs
+supabase/importar-*.sql

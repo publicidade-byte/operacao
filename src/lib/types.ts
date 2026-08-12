@@ -11,47 +11,6 @@ export type Edicao = {
   avulsa?: boolean
 }
 
-/** Catálogo das etapas do processo da operação — o cabeçalho da planilha. */
-export type EtapaModelo = {
-  codigo: string
-  nome: string
-  fase: 'PRE_VOUCHER' | 'POS_VOUCHER'
-  ordem: number
-  /** Dias antes de `Edicao.data_inicio`. Nulo = etapa sem prazo cobrado. */
-  prazo_dias: number | null
-  ativa: boolean
-}
-
-/** Uma etapa de uma operação específica: a célula da planilha, com carimbo. */
-export type EtapaEdicao = {
-  id: string
-  edicao_id: string
-  etapa_codigo: string
-  concluida: boolean
-  concluida_por: string | null
-  concluida_em: string | null
-  observacao: string | null
-  updated_at: string
-}
-
-/** Contagens por operação, vindas da view `v_painel_etapas`. */
-export type PainelEtapas = {
-  edicao_id: string
-  codigo: string
-  destino: string
-  hotel: string
-  data_inicio: string
-  data_fim: string
-  total: number
-  concluidas: number
-  concluidas_pre: number
-  total_pre: number
-  concluidas_pos: number
-  total_pos: number
-  atrasadas: number
-  voucher_enviado: boolean
-}
-
 export type Diretor = {
   id: string
   nome: string
