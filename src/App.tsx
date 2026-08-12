@@ -7,7 +7,6 @@ import Login from './pages/Login'
 import AdminLayout from './pages/admin/AdminLayout'
 import Lista from './pages/admin/Lista'
 import Detalhe from './pages/admin/Detalhe'
-import Painel from './pages/admin/Painel'
 import Usuarios from './pages/admin/Usuarios'
 import AprovacaoLayout from './pages/aprovacao/AprovacaoLayout'
 import Pendentes from './pages/aprovacao/Pendentes'
@@ -29,7 +28,6 @@ export default function App() {
       {/* Operação */}
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Lista />} />
-        <Route path="painel" element={<Painel />} />
         <Route path="solicitacoes/:id" element={<Detalhe />} />
         <Route path="usuarios" element={<Usuarios />} />
       </Route>
