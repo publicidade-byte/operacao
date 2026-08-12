@@ -22,6 +22,8 @@ type Usuario = {
   ativo: boolean
   super_admin: boolean
   created_at: string | null
+  /** Nulo = a pessoa ainda não trocou a senha que o admin definiu. */
+  senha_trocada_em: string | null
   diretor_id: string | null
   slack_user_id: string | null
 }
@@ -286,6 +288,22 @@ export default function Usuarios() {
                     {u.email}
                     {u.created_at && ` · desde ${dataHoraBR(u.created_at)}`}
                   </p>
+                  {/* A senha em si não fica guardada em lugar nenhum — o que
+                      dá para saber é se a pessoa já trocou a que foi
+                      definida na criação. */}
+                  {u.nivel !== 'DIRETORIA' && (
+                    <p className="text-xs">
+                      {u.senha_trocada_em ? (
+                        <span className="text-neutral-500">
+                          senha própria desde {dataHoraBR(u.senha_trocada_em)}
+                        </span>
+                      ) : (
+                        <span className="font-medium text-amber-700">
+                          ainda usa a senha definida no cadastro
+                        </span>
+                      )}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">

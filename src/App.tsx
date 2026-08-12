@@ -4,9 +4,11 @@ import Enviado from './pages/Enviado'
 import Acompanhar from './pages/Acompanhar'
 import Consulta from './pages/Consulta'
 import Login from './pages/Login'
+import NovaSenha from './pages/NovaSenha'
 import AdminLayout from './pages/admin/AdminLayout'
 import Lista from './pages/admin/Lista'
 import Detalhe from './pages/admin/Detalhe'
+import Painel from './pages/admin/Painel'
 import Usuarios from './pages/admin/Usuarios'
 import AprovacaoLayout from './pages/aprovacao/AprovacaoLayout'
 import Pendentes from './pages/aprovacao/Pendentes'
@@ -24,10 +26,13 @@ export default function App() {
       {/* Login único — redireciona conforme o perfil */}
       <Route path="/login" element={<Login />} />
       <Route path="/admin/login" element={<Navigate to="/login" replace />} />
+      {/* Destino do link de recuperação, e também da troca de senha. */}
+      <Route path="/nova-senha" element={<NovaSenha />} />
 
       {/* Operação */}
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Lista />} />
+        <Route path="painel" element={<Painel />} />
         <Route path="solicitacoes/:id" element={<Detalhe />} />
         <Route path="usuarios" element={<Usuarios />} />
       </Route>

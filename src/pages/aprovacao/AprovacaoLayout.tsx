@@ -81,6 +81,13 @@ export default function AprovacaoLayout() {
               <span className="hidden text-xs text-neutral-500 sm:block">
                 {diretor?.nome}
               </span>
+              {/* O diretor também troca a própria senha. */}
+              <Link
+                to="/nova-senha"
+                className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+              >
+                Minha senha
+              </Link>
               <button
                 onClick={async () => {
                   await supabase.auth.signOut()

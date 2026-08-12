@@ -17,6 +17,8 @@ export default function Login() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [erro, setErro] = useState('')
+  const [avisoReset, setAvisoReset] = useState('')
+  const [enviandoReset, setEnviandoReset] = useState(false)
   const [carregando, setCarregando] = useState(false)
   const [verificando, setVerificando] = useState(true)
 
@@ -31,6 +33,27 @@ export default function Login() {
   }, [navigate])
 
   const destino = (p: Perfil) => (p.papel === 'ADMIN' ? '/admin' : '/aprovacao')
+
+  /**
+   * Manda o link de recuperação para o e-mail digitado.
+   *
+   * A resposta é sempre a mesma, tenha a conta existido ou não: dizer "esse
+   * e-mail não existe" entregaria de graça quem tem acesso ao sistema.
+   */
+  async function recuperar() {
+    setErro('')
+    setAvisoReset('')
+    if (!email.trim()) return setErro('Escreva seu e-mail acima para receber o link.')
+
+    setEnviandoReset(true)
+    await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}${import.meta.env.BASE_URL}nova-senha`,
+    })
+    setEnviandoReset(false)
+    setAvisoReset(
+      `Se ${email.trim()} tiver conta aqui, o link para criar uma nova senha chega em instantes. Confira também o spam.`,
+    )
+  }
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault()
@@ -95,10 +118,19 @@ export default function Login() {
               />
             </Campo>
             {erro && <Aviso tom="erro">{erro}</Aviso>}
+            {avisoReset && <Aviso tom="sucesso">{avisoReset}</Aviso>}
             <Botao type="submit" className="w-full" carregando={carregando}>
               Entrar
             </Botao>
           </form>
+          <button
+            type="button"
+            onClick={recuperar}
+            disabled={enviandoReset}
+            className="mt-3 w-full text-center text-xs text-neutral-500 underline decoration-neutral-300 underline-offset-4 transition hover:text-neutral-800 disabled:opacity-50"
+          >
+            {enviandoReset ? 'Enviando…' : 'Esqueci minha senha'}
+          </button>
         </Card>
         <p className="mt-4 text-center text-xs leading-relaxed text-neutral-500">
           Equipe operacional e diretores aprovadores usam o mesmo login — o sistema

@@ -97,6 +97,17 @@ export default function AdminLayout() {
                 >
                   Solicitações
                 </NavLink>
+                <NavLink
+                  to="/admin/painel"
+                  className={({ isActive }) =>
+                    'rounded px-2.5 py-1.5 transition ' +
+                    (isActive
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-600 hover:bg-neutral-100')
+                  }
+                >
+                  Painel
+                </NavLink>
                 {admin?.role === 'GESTOR' && (
                   <NavLink
                     to="/admin/usuarios"
@@ -116,6 +127,14 @@ export default function AdminLayout() {
               <span className="hidden text-xs text-neutral-500 sm:block">
                 {admin?.nome} · {admin?.role === 'GESTOR' ? 'Gestor' : 'Operacional'}
               </span>
+              {/* Cada pessoa troca a própria senha — ninguém precisa pedir
+                  isso para a operação. */}
+              <NavLink
+                to="/nova-senha"
+                className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+              >
+                Minha senha
+              </NavLink>
               <button
                 onClick={async () => {
                   await supabase.auth.signOut()
