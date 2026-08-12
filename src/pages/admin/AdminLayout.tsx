@@ -97,6 +97,17 @@ export default function AdminLayout() {
                 >
                   Solicitações
                 </NavLink>
+                <NavLink
+                  to="/admin/painel"
+                  className={({ isActive }) =>
+                    'rounded px-2.5 py-1.5 transition ' +
+                    (isActive
+                      ? 'bg-neutral-900 text-white'
+                      : 'text-neutral-600 hover:bg-neutral-100')
+                  }
+                >
+                  Painel
+                </NavLink>
                 {admin?.role === 'GESTOR' && (
                   <NavLink
                     to="/admin/usuarios"
