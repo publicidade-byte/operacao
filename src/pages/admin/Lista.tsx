@@ -14,6 +14,7 @@ import {
 } from '../../lib/constants'
 import { dataBR, dataCurta, moeda, soDigitos } from '../../lib/format'
 import { Botao, Card, Etiqueta, Input, Select, Vazio } from '../../components/ui'
+import { useAdmin } from './AdminLayout'
 
 type Linha = Solicitacao & {
   edicoes: Edicao
@@ -42,6 +43,7 @@ const STATUS_FILTROS = [
 ]
 
 export default function Lista() {
+  const admin = useAdmin()
   const [dados, setDados] = useState<Linha[]>([])
   const [carregando, setCarregando] = useState(true)
   const [busca, setBusca] = useState('')
@@ -51,6 +53,7 @@ export default function Lista() {
   const [fDiretor, setFDiretor] = useState('')
   const [fServico, setFServico] = useState('')
   const [fResponsavel, setFResponsavel] = useState('')
+  const [verLixeira, setVerLixeira] = useState(false)
 
   useEffect(() => {
     ;(async () => {
@@ -98,6 +101,9 @@ export default function Lista() {
     const q = busca.trim().toLowerCase()
     const qDigitos = soDigitos(busca)
     return dados.filter((d) => {
+      // A lixeira é uma visão à parte: ou se olha o que está ativo, ou o
+      // que foi excluído. Misturar os dois só confunde quem opera.
+      if (!!d.excluida_em !== verLixeira) return false
       if (fStatus.length && !fStatus.includes(d.status)) return false
       if (fEquipe && d.equipe !== fEquipe) return false
       if (fDestino && d.edicoes?.destino !== fDestino) return false
@@ -116,7 +122,7 @@ export default function Lista() {
         )
       )
     })
-  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor, fServico, fResponsavel])
+  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor, fServico, fResponsavel, verLixeira])
 
   /** Todos os responsaveis que aparecem em alguma solicitacao. */
   const responsaveisDisponiveis = useMemo(
@@ -126,9 +132,13 @@ export default function Lista() {
 
   const contagem = useMemo(() => {
     const c: Record<string, number> = {}
-    dados.forEach((d) => (c[d.status] = (c[d.status] ?? 0) + 1))
+    dados
+      .filter((d) => !d.excluida_em)
+      .forEach((d) => (c[d.status] = (c[d.status] ?? 0) + 1))
     return c
   }, [dados])
+
+  const naLixeira = useMemo(() => dados.filter((d) => d.excluida_em).length, [dados])
 
   function exportarCsv() {
     const cab = [
@@ -191,25 +201,58 @@ export default function Lista() {
   const alternarStatus = (s: string) =>
     setFStatus((f) => (f.includes(s) ? f.filter((x) => x !== s) : [...f, s]))
 
+  /**
+   * Manda para a lixeira — não apaga.
+   *
+   * O DELETE de antes levava junto colaboradores, voos, hospedagem e o
+   * próprio histórico, e não havia backup para trazer de volta. Agora a
+   * linha só é marcada: some das telas e volta com um clique.
+   */
   async function excluir(d: Linha) {
     const ok = confirm(
-      `Excluir a solicitação ${d.protocolo} (${nomeDestino(d)})?\n\n` +
-        'Apaga colaboradores, voos, hospedagem e histórico junto. Não tem volta.\n' +
+      `Mover a solicitação ${d.protocolo} (${nomeDestino(d)}) para a lixeira?\n\n` +
+        'Ela sai da lista, mas continua guardada e pode ser restaurada.\n' +
         'Se a ideia é apenas encerrar, use Cancelar dentro da solicitação.',
     )
     if (!ok) return
-    const { error } = await supabase.from('solicitacoes').delete().eq('id', d.id)
+    const { error } = await supabase
+      .from('solicitacoes')
+      .update({ excluida_em: new Date().toISOString(), excluida_por: admin?.nome ?? null })
+      .eq('id', d.id)
     if (error) return alert(`Não foi possível excluir: ${error.message}`)
-    setDados((ds) => ds.filter((x) => x.id !== d.id))
+    setDados((ds) =>
+      ds.map((x) => (x.id === d.id ? { ...x, excluida_em: new Date().toISOString() } : x)),
+    )
+  }
+
+  /** Devolve para a lista. */
+  async function restaurar(d: Linha) {
+    const { error } = await supabase
+      .from('solicitacoes')
+      .update({ excluida_em: null, excluida_por: null })
+      .eq('id', d.id)
+    if (error) return alert(`Não foi possível restaurar: ${error.message}`)
+    setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, excluida_em: null } : x)))
   }
 
   return (
     <div className="-mx-2 space-y-4 xl:-mx-6 2xl:-mx-12">
       <div className="flex flex-wrap items-center justify-between gap-3 px-2">
-        <h1 className="text-lg font-bold">Solicitações</h1>
-        <Botao variante="secundario" onClick={exportarCsv} disabled={!filtrados.length}>
-          Exportar CSV ({filtrados.length})
-        </Botao>
+        <h1 className="text-lg font-bold">
+          {verLixeira ? 'Lixeira' : 'Solicitações'}
+        </h1>
+        <div className="flex flex-wrap items-center gap-2">
+          <Botao
+            variante="secundario"
+            onClick={() => setVerLixeira((v) => !v)}
+            className={verLixeira ? 'ring-2 ring-neutral-900' : undefined}
+          >
+            {verLixeira ? '← Voltar às solicitações' : `Lixeira (${naLixeira})`}
+          </Botao>
+          <Botao variante="secundario" onClick={exportarCsv} disabled={!filtrados.length}>
+            Exportar CSV ({filtrados.length})
+          </Botao>
+        </div>
       </div>
 
       {/* chips de status */}
@@ -384,9 +427,19 @@ export default function Lista() {
                       {moeda(d.custo_total_manual ?? d.custo_total)}
                     </td>
                     <td className="px-2 py-2.5 text-right">
+                      {verLixeira ? (
+                        <button
+                          onClick={() => restaurar(d)}
+                          title="Restaurar solicitação"
+                          aria-label={`Restaurar ${d.protocolo}`}
+                          className="rounded px-2 py-1 text-xs font-semibold text-neutral-700 underline decoration-marca-400 decoration-2 underline-offset-2 transition hover:bg-marca-50"
+                        >
+                          Restaurar
+                        </button>
+                      ) : (
                       <button
                         onClick={() => excluir(d)}
-                        title="Excluir solicitação"
+                        title="Mover para a lixeira"
                         aria-label={`Excluir ${d.protocolo}`}
                         className="rounded p-1.5 text-neutral-300 transition hover:bg-red-50 hover:text-red-600"
                       >
@@ -394,6 +447,7 @@ export default function Lista() {
                           <path d="M6.5 1a.5.5 0 00-.5.5V2H3.5a.5.5 0 000 1H4v9.5A1.5 1.5 0 005.5 14h5a1.5 1.5 0 001.5-1.5V3h.5a.5.5 0 000-1H10v-.5a.5.5 0 00-.5-.5h-3zM5 3h6v9.5a.5.5 0 01-.5.5h-5a.5.5 0 01-.5-.5V3zm1.5 1.5v6h1v-6h-1zm2 0v6h1v-6h-1z" />
                         </svg>
                       </button>
+                      )}
                     </td>
                   </tr>
                 ))}

@@ -199,6 +199,8 @@ Deno.serve(async (req) => {
       .from('solicitacoes')
       .select('*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(nome), colaboradores(id, nome_completo, ordem)')
       .eq('token_acompanhamento', token)
+      // Excluida nao abre nem pelo link de acompanhamento.
+      .is('excluida_em', null)
       .maybeSingle()
 
     if (!s) return erro('Solicitação não encontrada.', 404)

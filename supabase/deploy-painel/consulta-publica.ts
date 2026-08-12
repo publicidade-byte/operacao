@@ -210,6 +210,8 @@ Deno.serve(async (req) => {
         .select(
           'id, protocolo, status, servicos, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id)',
         )
+        // A lixeira nao aparece na consulta publica.
+        .is('excluida_em', null)
         .order('created_at', { ascending: false })
 
       return json({

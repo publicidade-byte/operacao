@@ -215,6 +215,9 @@ export type Solicitacao = {
   custo_total_manual: number | null
   observacoes_internas: string | null
   responsavel_id: string | null
+  /** Lixeira: preenchido = fora das telas, mas guardado e restaurável. */
+  excluida_em: string | null
+  excluida_por: string | null
   created_at: string
   updated_at: string
   edicoes?: Edicao
