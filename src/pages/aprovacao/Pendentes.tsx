@@ -21,6 +21,8 @@ export type LinhaAprovacao = {
   custo_total: number | null
   solicitante_nome: string
   servicos: string[] | null
+  /** Nomes de quem viaja, montados à parte da visão de solicitações. */
+  colaboradores?: string[]
   created_at: string
 }
 
@@ -36,12 +38,32 @@ export default function Pendentes() {
 
   useEffect(() => {
     ;(async () => {
-      const { data, error } = await supabase
-        .from('v_aprovacao_solicitacoes')
-        .select('*')
-        .order('created_at', { ascending: false })
+      // Os nomes de quem viaja vêm à parte: a visão de solicitações traz uma
+      // linha por pedido, e o diretor precisa saber QUEM vai — não só quantos.
+      const [{ data, error }, { data: pessoas }] = await Promise.all([
+        supabase
+          .from('v_aprovacao_solicitacoes')
+          .select('*')
+          .order('created_at', { ascending: false }),
+        supabase.from('v_aprovacao_colaboradores').select('solicitacao_id, nome_completo, ordem'),
+      ])
       if (error) setErro(error.message)
-      setDados((data ?? []) as LinhaAprovacao[])
+
+      const porSolicitacao = new Map<string, string[]>()
+      for (const p of (pessoas ?? []).sort(
+        (a, b) => (a.ordem ?? 0) - (b.ordem ?? 0),
+      ) as { solicitacao_id: string; nome_completo: string; ordem: number }[]) {
+        const lista = porSolicitacao.get(p.solicitacao_id) ?? []
+        lista.push(p.nome_completo)
+        porSolicitacao.set(p.solicitacao_id, lista)
+      }
+
+      setDados(
+        ((data ?? []) as LinhaAprovacao[]).map((d) => ({
+          ...d,
+          colaboradores: porSolicitacao.get(d.id) ?? [],
+        })),
+      )
       setCarregando(false)
     })()
   }, [])
@@ -104,6 +126,14 @@ export default function Pendentes() {
                     <span className="text-neutral-500">Solicitado:</span>{' '}
                     {listaServicos(d.servicos) || '—'}
                   </p>
+                  {/* Quem viaja: é o que o diretor está aprovando, e antes
+                      só aparecia a contagem de pax. */}
+                  <p className="mt-0.5 text-sm text-neutral-700">
+                    <span className="text-neutral-500">Quem viaja:</span>{' '}
+                    {d.colaboradores?.length
+                      ? d.colaboradores.join(', ')
+                      : 'lista ainda não informada'}
+                  </p>
                   <p className="mt-0.5 text-xs text-neutral-500">
                     Solicitado por {d.solicitante_nome}
                   </p>
@@ -158,6 +188,7 @@ export default function Pendentes() {
                     </p>
                     <p className="mt-0.5 text-xs text-neutral-600">
                       {listaServicos(d.servicos) || '—'}
+                      {d.colaboradores?.length ? ` · ${d.colaboradores.join(', ')}` : ''}
                       <span className="text-neutral-400">
                         {' '}· solicitado por {d.solicitante_nome}
                       </span>

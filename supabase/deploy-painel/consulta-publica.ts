@@ -166,6 +166,18 @@ export const layoutEmail = (titulo: string, corpo: string) => `
   </p>
 </div>`
 
+/**
+ * "29/09/2026 07:50" a partir de data e hora guardadas separadamente.
+ *
+ * Sem `new Date`: esses campos não têm fuso, e converter foi exatamente o
+ * que fazia o horário digitado voltar deslocado. Aqui é só formatação.
+ */
+export function dataHora(data?: string | null, hora?: string | null) {
+  if (!data) return '—'
+  const [a, m, d] = data.slice(0, 10).split('-')
+  return `${d}/${m}/${a}${hora ? ` ${hora.slice(0, 5)}` : ''}`
+}
+
 // Painel de consulta com senha única compartilhada.
 //
 // Qualquer pessoa da Forma consulta o andamento e pega os dados da viagem

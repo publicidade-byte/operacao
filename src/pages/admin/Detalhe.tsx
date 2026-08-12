@@ -37,7 +37,6 @@ import {
   mascaraCpf,
   mascaraTelefone,
   moeda,
-  paraInputDateTime,
 } from '../../lib/format'
 import { Aviso, Botao, Campo, Card, Etiqueta, Input, Select, Textarea } from '../../components/ui'
 
@@ -61,6 +60,58 @@ type CarroPedido = {
   devolucao_data: string | null
   devolucao_hora: string | null
   ordem: number
+}
+
+/**
+ * Data e hora em campos separados.
+ *
+ * Eram um `datetime-local` só, gravado em coluna com fuso — e o horário
+ * digitado voltava deslocado, porque o texto do input não carrega fuso e o
+ * banco o lia como UTC. Hora de voo é hora de relógio no aeroporto: guardar
+ * como instante universal cria uma conversão que não deveria existir.
+ *
+ * Aqui não há conversão nenhuma: o que se digita é o que se grava.
+ */
+function DataHora<T extends Record<string, unknown>>({
+  rotulo,
+  valor,
+  campoData,
+  campoHora,
+  editavel,
+  onChange,
+}: {
+  rotulo: string
+  valor: T
+  campoData: keyof T
+  campoHora: keyof T
+  editavel: boolean
+  onChange: (v: T) => void
+}) {
+  const texto = (k: keyof T) => {
+    const v = valor[k]
+    // O Postgres devolve "07:50:00"; o input de hora só aceita "07:50".
+    return typeof v === 'string' ? v.slice(0, k === campoHora ? 5 : 10) : ''
+  }
+  return (
+    <>
+      <Campo label={`${rotulo} — data`} obrigatorio={false}>
+        <Input
+          type="date"
+          disabled={!editavel}
+          value={texto(campoData)}
+          onChange={(e) => onChange({ ...valor, [campoData]: e.target.value || null })}
+        />
+      </Campo>
+      <Campo label={`${rotulo} — horário`} obrigatorio={false}>
+        <Input
+          type="time"
+          disabled={!editavel}
+          value={texto(campoHora)}
+          onChange={(e) => onChange({ ...valor, [campoHora]: e.target.value || null })}
+        />
+      </Campo>
+    </>
+  )
 }
 
 /** O que a `enviar-confirmacao` devolve: um resultado por canal. */
@@ -180,12 +231,16 @@ export default function Detalhe() {
         const chave = `${c.id}:${t}`
         if (mv[chave]) continue
         const dia = t === 'IDA' ? sol.voo_data_ida : sol.voo_data_volta
+        // A DATA vem do que o solicitante pediu; a HORA fica em branco,
+        // porque é a operação que descobre isso ao fechar o voo. Antes vinha
+        // 00:00 e parecia um horário já definido.
         mv[chave] = {
           colaborador_id: c.id,
           trecho: t,
           aeroporto_origem: t === 'IDA' ? sol.aeroporto_saida : sol.aeroporto_saida_volta,
           aeroporto_destino: t === 'IDA' ? sol.aeroporto_chegada : sol.aeroporto_chegada_volta,
-          partida: inicioDoDia(dia),
+          partida_data: dia,
+          chegada_data: dia,
         }
       }
     })
@@ -198,8 +253,8 @@ export default function Detalhe() {
       if (!mr[c.id])
         mr[c.id] = {
           colaborador_id: c.id,
-          horario_ida: inicioDoDia(sol.data_entrada),
-          horario_volta: inicioDoDia(sol.data_saida),
+          ida_data: sol.data_entrada,
+          volta_data: sol.data_saida,
         }
     })
     setRodo(mr)
@@ -232,14 +287,10 @@ export default function Detalhe() {
     // estadia, que é o que existe.
     setCarro(
       (l.data as LocacaoCarro) ?? {
-        retirada_em: inicioDoDia(
-          reservas[0]?.retirada_data ?? sol.data_entrada,
-          reservas[0]?.retirada_hora,
-        ),
-        devolucao_em: inicioDoDia(
-          reservas[0]?.devolucao_data ?? sol.data_saida,
-          reservas[0]?.devolucao_hora,
-        ),
+        retirada_data: reservas[0]?.retirada_data ?? sol.data_entrada,
+        retirada_hora: reservas[0]?.retirada_hora ?? null,
+        devolucao_data: reservas[0]?.devolucao_data ?? sol.data_saida,
+        devolucao_hora: reservas[0]?.devolucao_hora ?? null,
         retirada_local: reservas[0]?.local_retirada ?? null,
         categoria: reservas[0]?.tipo_carro ?? null,
       },
@@ -248,11 +299,10 @@ export default function Detalhe() {
     // vinha o dia da estadia, e a hora ficava zerada para alguém perguntar.
     setVan(
       (vn.data as LocacaoVan) ?? {
-        saida_em: inicioDoDia(sol.van_data_saida ?? sol.data_entrada, sol.van_hora_saida),
-        chegada_em: inicioDoDia(
-          sol.van_retorno_data ?? sol.data_saida,
-          sol.van_retorno_hora,
-        ),
+        saida_data: sol.van_data_saida ?? sol.data_entrada,
+        saida_hora: sol.van_hora_saida,
+        chegada_data: sol.van_retorno_data ?? sol.data_saida,
+        chegada_hora: sol.van_retorno_hora,
         local_saida: sol.van_local_saida,
         local_chegada: sol.van_destino,
         qtd_passageiros: sol.van_qtd_passageiros,
@@ -1057,27 +1107,25 @@ export default function Detalhe() {
                     onChange={(e) => setVan((v) => ({ ...v, local_saida: e.target.value }))}
                   />
                 </Campo>
-                <Campo label="Saída em" obrigatorio={false}>
-                  <Input
-                    type="datetime-local"
-                    disabled={!podeEditar}
-                    value={paraInputDateTime(van.saida_em)}
-                    onChange={(e) => setVan((v) => ({ ...v, saida_em: e.target.value || null }))}
-                  />
-                </Campo>
+                <DataHora
+                  rotulo="Saída"
+                  valor={van}
+                  campoData="saida_data"
+                  campoHora="saida_hora"
+                  editavel={podeEditar}
+                  onChange={setVan}
+                />
                 {/* O retorno chega preenchido com a data e a hora do pedido —
                     antes ele só existia no resumo e não tinha onde ser
                     ajustado quando a operação fechava com a empresa. */}
-                <Campo label="Retorno em" obrigatorio={false}>
-                  <Input
-                    type="datetime-local"
-                    disabled={!podeEditar}
-                    value={paraInputDateTime(van.chegada_em)}
-                    onChange={(e) =>
-                      setVan((v) => ({ ...v, chegada_em: e.target.value || null }))
-                    }
-                  />
-                </Campo>
+                <DataHora
+                  rotulo="Retorno"
+                  valor={van}
+                  campoData="chegada_data"
+                  campoHora="chegada_hora"
+                  editavel={podeEditar}
+                  onChange={setVan}
+                />
                 <Campo label="Local de chegada" obrigatorio={false}>
                   <Input
                     disabled={!podeEditar}
@@ -1168,16 +1216,14 @@ export default function Detalhe() {
                     onChange={(e) => setCarro((c) => ({ ...c, retirada_local: e.target.value }))}
                   />
                 </Campo>
-                <Campo label="Retirada em" obrigatorio={false}>
-                  <Input
-                    type="datetime-local"
-                    disabled={!podeEditar}
-                    value={paraInputDateTime(carro.retirada_em)}
-                    onChange={(e) =>
-                      setCarro((c) => ({ ...c, retirada_em: e.target.value || null }))
-                    }
-                  />
-                </Campo>
+                <DataHora
+                  rotulo="Retirada"
+                  valor={carro}
+                  campoData="retirada_data"
+                  campoHora="retirada_hora"
+                  editavel={podeEditar}
+                  onChange={setCarro}
+                />
                 <Campo label="Preço (R$)" obrigatorio={false}>
                   <Input
                     type="number"
@@ -1196,16 +1242,14 @@ export default function Detalhe() {
                     onChange={(e) => setCarro((c) => ({ ...c, devolucao_local: e.target.value }))}
                   />
                 </Campo>
-                <Campo label="Devolução em" obrigatorio={false}>
-                  <Input
-                    type="datetime-local"
-                    disabled={!podeEditar}
-                    value={paraInputDateTime(carro.devolucao_em)}
-                    onChange={(e) =>
-                      setCarro((c) => ({ ...c, devolucao_em: e.target.value || null }))
-                    }
-                  />
-                </Campo>
+                <DataHora
+                  rotulo="Devolução"
+                  valor={carro}
+                  campoData="devolucao_data"
+                  campoHora="devolucao_hora"
+                  editavel={podeEditar}
+                  onChange={setCarro}
+                />
                 <div className="sm:col-span-2 lg:col-span-3">
                   <Campo label="Observações" obrigatorio={false}>
                     <Textarea
@@ -1313,19 +1357,6 @@ function tem(s: Solicitacao, servico: string) {
   return s.precisa_transporte && s.modal === servico
 }
 
-/**
- * Data (AAAA-MM-DD) no formato que um input `datetime-local` aceita.
- *
- * O solicitante informa o DIA — a hora quem descobre é a operação, quando
- * fecha o voo ou a locadora. Então o campo chega com o dia certo e a hora
- * zerada, pronta para ser corrigida. Sem data, devolve nulo: melhor campo
- * vazio do que uma data inventada.
- */
-function inicioDoDia(data: string | null | undefined, hora?: string | null) {
-  if (!data) return null
-  // A hora vem como "14:00:00" do Postgres; o input só aceita "14:00".
-  return `${data}T${hora ? hora.slice(0, 5) : '00:00'}`
-}
 
 function limpar<T extends Record<string, unknown>>(o: T) {
   const r: Record<string, unknown> = {}
@@ -1390,22 +1421,22 @@ function BlocoVoo({
             onChange={(e) => up('aeroporto_destino', e.target.value.toUpperCase())}
           />
         </Campo>
-        <Campo label="Partida" obrigatorio={false}>
-          <Input
-            type="datetime-local"
-            disabled={!editavel}
-            value={paraInputDateTime(valor.partida)}
-            onChange={(e) => up('partida', e.target.value || null)}
-          />
-        </Campo>
-        <Campo label="Chegada" obrigatorio={false}>
-          <Input
-            type="datetime-local"
-            disabled={!editavel}
-            value={paraInputDateTime(valor.chegada)}
-            onChange={(e) => up('chegada', e.target.value || null)}
-          />
-        </Campo>
+        <DataHora
+          rotulo="Partida"
+          valor={valor}
+          campoData="partida_data"
+          campoHora="partida_hora"
+          editavel={editavel}
+          onChange={onChange}
+        />
+        <DataHora
+          rotulo="Chegada"
+          valor={valor}
+          campoData="chegada_data"
+          campoHora="chegada_hora"
+          editavel={editavel}
+          onChange={onChange}
+        />
         <Campo label="Localizador" obrigatorio={false}>
           <Input
             disabled={!editavel}
@@ -1470,22 +1501,22 @@ function BlocoRodoviario({
             onChange={(e) => up('numero_onibus', e.target.value)}
           />
         </Campo>
-        <Campo label="Horário de apresentação" obrigatorio={false}>
-          <Input
-            type="datetime-local"
-            disabled={!editavel}
-            value={paraInputDateTime(valor.apresentacao_em)}
-            onChange={(e) => up('apresentacao_em', e.target.value || null)}
-          />
-        </Campo>
-        <Campo label="Horário de ida" obrigatorio={false}>
-          <Input
-            type="datetime-local"
-            disabled={!editavel}
-            value={paraInputDateTime(valor.horario_ida)}
-            onChange={(e) => up('horario_ida', e.target.value || null)}
-          />
-        </Campo>
+        <DataHora
+          rotulo="Apresentação"
+          valor={valor}
+          campoData="apresentacao_data"
+          campoHora="apresentacao_hora"
+          editavel={editavel}
+          onChange={onChange}
+        />
+        <DataHora
+          rotulo="Ida"
+          valor={valor}
+          campoData="ida_data"
+          campoHora="ida_hora"
+          editavel={editavel}
+          onChange={onChange}
+        />
         <Campo label="Embarque (ida)" obrigatorio={false}>
           <Input disabled={!editavel} value={valor.local_embarque_ida ?? ''} onChange={(e) => up('local_embarque_ida', e.target.value)} />
         </Campo>
@@ -1498,14 +1529,14 @@ function BlocoRodoviario({
             onChange={(e) => up('preco', e.target.value ? +e.target.value : null)}
           />
         </Campo>
-        <Campo label="Horário de volta" obrigatorio={false}>
-          <Input
-            type="datetime-local"
-            disabled={!editavel}
-            value={paraInputDateTime(valor.horario_volta)}
-            onChange={(e) => up('horario_volta', e.target.value || null)}
-          />
-        </Campo>
+        <DataHora
+          rotulo="Volta"
+          valor={valor}
+          campoData="volta_data"
+          campoHora="volta_hora"
+          editavel={editavel}
+          onChange={onChange}
+        />
         <Campo label="Embarque (volta)" obrigatorio={false}>
           <Input disabled={!editavel} value={valor.local_embarque_volta ?? ''} onChange={(e) => up('local_embarque_volta', e.target.value)} />
         </Campo>

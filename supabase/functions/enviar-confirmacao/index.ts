@@ -8,6 +8,7 @@ import {
   json,
   dataBR,
   dataHoraBR,
+  dataHora,
   enviarEmail,
   layoutEmail,
   EQUIPE_LABEL,
@@ -185,8 +186,8 @@ Deno.serve(async (req) => {
               <td style="padding:3px 10px 3px 0;color:#64748b;white-space:nowrap">${v.trecho}</td>
               <td style="padding:3px 0">
                 ${v.companhia ?? ''} ${v.numero_voo ?? ''} ·
-                ${dataHoraBR(v.partida)} ${v.aeroporto_origem ?? ''} →
-                ${dataHoraBR(v.chegada)} ${v.aeroporto_destino ?? ''}
+                ${dataHora(v.partida_data, v.partida_hora)} ${v.aeroporto_origem ?? ''} →
+                ${dataHora(v.chegada_data, v.chegada_hora)} ${v.aeroporto_destino ?? ''}
                 ${v.localizador ? `<br><span style="color:#64748b">Localizador</span> <strong style="font-family:monospace">${v.localizador}</strong>` : ''}
                 ${v.bagagem_despachada === true ? '<br><span style="color:#64748b">Bagagem despachada incluída</span>' : ''}
               </td></tr>`,
@@ -204,8 +205,8 @@ Deno.serve(async (req) => {
         if (!r?.empresa && !r?.horario_ida) return ''
         return `<p style="margin:0 0 10px"><strong>${c.nome_completo}</strong><br>
           ${r.empresa ?? ''}<br>
-          Ida: ${dataHoraBR(r.horario_ida)}${r.local_embarque_ida ? ` — ${r.local_embarque_ida}` : ''}<br>
-          Volta: ${dataHoraBR(r.horario_volta)}${r.local_embarque_volta ? ` — ${r.local_embarque_volta}` : ''}</p>`
+          Ida: ${dataHora(r.ida_data, r.ida_hora)}${r.local_embarque_ida ? ` — ${r.local_embarque_ida}` : ''}<br>
+          Volta: ${dataHora(r.volta_data, r.volta_hora)}${r.local_embarque_volta ? ` — ${r.local_embarque_volta}` : ''}</p>`
       })
       .join('')
     if (linhasBus) corpo += secao('Transporte rodoviário', linhasBus)
@@ -217,8 +218,8 @@ Deno.serve(async (req) => {
       corpo += secao(
         'Locação de carro',
         `${carro.locadora}${carro.categoria ? ` · ${carro.categoria}` : ''}<br>
-         Retirada ${dataHoraBR(carro.retirada_em)}${carro.retirada_local ? ` — ${carro.retirada_local}` : ''}<br>
-         Devolução ${dataHoraBR(carro.devolucao_em)}${carro.devolucao_local ? ` — ${carro.devolucao_local}` : ''}
+         Retirada ${dataHora(carro.retirada_data, carro.retirada_hora)}${carro.retirada_local ? ` — ${carro.retirada_local}` : ''}<br>
+         Devolução ${dataHora(carro.devolucao_data, carro.devolucao_hora)}${carro.devolucao_local ? ` — ${carro.devolucao_local}` : ''}
          ${condutor ? `<br>Condutor: ${condutor.nome_completo}` : ''}`,
       )
     }
@@ -232,7 +233,7 @@ Deno.serve(async (req) => {
     const resumoVoos = (voos ?? [])
       .map(
         (v) =>
-          `${v.trecho === 'IDA' ? 'ida' : 'volta'} ${dataHoraBR(v.partida)}` +
+          `${v.trecho === 'IDA' ? 'ida' : 'volta'} ${dataHora(v.partida_data, v.partida_hora)}` +
           `${v.companhia ? ` ${v.companhia}` : ''}${v.numero_voo ? ` ${v.numero_voo}` : ''}` +
           `${v.localizador ? ` (loc. ${v.localizador})` : ''}`,
       )
@@ -247,7 +248,7 @@ Deno.serve(async (req) => {
     ].join(' · ')
 
     const resumoCarro = carro?.locadora
-      ? `${carro.locadora}${carro.retirada_em ? ` · retirada ${dataHoraBR(carro.retirada_em)}` : ''}`
+      ? `${carro.locadora}${carro.retirada_data ? ` · retirada ${dataHora(carro.retirada_data, carro.retirada_hora)}` : ''}`
       : ''
 
     // Três canais, todos em paralelo e independentes: e-mail e Slack para

@@ -11,7 +11,7 @@ import {
   veiculosTexto,
   alimentacaoLabel,
 } from '../../lib/constants'
-import { dataBR, dataHoraBR, moeda } from '../../lib/format'
+import { dataBR, dataHora, dataHoraBR, moeda } from '../../lib/format'
 import { Aviso, Botao, Card, Etiqueta, Textarea } from '../../components/ui'
 import type { LinhaAprovacao } from './Pendentes'
 
@@ -67,16 +67,20 @@ type Voo = {
   numero_voo: string | null
   aeroporto_origem: string | null
   aeroporto_destino: string | null
-  partida: string | null
-  chegada: string | null
+  partida_data: string | null
+  partida_hora: string | null
+  chegada_data: string | null
+  chegada_hora: string | null
   localizador: string | null
   preco: number | null
 }
 type Rodo = {
   colaborador_id: string
   empresa: string | null
-  horario_ida: string | null
-  horario_volta: string | null
+  ida_data: string | null
+  ida_hora: string | null
+  volta_data: string | null
+  volta_hora: string | null
   preco: number | null
 }
 type Hosp = {
@@ -92,8 +96,10 @@ type Hosp = {
 type Carro = {
   locadora: string | null
   categoria: string | null
-  retirada_em: string | null
-  devolucao_em: string | null
+  retirada_data: string | null
+  retirada_hora: string | null
+  devolucao_data: string | null
+  devolucao_hora: string | null
   preco: number | null
 }
 type Operacao = {
@@ -347,7 +353,7 @@ export default function DetalheAprovacao() {
                       <p key={i} className="mt-1 text-neutral-600">
                         <span className="font-medium text-neutral-700">{v.trecho}</span>{' '}
                         {v.companhia} {v.numero_voo} · {v.aeroporto_origem} →{' '}
-                        {v.aeroporto_destino} · {dataHoraBR(v.partida)}
+                        {v.aeroporto_destino} · {dataHora(v.partida_data, v.partida_hora)}
                         {v.preco != null && (
                           <span className="ml-1 text-neutral-500">
                             ({moeda(v.preco)})
@@ -357,7 +363,7 @@ export default function DetalheAprovacao() {
                     ))}
                   {meuBus?.empresa && (
                     <p className="mt-1 text-neutral-600">
-                      Ônibus {meuBus.empresa} · ida {dataHoraBR(meuBus.horario_ida)}
+                      Ônibus {meuBus.empresa} · ida {dataHora(meuBus.ida_data, meuBus.ida_hora)}
                       {meuBus.preco != null && (
                         <span className="ml-1 text-neutral-500">
                           ({moeda(meuBus.preco)})
@@ -401,7 +407,7 @@ export default function DetalheAprovacao() {
               <p className="mt-1 text-neutral-600">
                 {carro.locadora}
                 {carro.categoria && ` · ${carro.categoria}`} ·{' '}
-                {dataHoraBR(carro.retirada_em)} a {dataHoraBR(carro.devolucao_em)}
+                {dataHora(carro.retirada_data, carro.retirada_hora)} a {dataHora(carro.devolucao_data, carro.devolucao_hora)}
               </p>
             </div>
           )}

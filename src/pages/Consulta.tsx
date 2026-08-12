@@ -7,7 +7,7 @@ import {
   equipeLabel,
   servicoLabel,
 } from '../lib/constants'
-import { dataBR, dataHoraBR, mascaraCpf } from '../lib/format'
+import { dataBR, dataHora, dataHoraBR, mascaraCpf } from '../lib/format'
 import {
   Aviso,
   Botao,
@@ -283,8 +283,8 @@ function DetalheConsulta({ dados }: { dados: any }) {
                   .map((v: any, i: number) => (
                     <p key={i} className="text-neutral-700">
                       <span className="font-semibold">{v.trecho}</span> {v.companhia}{' '}
-                      {v.numero_voo} · {dataHoraBR(v.partida)}{' '}
-                      {aeroportoLabel(v.aeroporto_origem)} → {dataHoraBR(v.chegada)}{' '}
+                      {v.numero_voo} · {dataHora(v.partida_data, v.partida_hora)}{' '}
+                      {aeroportoLabel(v.aeroporto_origem)} → {dataHora(v.chegada_data, v.chegada_hora)}{' '}
                       {aeroportoLabel(v.aeroporto_destino)}
                       {v.localizador && (
                         <>
@@ -334,8 +334,8 @@ function DetalheConsulta({ dados }: { dados: any }) {
                 {r.empresa}
                 {r.numero_onibus && ` · ônibus ${r.numero_onibus}`}
                 <br />
-                Apresentação {dataHoraBR(r.apresentacao_em)} · saída{' '}
-                {dataHoraBR(r.horario_ida)}
+                Apresentação {dataHora(r.apresentacao_data, r.apresentacao_hora)} · saída{' '}
+                {dataHora(r.ida_data, r.ida_hora)}
                 {r.local_embarque_ida && ` — ${r.local_embarque_ida}`}
               </p>
             )
