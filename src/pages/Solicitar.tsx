@@ -159,6 +159,52 @@ const VAZIO: Form = {
 const PASSOS = ['Serviços', 'Destino', 'Equipe', 'Solicitante', 'Revisão']
 const RASCUNHO = 'f9:rascunho'
 
+/**
+ * Agenda de quem já foi solicitado, guardada NO NAVEGADOR de quem preenche.
+ *
+ * Por que não no servidor: o formulário é público, sem login. Uma busca por
+ * nome que devolvesse CPF viraria uma forma de colher CPF de qualquer pessoa
+ * pela internet — o oposto da regra do sistema, em que CPF só existe na área
+ * logada. No navegador, o dado só volta para quem já o digitou uma vez.
+ *
+ * Consequência aceita: quem trocar de computador ou limpar o navegador
+ * preenche de novo.
+ */
+const AGENDA = 'f9:agenda'
+
+type PessoaSalva = { nome_completo: string; cpf: string; data_nascimento: string }
+type SolicitanteSalvo = {
+  nome: string
+  email: string
+  whatsapp: string
+  diretor_id: string
+}
+
+function lerAgenda(): { pessoas: PessoaSalva[]; solicitante?: SolicitanteSalvo } {
+  try {
+    return JSON.parse(localStorage.getItem(AGENDA) ?? '{}')?.pessoas
+      ? JSON.parse(localStorage.getItem(AGENDA)!)
+      : { pessoas: [] }
+  } catch {
+    return { pessoas: [] }
+  }
+}
+
+/** Guarda quem viajou e os dados de quem pediu, sem repetir a mesma pessoa. */
+function gravarAgenda(pessoas: PessoaSalva[], solicitante: SolicitanteSalvo) {
+  try {
+    const atual = lerAgenda()
+    const porCpf = new Map(atual.pessoas.map((p) => [p.cpf, p]))
+    for (const p of pessoas) if (p.cpf) porCpf.set(p.cpf, p)
+    localStorage.setItem(
+      AGENDA,
+      JSON.stringify({ pessoas: [...porCpf.values()].slice(-60), solicitante }),
+    )
+  } catch {
+    // Navegador sem espaço ou em modo privado: seguir sem agenda é aceitável.
+  }
+}
+
 type Erros = Record<string, string>
 
 export default function Solicitar() {
@@ -180,11 +226,56 @@ export default function Solicitar() {
   const [form, setForm] = useState<Form>(() => {
     try {
       const salvo = localStorage.getItem(RASCUNHO)
-      return salvo ? { ...VAZIO, ...JSON.parse(salvo), consentimento: false } : VAZIO
+      if (salvo) return { ...VAZIO, ...JSON.parse(salvo), consentimento: false }
+      // Sem rascunho: começa com os dados de quem preencheu da última vez.
+      // É prefill, não trava — todos os campos continuam editáveis.
+      const { solicitante } = lerAgenda()
+      return solicitante
+        ? {
+            ...VAZIO,
+            solicitante_nome: solicitante.nome ?? '',
+            solicitante_email: solicitante.email ?? '',
+            solicitante_whatsapp: solicitante.whatsapp ?? '',
+            diretor_id: solicitante.diretor_id ?? '',
+          }
+        : VAZIO
     } catch {
       return VAZIO
     }
   })
+
+  /** Pessoas já solicitadas neste navegador, para sugerir e autocompletar. */
+  const [agenda] = useState<PessoaSalva[]>(() => lerAgenda().pessoas ?? [])
+
+  /**
+   * Escreve o nome e, se for alguém conhecido, traz CPF e nascimento junto.
+   *
+   * Só completa o que estiver vazio: quem já corrigiu um dado à mão não vê a
+   * correção ser desfeita por causa da agenda.
+   */
+  function escolherPessoa(i: number, nome: string) {
+    const conhecida = agenda.find(
+      (p) => p.nome_completo.toLowerCase() === nome.trim().toLowerCase(),
+    )
+    setForm((f) => {
+      const cs = [...f.colaboradores]
+      cs[i] = {
+        ...cs[i],
+        nome_completo: nome,
+        cpf: conhecida && !cs[i].cpf ? mascaraCpf(conhecida.cpf) : cs[i].cpf,
+        data_nascimento:
+          conhecida && !cs[i].data_nascimento
+            ? conhecida.data_nascimento
+            : cs[i].data_nascimento,
+      }
+      return { ...f, colaboradores: cs }
+    })
+    setErros((e) => ({
+      ...e,
+      [`colab.${i}.nome_completo`]: '',
+      ...(conhecida ? { [`colab.${i}.cpf`]: '', [`colab.${i}.data_nascimento`]: '' } : {}),
+    }))
+  }
   const [edicoes, setEdicoes] = useState<Edicao[]>([])
   const [diretores, setDiretores] = useState<Pick<Diretor, 'id' | 'nome'>[]>([])
   const [erros, setErros] = useState<Erros>({})
@@ -806,6 +897,28 @@ export default function Solicitar() {
         },
       )
       localStorage.removeItem(RASCUNHO)
+      // Guarda quem viajou e os dados de quem pediu, para a próxima
+      // solicitação já vir preenchida.
+      gravarAgenda(
+        (soCarro
+          ? colaboradoresDosCondutores()
+          : form.colaboradores.filter((c) => !colabVazio(c)).map((c) => ({
+              nome_completo: c.nome_completo.trim(),
+              cpf: soDigitos(c.cpf),
+              data_nascimento: c.data_nascimento,
+            }))
+        ).map((p) => ({
+          nome_completo: p.nome_completo,
+          cpf: p.cpf,
+          data_nascimento: p.data_nascimento,
+        })),
+        {
+          nome: form.solicitante_nome.trim(),
+          email: form.solicitante_email.trim(),
+          whatsapp: form.solicitante_whatsapp,
+          diretor_id: form.diretor_id,
+        },
+      )
       navigate(`/enviado/${resp.protocolo}?t=${resp.token}`)
     } catch (err) {
       setErroEnvio(err instanceof Error ? err.message : 'Erro inesperado ao enviar.')
@@ -2062,12 +2175,21 @@ export default function Solicitar() {
                 >
                   <div className="grid gap-4 sm:grid-cols-2">
                     <div className="sm:col-span-2">
-                      <Campo label="Nome completo" erro={erros[`colab.${i}.nome_completo`]}>
+                      <Campo
+                        label="Nome completo"
+                        erro={erros[`colab.${i}.nome_completo`]}
+                        dica={
+                          agenda.length
+                            ? 'Comece a digitar: quem já viajou antes aparece na lista.'
+                            : undefined
+                        }
+                      >
                         <Input
                           value={c.nome_completo}
                           erro={!!erros[`colab.${i}.nome_completo`]}
                           autoComplete="off"
-                          onChange={(e) => setColab(i, 'nome_completo', e.target.value)}
+                          list="pessoas-conhecidas"
+                          onChange={(e) => escolherPessoa(i, e.target.value)}
                           placeholder="Como está no documento de identificação"
                         />
                       </Campo>
@@ -2427,8 +2549,33 @@ export default function Solicitar() {
           </div>
         </div>
 
+        {/* As sugestões de nome saem daqui. É um `datalist` do próprio
+            navegador: nada é consultado no servidor. */}
+        <datalist id="pessoas-conhecidas">
+          {agenda.map((p) => (
+            <option key={p.cpf} value={p.nome_completo} />
+          ))}
+        </datalist>
+
         <footer className="mt-12 border-t border-neutral-200 pt-5 text-center text-xs text-neutral-400">
           <p className="text-neutral-500">Cypher · Forma Turismo</p>
+          {agenda.length > 0 && (
+            <p className="mt-2">
+              {agenda.length} {agenda.length === 1 ? 'pessoa salva' : 'pessoas salvas'}{' '}
+              neste navegador para preenchimento automático.{' '}
+              <button
+                type="button"
+                onClick={() => {
+                  if (!confirm('Apagar os dados salvos neste navegador?')) return
+                  localStorage.removeItem(AGENDA)
+                  location.reload()
+                }}
+                className="underline decoration-neutral-300 underline-offset-4 hover:text-neutral-700"
+              >
+                Apagar
+              </button>
+            </p>
+          )}
           <button
             type="button"
             onClick={() => setPorQueCypher(true)}
