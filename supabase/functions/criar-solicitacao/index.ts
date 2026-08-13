@@ -75,8 +75,9 @@ Deno.serve(async (req) => {
     const temTransporte = servicos.some((s) =>
       ['AEREO', 'RODOVIARIO', 'VAN'].includes(s),
     )
-    if (b.data_saida <= b.data_entrada)
-      return erro('A data de saída precisa ser posterior à de entrada.')
+    // Mesmo dia é válido: há operação que sai de manhã e volta à noite.
+    if (b.data_saida < b.data_entrada)
+      return erro('A data de saída não pode ser anterior à de entrada.')
     if (!EQUIPE_LABEL[b.equipe]) return erro('Equipe inválida.')
     if (b.equipe === 'OUTROS' && !String(b.equipe_outro ?? '').trim())
       return erro('Informe qual é a área quando escolher "Outros".')

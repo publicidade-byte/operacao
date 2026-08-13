@@ -587,8 +587,10 @@ export default function Solicitar() {
         e.edicao_ids = 'Selecione ao menos uma data da operação.'
       if (!form.data_entrada) e.data_entrada = 'Informe a data de entrada.'
       if (!form.data_saida) e.data_saida = 'Informe a data de saída.'
-      if (form.data_entrada && form.data_saida && form.data_saida <= form.data_entrada)
-        e.data_saida = 'A saída precisa ser depois da entrada.'
+      // Mesmo dia é válido: muita operação sai de manhã e volta à noite.
+      // O que não pode é a saída ser ANTES da entrada.
+      if (form.data_entrada && form.data_saida && form.data_saida < form.data_entrada)
+        e.data_saida = 'A saída não pode ser antes da entrada.'
       // Só cobra hospedagem de quem pediu hospedagem.
       if (form.servicos.includes('HOSPEDAGEM') && !form.tipo_hospedagem)
         e.tipo_hospedagem = 'Selecione o tipo de hospedagem.'
