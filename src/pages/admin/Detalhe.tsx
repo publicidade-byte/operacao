@@ -472,7 +472,17 @@ export default function Detalhe() {
   if (!s)
     return <p className="py-16 text-center text-sm text-neutral-500">Carregando…</p>
 
-  const podeEditar = !['AGUARDANDO_APROVACAO', 'CONCLUIDA', 'CANCELADA'].includes(s.status)
+  /**
+   * Depois de ir para aprovação, ser concluída ou cancelada, a solicitação
+   * trava — o diretor decide sobre o que viu, e o que fechou fica como está.
+   *
+   * O super admin passa por cima disso: é quem conserta o que ninguém mais
+   * consegue. Não é o caminho normal, então a tela avisa quando ele está
+   * mexendo em algo que estaria travado.
+   */
+  const travada = ['AGUARDANDO_APROVACAO', 'CONCLUIDA', 'CANCELADA'].includes(s.status)
+  const podeEditar = !travada || !!admin?.super_admin
+  const editandoTravada = travada && !!admin?.super_admin
   const custo = s.custo_total_manual ?? s.custo_total
 
   return (
@@ -934,6 +944,14 @@ export default function Detalhe() {
       {/* ---------- ABA OPERACIONAL ---------- */}
       {aba === 'Operacional' && (
         <div className="space-y-4">
+          {editandoTravada && (
+            <Aviso tom="destaque">
+              Esta solicitação está <strong>{STATUS_LABEL[s.status].toLowerCase()}</strong>{' '}
+              e normalmente não seria editável. Você está vendo os campos abertos
+              porque é super admin — o que mudar aqui altera um registro já
+              fechado, e o diretor não é avisado de novo.
+            </Aviso>
+          )}
           {/* Reserva por quarto: a solicitação pode ter chegado sem ninguém
               na lista. Os blocos por pessoa somem, então o que a operação
               precisa para reservar tem que aparecer aqui. */}
