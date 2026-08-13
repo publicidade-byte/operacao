@@ -25,6 +25,7 @@ import {
   idade,
   mascaraCpf,
   mascaraTelefone,
+  moeda,
   soDigitos,
   telefoneValido,
 } from '../lib/format'
@@ -246,6 +247,56 @@ export default function Solicitar() {
 
   /** Pessoas já solicitadas neste navegador, para sugerir e autocompletar. */
   const [agenda] = useState<PessoaSalva[]>(() => lerAgenda().pessoas ?? [])
+
+  /** Estimativa por rota, a partir do que já foi pago. Carrega uma vez só. */
+  const [precosRota, setPrecosRota] = useState<Map<string, number>>(new Map())
+  useEffect(() => {
+    supabase.rpc('estimativa_preco_voo').then(({ data }) => {
+      setPrecosRota(
+        new Map(
+          ((data ?? []) as { rota: string; estimativa: number }[]).map((r) => [
+            r.rota,
+            Number(r.estimativa),
+          ]),
+        ),
+      )
+    })
+  }, [])
+
+  /**
+   * Quanto essa viagem deve custar, somando só os trechos pedidos.
+   *
+   * Sem histórico da rota não há estimativa — mostrar um número inventado
+   * seria pior do que não mostrar nada, porque alguém se planejaria por ele.
+   */
+  const estimativaVoo = useMemo(() => {
+    if (!form.servicos.includes('AEREO') || !form.tipo_voo) return null
+
+    const trechos: [string, string][] = []
+    if (form.tipo_voo === 'IDA' || form.tipo_voo === 'IDA_VOLTA')
+      trechos.push([form.aeroporto_saida, form.aeroporto_chegada])
+    if (form.tipo_voo === 'VOLTA')
+      trechos.push([form.aeroporto_saida, form.aeroporto_chegada])
+    if (form.tipo_voo === 'IDA_VOLTA')
+      trechos.push([form.aeroporto_saida_volta, form.aeroporto_chegada_volta])
+
+    const valores = trechos
+      .filter(([o, d]) => o && d)
+      .map(([o, d]) => precosRota.get(`${o}-${d}`))
+    const achados = valores.filter((v): v is number => typeof v === 'number')
+    if (achados.length === 0) return null
+
+    return {
+      total: achados.reduce((t, v) => t + v, 0),
+      parcial: achados.length < valores.length,
+      // A checagem de linha vazia é repetida aqui de propósito: `colabVazio`
+      // é declarada depois, e usá-la aqui derruba a página inteira — o
+      // useMemo roda durante a renderização, antes da declaração existir.
+      pax: form.colaboradores.filter(
+        (c) => c.nome_completo.trim() || c.cpf.trim() || c.data_nascimento,
+      ).length,
+    }
+  }, [form, precosRota])
 
   /**
    * Escreve o nome e, se for alguém conhecido, traz CPF e nascimento junto.
@@ -1641,6 +1692,26 @@ export default function Solicitar() {
                             </Select>
                           </Campo>
                         </div>
+                      </div>
+                    )}
+
+                    {/* Estimativa a partir do que a Forma já pagou nessas
+                        rotas. Vale para ida, volta ou os dois — soma só os
+                        trechos que a pessoa realmente pediu. */}
+                    {estimativaVoo && (
+                      <div className="rounded-lg bg-marca-50 px-3.5 py-3 text-sm ring-1 ring-marca-300">
+                        <p className="font-semibold text-neutral-900">
+                          Estimativa: {moeda(estimativaVoo.total)}
+                          {form.tipo_voo === 'IDA_VOLTA' ? ' (ida e volta)' : ' (um trecho)'}
+                          {estimativaVoo.pax > 1 && ` por pessoa`}
+                        </p>
+                        <p className="mt-1 text-xs text-neutral-600">
+                          Baseada no que a Forma já pagou nessas rotas
+                          {estimativaVoo.parcial &&
+                            ' (só um dos trechos tem histórico)'}
+                          . É referência para você se planejar — o valor final é o
+                          da emissão.
+                        </p>
                       </div>
                     )}
 

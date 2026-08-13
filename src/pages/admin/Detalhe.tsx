@@ -148,22 +148,6 @@ function resumoEnvio(r: Confirmacao, email: string) {
 /** "14:00:00" → "14h00". Vazio vira string vazia, não "—" solto na frase. */
 const hora = (h?: string | null) => (h ? ` ${h.slice(0, 5).replace(':', 'h')}` : '')
 
-/** Chave da rota no mapa de referências. Sem os dois aeroportos, não há rota. */
-const rotaDe = (v?: Partial<Voo>) =>
-  v?.aeroporto_origem && v?.aeroporto_destino
-    ? `${v.aeroporto_origem}-${v.aeroporto_destino}`
-    : ''
-
-/** O que a Forma já pagou numa rota — referência, não cotação. */
-type RefPreco = {
-  rota: string
-  emissoes: number
-  media: number
-  menor: number
-  maior: number
-  desde: string | null
-}
-
 const ABAS = ['Solicitação', 'Operacional', 'Aprovação', 'Histórico'] as const
 
 export default function Detalhe() {
@@ -177,8 +161,6 @@ export default function Detalhe() {
   const [carro, setCarro] = useState<Partial<LocacaoCarro>>({})
   const [van, setVan] = useState<Partial<LocacaoVan>>({})
   const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
-  /** Preço médio já pago por rota, para a operação ter parâmetro ao cotar. */
-  const [refPrecos, setRefPrecos] = useState<Map<string, RefPreco>>(new Map())
   const [eventos, setEventos] = useState<Evento[]>([])
   const [aprovacoes, setAprovacoes] = useState<Aprovacao[]>([])
   const [operacoes, setOperacoes] = useState<Edicao[]>([])
@@ -226,10 +208,6 @@ export default function Detalhe() {
     const reservas = (sc.data ?? []) as CarroPedido[]
     setCarrosPedidos(reservas)
 
-    // Uma chamada só para todas as rotas: cada bloco de voo consulta o mapa,
-    // em vez de ir ao banco por trecho.
-    const { data: refs } = await supabase.rpc('referencia_precos_voo')
-    setRefPrecos(new Map(((refs ?? []) as RefPreco[]).map((r) => [r.rota, r])))
 
     // Operações cobertas por esta solicitação (pode ser mais de uma).
     const { data: ops } = await supabase
@@ -1035,14 +1013,12 @@ export default function Detalhe() {
                       titulo="Voo de ida"
                       valor={voos[`${c.id}:IDA`] ?? {}}
                       editavel={podeEditar}
-                      referencia={refPrecos.get(rotaDe(voos[`${c.id}:IDA`]))}
                       onChange={(v) => setVoos((p) => ({ ...p, [`${c.id}:IDA`]: v }))}
                     />
                     <BlocoVoo
                       titulo="Voo de volta"
                       valor={voos[`${c.id}:VOLTA`] ?? {}}
                       editavel={podeEditar}
-                      referencia={refPrecos.get(rotaDe(voos[`${c.id}:VOLTA`]))}
                       onChange={(v) => setVoos((p) => ({ ...p, [`${c.id}:VOLTA`]: v }))}
                     />
                   </>
@@ -1428,14 +1404,11 @@ function BlocoVoo({
   titulo,
   valor,
   editavel,
-  referencia,
   onChange,
 }: {
   titulo: string
   valor: Partial<Voo>
   editavel: boolean
-  /** O que já foi pago nesta rota. Ausente = ainda sem histórico. */
-  referencia?: RefPreco
   onChange: (v: Partial<Voo>) => void
 }) {
   const up = (k: keyof Voo, v: unknown) => onChange({ ...valor, [k]: v })
@@ -1491,21 +1464,7 @@ function BlocoVoo({
             className="font-mono"
           />
         </Campo>
-        <Campo
-          label="Preço (R$)"
-          obrigatorio={false}
-          /* Referência do que já foi pago nesta rota. Não é cotação: serve
-             para a operação perceber quando o valor foge do padrão. */
-          dica={
-            referencia
-              ? `Já pago nesta rota: ${moeda(referencia.media)} em média ` +
-                `(${moeda(referencia.menor)} a ${moeda(referencia.maior)}, ` +
-                `${referencia.emissoes} ${referencia.emissoes === 1 ? 'emissão' : 'emissões'}).`
-              : valor.aeroporto_origem && valor.aeroporto_destino
-                ? 'Sem histórico desta rota ainda — este vai ser o primeiro.'
-                : undefined
-          }
-        >
+        <Campo label="Preço (R$)" obrigatorio={false}>
           <Input
             type="number"
             step="0.01"
