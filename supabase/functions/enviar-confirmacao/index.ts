@@ -47,40 +47,87 @@ async function avisarCanal(texto: string) {
   }
 }
 
+/** Cliente Supabase com service role — o tipo exato não interessa aqui. */
+type Banco = ReturnType<typeof createClient>
+
+/**
+ * Descobre o usuário do Slack de quem pediu.
+ *
+ * Duas fontes, nesta ordem:
+ *
+ * 1. `slack_pessoas`, o mapa explícito de e-mail para usuário. É a fonte
+ *    confiável e é o que faz o aviso funcionar hoje, sem depender de escopo
+ *    nenhum. Também é o único jeito de atender quem usa e-mail diferente no
+ *    Slack e no formulário.
+ * 2. `users.lookupByEmail`, que exige o escopo `users:read.email`. Quando ele
+ *    responde, o id é gravado no mapa — cada pessoa é procurada uma vez só e
+ *    o mapa se completa sozinho.
+ *
+ * Não há terceira tentativa por nome: dois "Rafael" no workspace e a
+ * confirmação de viagem de um vai para a caixa do outro. Melhor não enviar e
+ * dizer por quê.
+ */
+async function acharNoSlack(sb: Banco, token: string, email: string) {
+  const chave = email.trim().toLowerCase()
+
+  const { data: mapeado } = await sb
+    .from('slack_pessoas')
+    .select('slack_user_id, nome')
+    .eq('email', chave)
+    .maybeSingle()
+  if (mapeado?.slack_user_id)
+    return { id: mapeado.slack_user_id as string, nome: (mapeado.nome as string) ?? chave }
+
+  const busca = await fetch(
+    `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(chave)}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  )
+  const achado = await busca.json()
+
+  if (!achado.ok) {
+    if (achado.error === 'users_not_found')
+      return { motivo: `${email} não tem conta neste Slack` }
+    if (achado.error === 'missing_scope')
+      return {
+        motivo:
+          `${email} não está no mapa slack_pessoas, e o app do Slack não tem o escopo ` +
+          `users:read.email para procurar sozinho — cadastre a pessoa no mapa`,
+      }
+    return { motivo: `Slack: ${achado.error}` }
+  }
+
+  // Grava o que descobriu. Se falhar, o aviso vai do mesmo jeito — cache
+  // perdido custa uma chamada a mais, não a mensagem.
+  await sb
+    .from('slack_pessoas')
+    .upsert(
+      {
+        email: chave,
+        slack_user_id: achado.user.id,
+        nome: achado.user.real_name ?? achado.user.name,
+        origem: 'LOOKUP',
+      },
+      { onConflict: 'email' },
+    )
+    .then(undefined, () => {})
+
+  return { id: achado.user.id as string, nome: (achado.user.real_name ?? achado.user.name) as string }
+}
+
 /**
  * Manda a confirmação no Slack do próprio solicitante.
  *
- * Quem pede pelo formulário está no mesmo workspace, então dá para achar a
- * pessoa pelo e-mail que ela informou e mandar direto no privado. Isso não
- * substitui o e-mail — mas enquanto o domínio não estiver verificado no
- * provedor, é o único caminho que chega em quem pediu.
- *
- * `users.lookupByEmail` exige o escopo users:read.email no app do Slack.
- * Sem ele a resposta é `missing_scope`, e a mensagem diz isso por extenso
- * em vez de "não enviado" seco.
+ * Quem pede pelo formulário está no mesmo workspace, então dá para mandar
+ * direto no privado. Isso não substitui o e-mail — mas enquanto o domínio não
+ * estiver verificado no provedor, é o caminho que de fato chega em quem pediu.
  */
-async function dmSolicitante(email: string, texto: string) {
+async function dmSolicitante(sb: Banco, email: string, texto: string) {
   const token = Deno.env.get('SLACK_BOT_TOKEN')
   if (!token) return { enviado: false, motivo: 'Slack não configurado' }
 
   try {
-    const busca = await fetch(
-      `https://slack.com/api/users.lookupByEmail?email=${encodeURIComponent(email)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
-    )
-    const achado = await busca.json()
-
-    if (!achado.ok) {
-      if (achado.error === 'users_not_found')
-        return { enviado: false, motivo: `${email} não tem conta neste Slack` }
-      if (achado.error === 'missing_scope')
-        return {
-          enviado: false,
-          motivo:
-            'falta o escopo users:read.email no app do Slack — sem ele não dá para achar a pessoa pelo e-mail',
-        }
-      return { enviado: false, motivo: `Slack: ${achado.error}` }
-    }
+    const pessoa = await acharNoSlack(sb, token, email)
+    if (!pessoa.id) return { enviado: false, motivo: pessoa.motivo }
 
     const envio = await fetch('https://slack.com/api/chat.postMessage', {
       method: 'POST',
@@ -88,11 +135,11 @@ async function dmSolicitante(email: string, texto: string) {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json; charset=utf-8',
       },
-      body: JSON.stringify({ channel: achado.user.id, text: texto, unfurl_links: false }),
+      body: JSON.stringify({ channel: pessoa.id, text: texto, unfurl_links: false }),
     })
     const r = await envio.json()
     return r.ok
-      ? { enviado: true, para: achado.user.name as string }
+      ? { enviado: true, para: pessoa.nome }
       : { enviado: false, motivo: `Slack recusou a mensagem: ${r.error}` }
   } catch (e) {
     return { enviado: false, motivo: e instanceof Error ? e.message : 'falha no Slack' }
@@ -258,8 +305,14 @@ Deno.serve(async (req) => {
 
     // Resumo curto para o Slack de quem pediu. O e-mail leva tudo; aqui vai
     // o essencial e o link, que é o que se olha no celular.
+    // Dois links, porque servem a momentos diferentes. O `/s/<token>` abre
+    // direto nesta solicitação e não pede senha — é o que se clica na hora.
+    // O `/consulta` é o portal com todas as solicitações, e pede a senha
+    // compartilhada da equipe; vale guardar para depois.
     const resumoSolicitante = [
-      `:white_check_mark: *Sua viagem está confirmada — ${s.protocolo}*`,
+      `:white_check_mark: *Solicitação ${s.protocolo} concluída*`,
+      '',
+      `Olá, ${s.solicitante_nome.split(' ')[0]}! A operação finalizou o que você pediu.`,
       '',
       `*Destino:* ${descreverDestino(s)}`,
       `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
@@ -268,10 +321,10 @@ Deno.serve(async (req) => {
       resumoHosp ? `*Hospedagem:* ${resumoHosp}` : '',
       resumoCarro ? `*Carro:* ${resumoCarro}` : '',
       '',
-      site
-        ? `:mag: <${site}/s/${s.token_acompanhamento}|Ver todos os detalhes>`
-        : '',
-      `Dúvidas? Fale com a equipe operacional.`,
+      site ? `:mag: <${site}/s/${s.token_acompanhamento}|Ver esta solicitação>` : '',
+      site ? `:desktop_computer: Portal de consulta: ${site}/consulta` : '',
+      '',
+      `Os detalhes completos também foram para o seu e-mail. Dúvidas? Fale com a equipe operacional.`,
     ]
       .filter(Boolean)
       .join('\n')
@@ -282,7 +335,7 @@ Deno.serve(async (req) => {
         `[${s.protocolo}] Sua viagem para ${descreverDestino(s, { comHotel: false })} está confirmada`,
         layoutEmail('Viagem confirmada', corpo),
       ),
-      dmSolicitante(s.solicitante_email, resumoSolicitante),
+      dmSolicitante(sb, s.solicitante_email, resumoSolicitante),
       avisarCanal(
         [
           `:white_check_mark: *${s.protocolo} confirmada*`,
