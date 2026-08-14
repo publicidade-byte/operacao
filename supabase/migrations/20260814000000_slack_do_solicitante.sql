@@ -52,7 +52,8 @@ create trigger slack_pessoas_normaliza before insert or update on slack_pessoas
 insert into slack_pessoas (email, slack_user_id, nome) values
   ('ana.ramos@formahomolog.com.br',     'U09EJ1A348H', 'Ana Ramos'),
   ('rafael@colabformaturas.com.br',     'U07LX8Z4F7F', 'Rafael Gomes'),
-  ('marcelo.carao@formaconhecer.com.br','U07MHL43T4Y', 'Marcelo Carão')
+  ('marcelo.carao@formaconhecer.com.br','U07MHL43T4Y', 'Marcelo Carão'),
+  ('bolacha@formahomolog.com.br',       'U07MHL3L89E', 'Bolacha')
 on conflict (email) do nothing;
 
 -- Leitura para a equipe, escrita só para gestor: um id errado aqui manda a
