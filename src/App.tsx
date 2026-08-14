@@ -8,7 +8,6 @@ import NovaSenha from './pages/NovaSenha'
 import AdminLayout from './pages/admin/AdminLayout'
 import Lista from './pages/admin/Lista'
 import Detalhe from './pages/admin/Detalhe'
-import Painel from './pages/admin/Painel'
 import Usuarios from './pages/admin/Usuarios'
 import AprovacaoLayout from './pages/aprovacao/AprovacaoLayout'
 import Pendentes from './pages/aprovacao/Pendentes'
@@ -32,7 +31,9 @@ export default function App() {
       {/* Operação */}
       <Route path="/admin" element={<AdminLayout />}>
         <Route index element={<Lista />} />
-        <Route path="painel" element={<Painel />} />
+        {/* O checklist de etapas da operação saiu daqui: é de outro projeto,
+            e misturar os dois confunde quem usa o Cypher no dia a dia.
+            A tela continua em pages/admin/Painel.tsx para quem for levá-la. */}
         <Route path="solicitacoes/:id" element={<Detalhe />} />
         <Route path="usuarios" element={<Usuarios />} />
       </Route>

@@ -45,14 +45,19 @@ end $$;
 create trigger slack_pessoas_normaliza before insert or update on slack_pessoas
   for each row execute function normalizar_email_slack();
 
--- Quem já pediu alguma coisa e tem conta no workspace. Gustavo Brogini
--- (gustavo@formaturismo.com.br) ficou de fora de propósito: não foi
--- encontrado no Slack da Forma, e inventar um id mandaria a confirmação da
--- viagem dele para a pessoa errada.
+-- Quem já pediu alguma coisa, e o e-mail que cada um usa no Slack.
+--
+-- O Gustavo é o caso que justifica a tabela existir: no formulário ele
+-- assinou como gustavo@formaturismo.com.br, e no Slack a conta é
+-- gustavo@formahomolog.com.br. Nenhum lookup por e-mail acharia essa
+-- pessoa, com escopo ou sem. Aqui os dois e-mails apontam para o mesmo id,
+-- e ele recebe o aviso de qualquer um dos dois.
 insert into slack_pessoas (email, slack_user_id, nome) values
   ('ana.ramos@formahomolog.com.br',     'U09EJ1A348H', 'Ana Ramos'),
   ('rafael@colabformaturas.com.br',     'U07LX8Z4F7F', 'Rafael Gomes'),
   ('marcelo.carao@formaconhecer.com.br','U07MHL43T4Y', 'Marcelo Carão'),
+  ('gustavo@formaturismo.com.br',       'U07LX8P8Q76', 'Gustavo Bueno'),
+  ('gustavo@formahomolog.com.br',       'U07LX8P8Q76', 'Gustavo Bueno'),
   ('bolacha@formahomolog.com.br',       'U07MHL3L89E', 'Bolacha')
 on conflict (email) do nothing;
 
