@@ -158,6 +158,8 @@ export default function Detalhe() {
   const [voos, setVoos] = useState<Record<string, Partial<Voo>>>({})
   const [rodo, setRodo] = useState<Record<string, Partial<Rodoviario>>>({})
   const [hosp, setHosp] = useState<Record<string, Partial<HospedagemDetalhe>>>({})
+  /** Endereço por hotel, para preencher o bloco de hospedagem sozinho. */
+  const [hoteis, setHoteis] = useState<Map<string, string>>(new Map())
   const [carro, setCarro] = useState<Partial<LocacaoCarro>>({})
   const [van, setVan] = useState<Partial<LocacaoVan>>({})
   const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
@@ -182,7 +184,7 @@ export default function Detalhe() {
     setS(sol)
 
     const ids = sol.colaboradores.map((c) => c.id)
-    const [v, r, h, l, vn, ev, ap, sc] = await Promise.all([
+    const [v, r, h, l, vn, ev, ap, sc, ht] = await Promise.all([
       supabase.from('voos').select('*').in('colaborador_id', ids),
       supabase.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
       supabase.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
@@ -203,10 +205,21 @@ export default function Detalhe() {
         .select('*')
         .eq('solicitacao_id', id)
         .order('ordem'),
+      supabase.from('hoteis').select('chave, endereco'),
     ])
 
     const reservas = (sc.data ?? []) as CarroPedido[]
     setCarrosPedidos(reservas)
+
+    // Catálogo de endereços por nome de hotel. Fica num Map porque a mesma
+    // consulta serve para os N colaboradores da solicitação.
+    const enderecos = new Map(
+      ((ht.data ?? []) as { chave: string; endereco: string }[]).map((x) => [
+        x.chave,
+        x.endereco,
+      ]),
+    )
+    setHoteis(enderecos)
 
 
     // Operações cobertas por esta solicitação (pode ser mais de uma).
@@ -280,6 +293,15 @@ export default function Detalhe() {
               }
             : {}),
         }
+      // O endereço vem do catálogo, mas só onde ainda está vazio: quem já
+      // digitou alguma coisa aqui sabia o que estava fazendo, e sobrescrever
+      // seria trocar o dado bom pelo genérico.
+      const linha = mh[c.id]
+      if (!linha.endereco?.trim()) {
+        const nome = linha.hotel_hospedagem?.trim() || linha.hotel?.trim()
+        const achado = nome ? enderecos.get(chaveHotel(nome)) : undefined
+        if (achado) linha.endereco = achado
+      }
     })
     setHosp(mh)
 
@@ -1037,6 +1059,7 @@ export default function Detalhe() {
                   valor={hosp[c.id] ?? {}}
                   editavel={podeEditar}
                   padraoHotel={s.edicoes.hotel}
+                  enderecoDe={(nome) => hoteis.get(chaveHotel(nome))}
                   padraoIn={s.data_entrada}
                   padraoOut={s.data_saida}
                   fora={s.tipo_hospedagem === 'FORA_HOTEL_PAX'}
@@ -1368,6 +1391,15 @@ export default function Detalhe() {
  * `servicos` é a fonte de verdade; `modal` e `precisa_locacao_carro` só
  * cobrem as solicitações antigas, anteriores a essa mudança.
  */
+/**
+ * Mesma normalização da função `chave_hotel` no banco. As duas precisam
+ * concordar: se divergirem, a tela procura por uma chave que o catálogo não
+ * tem e o endereço simplesmente não aparece, sem erro nenhum na cara.
+ */
+function chaveHotel(nome: string) {
+  return nome.trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
 function tem(s: Solicitacao, servico: string) {
   const lista = s.servicos ?? []
   if (lista.length) return lista.includes(servico)
@@ -1577,6 +1609,7 @@ function BlocoHospedagem({
   padraoOut,
   fora,
   pedido,
+  enderecoDe,
   onChange,
 }: {
   valor: Partial<HospedagemDetalhe>
@@ -1592,9 +1625,27 @@ function BlocoHospedagem({
     alimentacao: string | null
     obs: string | null
   }
+  /** Endereço conhecido para um nome de hotel, se houver. */
+  enderecoDe: (nome: string) => string | undefined
   onChange: (v: Partial<HospedagemDetalhe>) => void
 }) {
   const up = (k: keyof HospedagemDetalhe, v: unknown) => onChange({ ...valor, [k]: v })
+
+  /**
+   * Troca o hotel e, de quebra, traz o endereço dele.
+   *
+   * Só preenche endereço vazio. Digitar o nome de outro hotel por cima de um
+   * endereço já escrito não apaga o que estava lá — a operação pode ter
+   * colocado o endereço exato de uma unidade, e o do catálogo é o genérico.
+   */
+  const trocarHotel = (campo: 'hotel' | 'hotel_hospedagem', nome: string) => {
+    const achado = nome.trim() ? enderecoDe(nome) : undefined
+    onChange({
+      ...valor,
+      [campo]: nome,
+      ...(achado && !valor.endereco?.trim() ? { endereco: achado } : {}),
+    })
+  }
   return (
     <fieldset className="rounded-lg border border-neutral-200 p-3.5">
       <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
@@ -1629,7 +1680,7 @@ function BlocoHospedagem({
               disabled={!editavel || fora}
               value={valor.hotel ?? ''}
               placeholder={padraoHotel}
-              onChange={(e) => up('hotel', e.target.value)}
+              onChange={(e) => trocarHotel('hotel', e.target.value)}
             />
           </Campo>
         </div>
@@ -1639,7 +1690,7 @@ function BlocoHospedagem({
               <Input
                 disabled={!editavel}
                 value={valor.hotel_hospedagem ?? ''}
-                onChange={(e) => up('hotel_hospedagem', e.target.value)}
+                onChange={(e) => trocarHotel('hotel_hospedagem', e.target.value)}
                 placeholder="Nome do hotel que a operação reservou"
               />
             </Campo>
