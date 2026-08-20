@@ -578,8 +578,13 @@ export default function Detalhe() {
   }
 
   const aprovados = s.servicos_aprovados ?? []
-  const emRodada = s.escopo_aprovacao ?? []
   const aguardando = s.status === 'AGUARDANDO_APROVACAO'
+  /**
+   * Escopo da rodada aberta. Solicitações enviadas antes da aprovação parcial
+   * não têm escopo gravado — e naquele tempo enviar era sempre enviar tudo.
+   * Sem este `??`, elas apareceriam com todos os serviços "fora da rodada".
+   */
+  const emRodada = s.escopo_aprovacao ?? (aguardando ? s.servicos : [])
   /** Faltam serviços para o diretor bater o martelo. */
   const pendentes = s.servicos.filter((x) => !aprovados.includes(x))
   /**
