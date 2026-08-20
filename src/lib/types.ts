@@ -204,6 +204,10 @@ export type Solicitacao = {
   van_retorno_destino: string | null
   carro_condutor_nascimento: string | null
   servicos: string[]
+  /** Serviços da rodada de aprovação em curso. Nulo quando não há rodada. */
+  escopo_aprovacao: string[] | null
+  /** Serviços que o diretor já aprovou, acumulado entre rodadas. */
+  servicos_aprovados: string[]
   carro_condutor_nome: string | null
   carro_condutor_cpf: string | null
   carro_transmissao: string | null

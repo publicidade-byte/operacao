@@ -25,6 +25,7 @@ import {
   ALIMENTACAO,
   alimentacaoLabel,
   corServico,
+  servicoCurto,
   tipoQuartoLabel,
   veiculosTexto,
   equipeLabel,
@@ -357,6 +358,56 @@ export default function Detalhe() {
     })
   }
 
+  /**
+   * Abre uma rodada de aprovação e avisa o diretor.
+   *
+   * `escopo` vazio significa a solicitação inteira. Com uma lista, só aqueles
+   * serviços vão para o martelo — é o caso de mandar o aéreo emitir enquanto
+   * a locadora ainda não devolveu a cotação do carro.
+   *
+   * A ordem importa: primeiro o banco, depois o aviso. Se o Slack falhar, a
+   * solicitação já está na área do diretor e ele resolve; se fosse ao
+   * contrário, o aviso chegaria para algo que não está lá.
+   */
+  async function enviarAprovacao(escopo?: string[]) {
+    if (!s) return
+    setSalvando(true)
+    setMsg(null)
+    try {
+      const { error } = await supabase.rpc('enviar_para_aprovacao', {
+        p_solicitacao: s.id,
+        p_escopo: escopo?.length ? escopo : null,
+      })
+      if (error) throw new Error(error.message)
+
+      const oque = escopo?.length
+        ? escopo.map(servicoCurto).join(', ')
+        : 'a solicitação completa'
+      try {
+        const r = await invocar<{ canais?: string }>('notificar-slack', {
+          solicitacao_id: s.id,
+        })
+        setMsg({
+          tom: 'sucesso',
+          texto: `Enviado para ${s.diretores.nome} (${oque}) e avisado por ${r.canais ?? 'Slack'}.`,
+        })
+      } catch (e) {
+        setMsg({
+          tom: 'erro',
+          texto:
+            `Enviado — ${oque} já aparece para ${s.diretores.nome} aprovar. ` +
+            `Mas o aviso automático não saiu: ${e instanceof Error ? e.message : 'falha'} ` +
+            '— avise por outro canal enquanto isso.',
+        })
+      }
+      carregar()
+    } catch (e) {
+      setMsg({ tom: 'erro', texto: e instanceof Error ? e.message : 'Falha ao enviar' })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
   async function mudarStatus(novo: Status, descricao: string) {
     const { error } = await supabase
       .from('solicitacoes')
@@ -508,6 +559,48 @@ export default function Detalhe() {
   const editandoTravada = travada && !!admin?.super_admin
   const custo = s.custo_total_manual ?? s.custo_total
 
+  /**
+   * Quanto já está lançado em cada serviço, pelo que está na tela agora.
+   *
+   * Serve para o botão de aprovação parcial dizer o que está mandando para o
+   * diretor. Um serviço em R$ 0,00 quase sempre significa "ainda não cotado" —
+   * que é exatamente o que não se deve mandar aprovar.
+   */
+  const soma = (ns: (number | null | undefined)[]) =>
+    ns.reduce<number>((t, n) => t + Number(n ?? 0), 0)
+
+  const totalPorServico: Record<string, number> = {
+    AEREO: soma(Object.values(voos).map((v) => v.preco)),
+    RODOVIARIO: soma(Object.values(rodo).map((r) => r.preco)),
+    HOSPEDAGEM: soma(Object.values(hosp).map((h) => h.valor_total)),
+    CARRO: Number(carro.preco ?? 0),
+    VAN: Number(van.preco ?? 0),
+  }
+
+  const aprovados = s.servicos_aprovados ?? []
+  const emRodada = s.escopo_aprovacao ?? []
+  const aguardando = s.status === 'AGUARDANDO_APROVACAO'
+  /** Faltam serviços para o diretor bater o martelo. */
+  const pendentes = s.servicos.filter((x) => !aprovados.includes(x))
+  /**
+   * Depois de aprovada, abrir rodada nova é privilégio do super admin — a
+   * mesma pessoa que pode editar. O banco também barra; aqui é só para não
+   * mostrar um botão que vai dar erro.
+   */
+  /**
+   * Serviço já aprovado não se edita — vale a mesma regra da solicitação
+   * inteira, só que na granularidade que a aprovação parcial criou. Sem isto,
+   * aprovar o aéreo e depois mexer nele passaria por cima do diretor.
+   */
+  const podeEditarServico = (sv: string) =>
+    podeEditar && (!(s.servicos_aprovados ?? []).includes(sv) || !!admin?.super_admin)
+
+  const podeEnviar = aguardando
+    ? false
+    : ['APROVADA', 'CONCLUIDA'].includes(s.status)
+      ? !!admin?.super_admin
+      : !['CANCELADA'].includes(s.status)
+
   return (
     <div className="space-y-4">
       <Link to="/admin" className="text-xs text-neutral-500 hover:underline">
@@ -546,40 +639,9 @@ export default function Detalhe() {
               Assumir solicitação
             </Botao>
           )}
-          {s.status === 'EM_PREENCHIMENTO' && (
-            <Botao
-              onClick={async () => {
-                setSalvando(true)
-                // A mudança de status vem primeiro: o diretor precisa ver a
-                // solicitação na área dele mesmo que o aviso não saia. Aviso
-                // é conveniência; aprovação é o processo.
-                await mudarStatus(
-                  'AGUARDANDO_APROVACAO',
-                  `Enviada para aprovação de ${s.diretores.nome}`,
-                )
-                try {
-                  const r = await invocar<{ canais?: string }>('notificar-slack', {
-                    solicitacao_id: s.id,
-                  })
-                  setMsg({
-                    tom: 'sucesso',
-                    texto: `Enviada para ${s.diretores.nome} e avisado por ${r.canais ?? 'Slack'}.`,
-                  })
-                } catch (e) {
-                  setMsg({
-                    tom: 'erro',
-                    texto:
-                      `Status alterado — a solicitação já aparece para ${s.diretores.nome} aprovar. ` +
-                      `Mas o aviso automático não saiu: ${e instanceof Error ? e.message : 'falha'} ` +
-                      '— avise por outro canal enquanto isso.',
-                  })
-                } finally {
-                  setSalvando(false)
-                }
-              }}
-              carregando={salvando}
-            >
-              Enviar para aprovação ({s.diretores.nome})
+          {podeEnviar && (
+            <Botao onClick={() => enviarAprovacao()} carregando={salvando}>
+              Enviar tudo para aprovação ({s.diretores.nome})
             </Botao>
           )}
           {s.status === 'AGUARDANDO_APROVACAO' && (
@@ -709,6 +771,73 @@ export default function Detalhe() {
           </p>
         )}
       </Card>
+
+      {/* Aprovação serviço a serviço.
+          Existe porque nem tudo fica pronto ao mesmo tempo: o aéreo costuma ter
+          preço antes do carro, e a emissão não pode esperar a locadora. Só
+          aparece quando há mais de um serviço — com um só, o botão de cima já
+          é a mesma coisa. */}
+      {s.servicos.length > 1 && (
+        <Card
+          titulo="Aprovação por serviço"
+          descricao={
+            aguardando
+              ? `Aguardando ${s.diretores.nome} decidir sobre ${emRodada.map(servicoCurto).join(', ') || 'a solicitação'}.`
+              : 'Mande para o diretor só o que já está cotado. O resto continua editável e vai numa próxima rodada.'
+          }
+        >
+          <div className="space-y-2">
+            {s.servicos.map((sv) => {
+              const jaAprovado = aprovados.includes(sv)
+              const naRodada = aguardando && emRodada.includes(sv)
+              const valor = totalPorServico[sv] ?? 0
+              return (
+                <div
+                  key={sv}
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Etiqueta className={corServico(sv)}>{servicoCurto(sv)}</Etiqueta>
+                    <span className="text-sm text-neutral-700">{moeda(valor)}</span>
+                    {valor === 0 && !jaAprovado && (
+                      <span className="text-xs text-amber-700">sem valor lançado</span>
+                    )}
+                  </div>
+                  {jaAprovado ? (
+                    <span className="text-xs font-semibold text-emerald-700">
+                      ✓ aprovado por {s.diretores.nome.split(' ')[0]}
+                    </span>
+                  ) : naRodada ? (
+                    <span className="text-xs font-semibold text-amber-700">
+                      aguardando decisão
+                    </span>
+                  ) : aguardando ? (
+                    <span className="text-xs text-neutral-500">
+                      fora da rodada em curso
+                    </span>
+                  ) : podeEnviar ? (
+                    <Botao
+                      variante="secundario"
+                      carregando={salvando}
+                      onClick={() => enviarAprovacao([sv])}
+                    >
+                      Enviar {servicoCurto(sv).toLowerCase()} para aprovação
+                    </Botao>
+                  ) : null}
+                </div>
+              )
+            })}
+          </div>
+
+          {aprovados.length > 0 && pendentes.length > 0 && !aguardando && (
+            <p className="mt-3 text-xs text-neutral-600">
+              Falta aprovar: <strong>{pendentes.map(servicoCurto).join(', ')}</strong>. A
+              solicitação só fica <strong>Aprovada</strong> quando o diretor decidir sobre
+              todos os serviços.
+            </p>
+          )}
+        </Card>
+      )}
 
       {/* Quem da operação está cuidando. Mais de uma pessoa é o normal:
           uma cuida do aéreo, outra do hotel, outra do transfer. */}
@@ -1034,13 +1163,13 @@ export default function Detalhe() {
                     <BlocoVoo
                       titulo="Voo de ida"
                       valor={voos[`${c.id}:IDA`] ?? {}}
-                      editavel={podeEditar}
+                      editavel={podeEditarServico('AEREO')}
                       onChange={(v) => setVoos((p) => ({ ...p, [`${c.id}:IDA`]: v }))}
                     />
                     <BlocoVoo
                       titulo="Voo de volta"
                       valor={voos[`${c.id}:VOLTA`] ?? {}}
-                      editavel={podeEditar}
+                      editavel={podeEditarServico('AEREO')}
                       onChange={(v) => setVoos((p) => ({ ...p, [`${c.id}:VOLTA`]: v }))}
                     />
                   </>
@@ -1049,7 +1178,7 @@ export default function Detalhe() {
                 {tem(s, 'RODOVIARIO') && (
                   <BlocoRodoviario
                     valor={rodo[c.id] ?? {}}
-                    editavel={podeEditar}
+                    editavel={podeEditarServico('RODOVIARIO')}
                     onChange={(v) => setRodo((p) => ({ ...p, [c.id]: v }))}
                   />
                 )}
@@ -1057,7 +1186,7 @@ export default function Detalhe() {
                 {tem(s, 'HOSPEDAGEM') && (
                 <BlocoHospedagem
                   valor={hosp[c.id] ?? {}}
-                  editavel={podeEditar}
+                  editavel={podeEditarServico('HOSPEDAGEM')}
                   padraoHotel={s.edicoes.hotel}
                   enderecoDe={(nome) => hoteis.get(chaveHotel(nome))}
                   padraoIn={s.data_entrada}
@@ -1090,28 +1219,28 @@ export default function Detalhe() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Campo label="Empresa / locadora" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.empresa ?? ''}
                     onChange={(e) => setVan((v) => ({ ...v, empresa: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Motorista" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.motorista ?? ''}
                     onChange={(e) => setVan((v) => ({ ...v, motorista: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Telefone do motorista" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.telefone ?? ''}
                     onChange={(e) => setVan((v) => ({ ...v, telefone: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Placa" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.placa ?? ''}
                     onChange={(e) =>
                       setVan((v) => ({ ...v, placa: e.target.value.toUpperCase() }))
@@ -1121,7 +1250,7 @@ export default function Detalhe() {
                 <Campo label="Passageiros" obrigatorio={false}>
                   <Input
                     type="number"
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.qtd_passageiros ?? ''}
                     onChange={(e) =>
                       setVan({
@@ -1135,7 +1264,7 @@ export default function Detalhe() {
                   <Input
                     type="number"
                     step="0.01"
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.preco ?? ''}
                     onChange={(e) =>
                       setVan((v) => ({ ...v, preco: e.target.value ? +e.target.value : null }))
@@ -1144,7 +1273,7 @@ export default function Detalhe() {
                 </Campo>
                 <Campo label="Local de saída" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.local_saida ?? ''}
                     onChange={(e) => setVan((v) => ({ ...v, local_saida: e.target.value }))}
                   />
@@ -1154,7 +1283,7 @@ export default function Detalhe() {
                   valor={van}
                   campoData="saida_data"
                   campoHora="saida_hora"
-                  editavel={podeEditar}
+                  editavel={podeEditarServico('VAN')}
                   onChange={setVan}
                 />
                 {/* O retorno chega preenchido com a data e a hora do pedido —
@@ -1165,12 +1294,12 @@ export default function Detalhe() {
                   valor={van}
                   campoData="chegada_data"
                   campoHora="chegada_hora"
-                  editavel={podeEditar}
+                  editavel={podeEditarServico('VAN')}
                   onChange={setVan}
                 />
                 <Campo label="Local de chegada" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('VAN')}
                     value={van.local_chegada ?? ''}
                     onChange={(e) => setVan((v) => ({ ...v, local_chegada: e.target.value }))}
                   />
@@ -1179,7 +1308,7 @@ export default function Detalhe() {
                   <Campo label="Observações" obrigatorio={false}>
                     <Textarea
                       rows={2}
-                      disabled={!podeEditar}
+                      disabled={!podeEditarServico('VAN')}
                       value={van.observacoes ?? ''}
                       onChange={(e) => setVan((v) => ({ ...v, observacoes: e.target.value }))}
                     />
@@ -1223,21 +1352,21 @@ export default function Detalhe() {
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 <Campo label="Locadora" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('CARRO')}
                     value={carro.locadora ?? ''}
                     onChange={(e) => setCarro((c) => ({ ...c, locadora: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Categoria" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('CARRO')}
                     value={carro.categoria ?? ''}
                     onChange={(e) => setCarro((c) => ({ ...c, categoria: e.target.value }))}
                   />
                 </Campo>
                 <Campo label="Condutor" obrigatorio={false}>
                   <Select
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('CARRO')}
                     value={carro.condutor_colaborador_id ?? ''}
                     onChange={(e) =>
                       setCarro((c) => ({ ...c, condutor_colaborador_id: e.target.value || null }))
@@ -1253,7 +1382,7 @@ export default function Detalhe() {
                 </Campo>
                 <Campo label="Local de retirada" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('CARRO')}
                     value={carro.retirada_local ?? ''}
                     onChange={(e) => setCarro((c) => ({ ...c, retirada_local: e.target.value }))}
                   />
@@ -1263,14 +1392,14 @@ export default function Detalhe() {
                   valor={carro}
                   campoData="retirada_data"
                   campoHora="retirada_hora"
-                  editavel={podeEditar}
+                  editavel={podeEditarServico('CARRO')}
                   onChange={setCarro}
                 />
                 <Campo label="Preço (R$)" obrigatorio={false}>
                   <Input
                     type="number"
                     step="0.01"
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('CARRO')}
                     value={carro.preco ?? ''}
                     onChange={(e) =>
                       setCarro((c) => ({ ...c, preco: e.target.value ? +e.target.value : null }))
@@ -1279,7 +1408,7 @@ export default function Detalhe() {
                 </Campo>
                 <Campo label="Local de devolução" obrigatorio={false}>
                   <Input
-                    disabled={!podeEditar}
+                    disabled={!podeEditarServico('CARRO')}
                     value={carro.devolucao_local ?? ''}
                     onChange={(e) => setCarro((c) => ({ ...c, devolucao_local: e.target.value }))}
                   />
@@ -1289,14 +1418,14 @@ export default function Detalhe() {
                   valor={carro}
                   campoData="devolucao_data"
                   campoHora="devolucao_hora"
-                  editavel={podeEditar}
+                  editavel={podeEditarServico('CARRO')}
                   onChange={setCarro}
                 />
                 <div className="sm:col-span-2 lg:col-span-3">
                   <Campo label="Observações" obrigatorio={false}>
                     <Textarea
                       rows={2}
-                      disabled={!podeEditar}
+                      disabled={!podeEditarServico('CARRO')}
                       value={carro.observacoes ?? ''}
                       onChange={(e) => setCarro((c) => ({ ...c, observacoes: e.target.value }))}
                     />

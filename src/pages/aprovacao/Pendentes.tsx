@@ -21,6 +21,13 @@ export type LinhaAprovacao = {
   custo_total: number | null
   solicitante_nome: string
   servicos: string[] | null
+  /**
+   * Serviços desta rodada de aprovação. Menor que `servicos` numa aprovação
+   * parcial — o diretor está decidindo só sobre parte do pedido.
+   */
+  escopo_aprovacao: string[] | null
+  /** O que já foi aprovado em rodadas anteriores. */
+  servicos_aprovados: string[] | null
   /** Nomes de quem viaja, montados à parte da visão de solicitações. */
   colaboradores?: string[]
   created_at: string

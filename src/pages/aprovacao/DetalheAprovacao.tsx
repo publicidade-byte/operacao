@@ -200,6 +200,31 @@ export default function DetalheAprovacao() {
   const totalCarro = Number(carro?.preco ?? 0)
   const totalVan = Number(van?.preco ?? 0)
 
+  /**
+   * Uma aprovação pode cobrir a solicitação inteira ou só parte dela.
+   *
+   * Quando a operação manda só o aéreo, é sobre o aéreo que o diretor está
+   * decidindo — e é o custo do aéreo que ele precisa ver. Mostrar o total da
+   * viagem aqui faria ele aprovar, sem perceber, um número que ainda não
+   * existe: os serviços que faltam estão em R$ 0,00 justamente porque
+   * ninguém cotou.
+   */
+  const escopo = s.escopo_aprovacao?.length ? s.escopo_aprovacao : (s.servicos ?? [])
+  const parcial = escopo.length > 0 && escopo.length < (s.servicos ?? []).length
+  const jaAprovados = s.servicos_aprovados ?? []
+
+  const porServico: [string, string, number][] = [
+    ['AEREO', 'Aéreo', totalVoos],
+    ['RODOVIARIO', 'Rodoviário', totalRodo],
+    ['HOSPEDAGEM', 'Hospedagem', totalHosp],
+    ['CARRO', 'Locação de carro', totalCarro],
+    ['VAN', 'Locação de van ou ônibus', totalVan],
+  ]
+  const custoDecisao = parcial
+    ? porServico.filter(([sv]) => escopo.includes(sv)).reduce((t, [, , v]) => t + v, 0)
+    : s.custo_total
+  const escopoTexto = escopo.map(servicoCurto).join(', ')
+
   return (
     <div className="space-y-4">
       <Link to="/aprovacao" className="text-xs text-neutral-500 hover:underline">
@@ -224,20 +249,47 @@ export default function DetalheAprovacao() {
         </div>
         <div className="rounded-lg bg-neutral-900 px-4 py-2.5 text-right text-white">
           <p className="text-[11px] uppercase tracking-wide text-neutral-400">
-            Custo total
+            {parcial ? `Custo de ${escopoTexto}` : 'Custo total'}
           </p>
-          <p className="text-xl font-bold">{moeda(s.custo_total)}</p>
+          <p className="text-xl font-bold">{moeda(custoDecisao)}</p>
         </div>
       </header>
 
+      {/* Aviso de escopo: sem isto o diretor lê a tela inteira e assume que
+          está decidindo sobre a viagem toda. */}
+      {pendente && parcial && (
+        <Aviso tom="destaque">
+          Esta é uma <strong>aprovação parcial</strong>. Você está decidindo apenas sobre{' '}
+          <strong>{escopoTexto}</strong>, no valor de <strong>{moeda(custoDecisao)}</strong>.
+          O restante da solicitação ainda está sendo cotado pela operação e virá em outra
+          aprovação.
+          {jaAprovados.length > 0 && (
+            <>
+              {' '}
+              Você já aprovou antes: {jaAprovados.map(servicoCurto).join(', ')}.
+            </>
+          )}
+        </Aviso>
+      )}
+
       {/* Resumo de custos — é o que o diretor precisa para decidir */}
-      <Card titulo="Composição do custo">
+      <Card
+        titulo="Composição do custo"
+        descricao={
+          parcial ? 'Em destaque, o que está na sua decisão agora.' : undefined
+        }
+      >
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
-          <Custo rotulo="Aéreo" valor={totalVoos} />
-          <Custo rotulo="Rodoviário" valor={totalRodo} />
-          <Custo rotulo="Hospedagem" valor={totalHosp} />
-          <Custo rotulo="Locação de carro" valor={totalCarro} />
-          <Custo rotulo="Locação de van ou ônibus" valor={totalVan} />
+          {porServico.map(([sv, rotulo, valor]) => (
+            <Custo
+              key={sv}
+              rotulo={rotulo}
+              valor={valor}
+              // Numa rodada parcial o que está fora dela fica apagado: continua
+              // à vista para dar contexto, sem se misturar com o que se decide.
+              apagado={parcial && !escopo.includes(sv)}
+            />
+          ))}
         </div>
       </Card>
 
@@ -431,7 +483,7 @@ export default function DetalheAprovacao() {
                   setErro('')
                 }}
               >
-                Aprovar solicitação
+                {parcial ? `Aprovar ${escopoTexto.toLowerCase()}` : 'Aprovar solicitação'}
               </Botao>
               <Botao
                 variante="secundario"
@@ -448,15 +500,24 @@ export default function DetalheAprovacao() {
             <div className="space-y-3">
               <Aviso tom={acao === 'APROVAR' ? 'sucesso' : 'erro'}>
                 {acao === 'APROVAR' ? (
-                  <>
-                    Você vai <strong>aprovar</strong> esta solicitação no valor de{' '}
-                    <strong>{moeda(s.custo_total)}</strong>. A operação será notificada e
-                    enviará a confirmação ao solicitante.
-                  </>
+                  parcial ? (
+                    <>
+                      Você vai <strong>aprovar {escopoTexto}</strong> no valor de{' '}
+                      <strong>{moeda(custoDecisao)}</strong>. O resto da solicitação
+                      continua com a operação e volta para você depois.
+                    </>
+                  ) : (
+                    <>
+                      Você vai <strong>aprovar</strong> esta solicitação no valor de{' '}
+                      <strong>{moeda(custoDecisao)}</strong>. A operação será notificada e
+                      enviará a confirmação ao solicitante.
+                    </>
+                  )
                 ) : (
                   <>
-                    Você vai <strong>reprovar</strong> esta solicitação. O motivo é
-                    obrigatório e será registrado.
+                    Você vai <strong>reprovar</strong>{' '}
+                    {parcial ? <>a aprovação de {escopoTexto}</> : 'esta solicitação'}. O
+                    motivo é obrigatório e será registrado.
                   </>
                 )}
               </Aviso>
@@ -524,13 +585,32 @@ export default function DetalheAprovacao() {
   )
 }
 
-function Custo({ rotulo, valor }: { rotulo: string; valor: number }) {
+function Custo({
+  rotulo,
+  valor,
+  apagado = false,
+}: {
+  rotulo: string
+  valor: number
+  /** Fora da rodada de aprovação em curso: visível, mas sem peso. */
+  apagado?: boolean
+}) {
   return (
-    <div className="rounded-lg border border-neutral-200 px-3 py-2.5">
+    <div
+      className={
+        'rounded-lg border px-3 py-2.5 ' +
+        (apagado ? 'border-neutral-200 bg-neutral-50 opacity-60' : 'border-neutral-200')
+      }
+    >
       <p className="text-[11px] uppercase tracking-wide text-neutral-500">{rotulo}</p>
-      <p className="mt-0.5 text-sm font-bold text-neutral-900">
+      <p
+        className={
+          'mt-0.5 text-sm font-bold ' + (apagado ? 'text-neutral-500' : 'text-neutral-900')
+        }
+      >
         {valor > 0 ? moeda(valor) : '—'}
       </p>
+      {apagado && <p className="text-[10px] text-neutral-500">fora desta aprovação</p>}
     </div>
   )
 }

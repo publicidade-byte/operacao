@@ -83,8 +83,44 @@ Deno.serve(async (req) => {
     const totalHosp = (hosp ?? []).reduce((t, h) => t + Number(h.valor_total ?? 0), 0)
     const totalCarro = Number(carro?.preco ?? 0)
     const totalVan = Number(van?.preco ?? 0)
-    const total =
-      s.custo_total_manual ?? totalVoos + totalBus + totalHosp + totalCarro + totalVan
+
+    /**
+     * O que esta rodada está pedindo para o diretor decidir.
+     *
+     * Numa aprovação parcial ele precisa ver SÓ o escopo: mandar o custo da
+     * viagem inteira quando o pedido é "aprove a passagem" faria ele aprovar,
+     * na prática, um número que ninguém fechou ainda.
+     */
+    const escopo: string[] = s.escopo_aprovacao?.length ? s.escopo_aprovacao : s.servicos
+    const parcial = escopo.length < (s.servicos?.length ?? 0)
+    const noEscopo = (sv: string) => escopo.includes(sv)
+
+    const porServico: [string, string, number][] = [
+      ['AEREO', 'Aéreo', totalVoos],
+      ['RODOVIARIO', 'Rodoviário', totalBus],
+      ['HOSPEDAGEM', 'Hospedagem', totalHosp],
+      ['CARRO', 'Carro', totalCarro],
+      ['VAN', 'Van/ônibus', totalVan],
+    ]
+    const linhasCusto = porServico
+      .filter(([sv]) => noEscopo(sv))
+      .map(([, nome, v]) => `${nome} ${moeda(v)}`)
+      .join(' · ')
+
+    // O total manual é o valor fechado da solicitação inteira; numa rodada
+    // parcial ele não responde à pergunta que está sendo feita.
+    const total = parcial
+      ? porServico.filter(([sv]) => noEscopo(sv)).reduce((t, [, , v]) => t + v, 0)
+      : (s.custo_total_manual ?? totalVoos + totalBus + totalHosp + totalCarro + totalVan)
+
+    const ROTULO: Record<string, string> = {
+      AEREO: 'aéreo',
+      RODOVIARIO: 'rodoviário',
+      HOSPEDAGEM: 'hospedagem',
+      CARRO: 'locação de carro',
+      VAN: 'van/ônibus',
+    }
+    const escopoTexto = escopo.map((x) => ROTULO[x] ?? x).join(', ')
 
     const transporte = !s.precisa_transporte
       ? 'não solicitado'
@@ -95,8 +131,13 @@ Deno.serve(async (req) => {
           : 'rodoviário'
 
     const texto = [
-      `:airplane: *Solicitação ${s.protocolo} aguarda sua aprovação no sistema*`,
-      `Olá, ${primeiroNome}! Há uma pendência para você:`,
+      parcial
+        ? `:airplane: *${s.protocolo} — aprovação parcial: ${escopoTexto}*`
+        : `:airplane: *Solicitação ${s.protocolo} aguarda sua aprovação no sistema*`,
+      parcial
+        ? `Olá, ${primeiroNome}! A operação está pedindo sua decisão *apenas sobre ${escopoTexto}* — ` +
+          `o restante desta solicitação ainda está sendo cotado e virá depois.`
+        : `Olá, ${primeiroNome}! Há uma pendência para você:`,
       '',
       `*Destino:* ${descreverDestino(s)}` +
         (s.edicoes.avulsa
@@ -111,8 +152,8 @@ Deno.serve(async (req) => {
       '*Colaboradores*',
       linhasPax,
       '',
-      `*Custo total:* ${moeda(total)}`,
-      `    Aéreo ${moeda(totalVoos)} · Rodoviário ${moeda(totalBus)} · Hospedagem ${moeda(totalHosp)} · Carro ${moeda(totalCarro)}`,
+      parcial ? `*Custo de ${escopoTexto}:* ${moeda(total)}` : `*Custo total:* ${moeda(total)}`,
+      `    ${linhasCusto}`,
       '',
       `_Obs. do solicitante:_ ${s.obs_transporte}`,
       s.precisa_locacao_carro && s.obs_locacao_carro
@@ -140,20 +181,31 @@ Deno.serve(async (req) => {
       } else {
         const envio = await enviarEmail(
           s.diretores.email,
-          `[${s.protocolo}] Aprovação pendente — ${descreverDestino(s, { comHotel: false })} · ${moeda(total)}`,
+          parcial
+            ? `[${s.protocolo}] Aprovação de ${escopoTexto} — ${descreverDestino(s, { comHotel: false })} · ${moeda(total)}`
+            : `[${s.protocolo}] Aprovação pendente — ${descreverDestino(s, { comHotel: false })} · ${moeda(total)}`,
           layoutEmail(
-            'Solicitação aguardando sua aprovação',
+            parcial
+              ? `Aprovação parcial: ${escopoTexto}`
+              : 'Solicitação aguardando sua aprovação',
             `<p>Olá, ${s.diretores.nome.split(' ')[0]}!</p>
-             <p>A operação preparou a solicitação
-                <strong style="font-family:monospace">${s.protocolo}</strong> e ela está
-                aguardando sua decisão no sistema.</p>
+             ${
+               parcial
+                 ? `<p>A operação está pedindo sua decisão <strong>apenas sobre ${escopoTexto}</strong>
+                    da solicitação <strong style="font-family:monospace">${s.protocolo}</strong>.
+                    O restante ainda está sendo cotado e virá em outra aprovação.</p>`
+                 : `<p>A operação preparou a solicitação
+                    <strong style="font-family:monospace">${s.protocolo}</strong> e ela está
+                    aguardando sua decisão no sistema.</p>`
+             }
              <table style="width:100%;font-size:14px;border-collapse:collapse;margin:16px 0">
                <tr><td style="padding:6px 0;color:#64748b;width:150px">Destino</td><td>${descreverDestino(s)}</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Equipe</td><td>${EQUIPE_LABEL[s.equipe] ?? s.equipe} · ${s.colaboradores.length} pax</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Estadia</td><td>${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Transporte</td><td>${transporte}</td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Solicitante</td><td>${s.solicitante_nome}</td></tr>
-               <tr><td style="padding:6px 0;color:#64748b"><strong>Custo total</strong></td><td><strong>${moeda(total)}</strong></td></tr>
+               <tr><td style="padding:6px 0;color:#64748b"><strong>${parcial ? `Custo de ${escopoTexto}` : 'Custo total'}</strong></td><td><strong>${moeda(total)}</strong></td></tr>
+               <tr><td style="padding:6px 0;color:#64748b">Composição</td><td>${linhasCusto}</td></tr>
              </table>
              ${link ? `<p><a href="${link}" style="background:#f5c400;color:#111;padding:12px 22px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600">Aprovar ou reprovar no sistema</a></p>` : ''}
              <p style="color:#64748b;font-size:13px">A decisão é registrada com seu nome, data e hora.</p>`,
