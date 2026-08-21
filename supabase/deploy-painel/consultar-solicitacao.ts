@@ -182,6 +182,7 @@ export function dataHora(data?: string | null, hora?: string | null) {
 // SEM CPF, SEM data de nascimento, SEM preços.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors })
 
@@ -197,7 +198,7 @@ Deno.serve(async (req) => {
 
     const { data: s } = await sb
       .from('solicitacoes')
-      .select('*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(nome), colaboradores(id, nome_completo, ordem)')
+      .select('*, edicoes!solicitacoes_edicao_id_fkey(*), diretores(nome), colaboradores(id, nome_completo, ordem, aprovacao, aprovacao_obs)')
       .eq('token_acompanhamento', token)
       // Excluida nao abre nem pelo link de acompanhamento.
       .is('excluida_em', null)
@@ -205,8 +206,16 @@ Deno.serve(async (req) => {
 
     if (!s) return erro('Solicitação não encontrada.', 404)
 
-    const colaboradores = (s.colaboradores ?? []).sort(
+    const todos = (s.colaboradores ?? []).sort(
       (a: { ordem: number }, b: { ordem: number }) => a.ordem - b.ordem,
+    )
+    // Quem o diretor reprovou não viaja. Deixar o nome na lista de quem vai
+    // faria a pessoa se programar para uma viagem que não existe.
+    const colaboradores = todos.filter(
+      (c: { aprovacao: boolean | null }) => c.aprovacao !== false,
+    )
+    const reprovados = todos.filter(
+      (c: { aprovacao: boolean | null }) => c.aprovacao === false,
     )
 
     const base = {
@@ -230,6 +239,12 @@ Deno.serve(async (req) => {
       colaboradores: colaboradores.map((c: { nome_completo: string }) => ({
         nome_completo: c.nome_completo,
       })),
+      nao_aprovados: reprovados.map(
+        (c: { nome_completo: string; aprovacao_obs: string | null }) => ({
+          nome_completo: c.nome_completo,
+          motivo: c.aprovacao_obs,
+        }),
+      ),
     }
 
     // Dados de viagem só depois de concluída.

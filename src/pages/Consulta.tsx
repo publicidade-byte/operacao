@@ -261,7 +261,24 @@ function DetalheConsulta({ dados }: { dados: any }) {
         <ul className="space-y-1">
           {(s.colaboradores ?? []).map((c: any) => (
             <li key={c.id}>
-              <span className="font-medium text-neutral-900">{c.nome_completo}</span>
+              <span
+                className={
+                  'font-medium ' +
+                  (c.aprovacao === false
+                    ? 'text-red-700 line-through'
+                    : 'text-neutral-900')
+                }
+              >
+                {c.nome_completo}
+              </span>
+              {/* Reprovado pelo diretor: continua na lista porque a equipe
+                  precisa saber que ele foi pedido e barrado, mas riscado para
+                  ninguém emitir nada no nome dele. */}
+              {c.aprovacao === false && (
+                <span className="ml-2 text-xs font-semibold text-red-700">
+                  não aprovado{c.aprovacao_obs ? ` — ${c.aprovacao_obs}` : ''}
+                </span>
+              )}
               <span className="ml-2 text-xs text-neutral-500">
                 CPF {mascaraCpf(c.cpf)} · nasc. {dataBR(c.data_nascimento)}
               </span>

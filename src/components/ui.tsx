@@ -222,9 +222,11 @@ export function Card({
 export function Aviso({
   tom = 'info',
   children,
+  className = '',
 }: {
   tom?: 'info' | 'destaque' | 'erro' | 'sucesso'
   children: ReactNode
+  className?: string
 }) {
   const cls = {
     info: 'bg-neutral-50 text-neutral-700 ring-neutral-200',
@@ -235,7 +237,7 @@ export function Aviso({
   return (
     <div
       role={tom === 'erro' ? 'alert' : undefined}
-      className={`rounded-lg px-3.5 py-3 text-sm ring-1 ${cls}`}
+      className={`rounded-lg px-3.5 py-3 text-sm ring-1 ${cls} ${className}`}
     >
       {children}
     </div>

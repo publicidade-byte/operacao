@@ -77,6 +77,13 @@ export type Colaborador = {
   cpf: string
   data_nascimento: string
   ordem: number
+  /**
+   * Decisão do diretor sobre esta pessoa na rodada em curso.
+   * Nulo = ainda não decidido, ou a rodada nem começou.
+   */
+  aprovacao: boolean | null
+  aprovacao_em: string | null
+  aprovacao_obs: string | null
 }
 
 export type Voo = {
@@ -248,6 +255,10 @@ export type Aprovacao = {
   slack_message_url: string | null
   evidencia_path: string | null
   observacao: string | null
+  /** Serviços que esta decisão cobriu. Nulo nas decisões antigas, sempre integrais. */
+  escopo: string[] | null
+  /** Preenchido quando quem decidiu foi o super admin, e não o diretor. */
+  registrado_por: string | null
   created_at: string
 }
 

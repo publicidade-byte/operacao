@@ -408,6 +408,14 @@ export default function Detalhe() {
     }
   }
 
+  /**
+   * Muda o status e, quando o novo status é CONCLUIDA, avisa o solicitante.
+   *
+   * O aviso mora aqui, e não no botão, de propósito: concluir é concluir por
+   * qualquer caminho, e quem pediu tem que ficar sabendo em todos eles. Havia
+   * um botão "Concluir sem avisar" que deixava a pessoa no escuro justamente
+   * no momento em que ela mais precisa da informação.
+   */
   async function mudarStatus(novo: Status, descricao: string) {
     const { error } = await supabase
       .from('solicitacoes')
@@ -415,7 +423,26 @@ export default function Detalhe() {
       .eq('id', id)
     if (error) return setMsg({ tom: 'erro', texto: error.message })
     await registrarEvento('STATUS', descricao, { status: novo })
-    setMsg({ tom: 'sucesso', texto: descricao })
+
+    if (novo === 'CONCLUIDA') {
+      try {
+        const r = await invocar<Confirmacao>('enviar-confirmacao', {
+          solicitacao_id: id,
+        })
+        setMsg({ tom: 'sucesso', texto: resumoEnvio(r, s?.solicitante_email ?? '') })
+      } catch (e) {
+        // A conclusão vale de qualquer forma — o que falhou foi o aviso. Dizer
+        // isso por extenso é o que faz alguém correr atrás por outro canal.
+        setMsg({
+          tom: 'erro',
+          texto:
+            `Solicitação concluída, mas o aviso ao solicitante não saiu: ` +
+            `${e instanceof Error ? e.message : 'falha'} — avise ${s?.solicitante_email ?? 'quem pediu'} por outro canal.`,
+        })
+      }
+    } else {
+      setMsg({ tom: 'sucesso', texto: descricao })
+    }
     carregar()
   }
 
@@ -688,42 +715,16 @@ export default function Detalhe() {
           )}
           {s.status === 'APROVADA' && (
             <Botao
-              variante="secundario"
-              onClick={() =>
-                mudarStatus(
-                  'CONCLUIDA',
-                  'Concluída pela operação (sem envio de e-mail)',
-                )
-              }
-            >
-              Concluir sem avisar
-            </Botao>
-          )}
-          {s.status === 'APROVADA' && (
-            <Botao
               onClick={async () => {
                 setSalvando(true)
-                // Mesma lógica do envio para aprovação: a viagem está
-                // confirmada de qualquer forma. Se o e-mail não sair, a
-                // operação precisa saber para avisar por outro canal.
+                // O aviso ao solicitante vive dentro de `mudarStatus`, para
+                // valer em qualquer caminho que leve a CONCLUIDA.
                 await mudarStatus('CONCLUIDA', 'Solicitação concluída')
-                try {
-                  const r = await invocar<Confirmacao>('enviar-confirmacao', {
-                    solicitacao_id: s.id,
-                  })
-                  setMsg({ tom: 'sucesso', texto: resumoEnvio(r, s.solicitante_email) })
-                } catch (e) {
-                  setMsg({
-                    tom: 'erro',
-                    texto: e instanceof Error ? e.message : 'Falha ao avisar o solicitante',
-                  })
-                } finally {
-                  setSalvando(false)
-                }
+                setSalvando(false)
               }}
               carregando={salvando}
             >
-              Concluir e enviar confirmação ao solicitante
+              Concluir e avisar o solicitante
             </Botao>
           )}
           {s.status === 'CONCLUIDA' && (
@@ -1150,7 +1151,13 @@ export default function Detalhe() {
           {s.colaboradores.map((c, idx) => (
             <Card
               key={c.id}
-              titulo={`${idx + 1}. ${c.nome_completo}`}
+              titulo={
+                // O aviso vai no título de propósito: quem está preenchendo
+                // voo trabalha card a card e não olha a aba de aprovação.
+                c.aprovacao === false
+                  ? `${idx + 1}. ${c.nome_completo} — REPROVADO pelo diretor`
+                  : `${idx + 1}. ${c.nome_completo}`
+              }
               acao={
                 idx === 0 && s.colaboradores.length > 1 ? (
                   <button
@@ -1936,6 +1943,18 @@ function PainelAprovacao({
   aprovacoes: Aprovacao[]
 }) {
   const aguardando = solicitacao.status === 'AGUARDANDO_APROVACAO'
+  const servicos = solicitacao.servicos ?? []
+  const jaAprovados = solicitacao.servicos_aprovados ?? []
+  const faltam = servicos.filter((x) => !jaAprovados.includes(x))
+  /**
+   * Aprovação parcial devolve a solicitação para EM_PREENCHIMENTO. Sem
+   * distinguir esse caso, a tela dizia "ainda não enviada para aprovação"
+   * numa solicitação que teve o aéreo aprovado — e a operação acreditaria.
+   */
+  const parcialmenteAprovada = jaAprovados.length > 0 && faltam.length > 0
+  const reprovados = (solicitacao.colaboradores ?? []).filter((c) => c.aprovacao === false)
+  const decididos = (solicitacao.colaboradores ?? []).filter((c) => c.aprovacao !== null)
+
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       <Card titulo="Situação da aprovação">
@@ -1946,12 +1965,26 @@ function PainelAprovacao({
               Ele foi avisado no Slack e acessa a solicitação pela própria área de
               aprovações.
             </Aviso>
+            {decididos.length > 0 && (
+              <p className="text-sm text-neutral-700">
+                Ele já decidiu sobre {decididos.length} de{' '}
+                {(solicitacao.colaboradores ?? []).length} passageiro(s). A rodada fecha
+                quando o último for decidido.
+              </p>
+            )}
             <p className="text-sm text-neutral-600">
               Enquanto estiver neste status, os dados ficam travados para edição. Se
               precisar corrigir algo, use <strong>Reabrir para edição</strong> — isso
               cancela a pendência e exige um novo envio.
             </p>
           </div>
+        ) : parcialmenteAprovada ? (
+          <Aviso tom="destaque">
+            <strong>Aprovada em parte.</strong> {solicitacao.diretores.nome} já liberou{' '}
+            {jaAprovados.map(servicoCurto).join(', ')}. Falta enviar{' '}
+            {faltam.map(servicoCurto).join(', ')} — use os botões de{' '}
+            <strong>Aprovação por serviço</strong> quando estiver cotado.
+          </Aviso>
         ) : solicitacao.status === 'RECEBIDA' ||
           solicitacao.status === 'EM_PREENCHIMENTO' ? (
           <Aviso>
@@ -1963,6 +1996,31 @@ function PainelAprovacao({
             {solicitacao.status === 'REPROVADA'
               ? 'Reprovada pelo diretor. Reabra para ajustar e enviar de novo.'
               : 'Aprovada pelo diretor.'}
+          </Aviso>
+        )}
+
+        {/* Passageiro reprovado individualmente.
+            Sem isto a operação emitiria a passagem de alguém que o diretor
+            barrou — o status da solicitação continua "aprovada", porque os
+            outros passaram. */}
+        {reprovados.length > 0 && (
+          <Aviso tom="erro" className="mt-3">
+            <strong>
+              {reprovados.length === 1
+                ? '1 passageiro foi reprovado'
+                : `${reprovados.length} passageiros foram reprovados`}{' '}
+              individualmente.
+            </strong>{' '}
+            Não emita nada para{' '}
+            {reprovados.map((c) => c.nome_completo.split(' ')[0]).join(', ')}.
+            <ul className="mt-1.5 space-y-1 text-xs">
+              {reprovados.map((c) => (
+                <li key={c.id}>
+                  <strong>{c.nome_completo}</strong>
+                  {c.aprovacao_obs ? ` — ${c.aprovacao_obs}` : ''}
+                </li>
+              ))}
+            </ul>
           </Aviso>
         )}
       </Card>
@@ -1985,8 +2043,17 @@ function PainelAprovacao({
                 >
                   {a.aprovado ? 'Aprovado' : 'Reprovado'}
                 </Etiqueta>
+                {/* Sem o escopo, duas linhas "Aprovado" no histórico ficam
+                    indistinguíveis — e uma delas cobria só o aéreo. */}
+                {a.escopo?.length && a.escopo.length < servicos.length ? (
+                  <span className="ml-2 text-xs font-semibold text-neutral-700">
+                    somente {a.escopo.map(servicoCurto).join(', ')}
+                  </span>
+                ) : null}
                 <p className="mt-1.5 text-xs text-neutral-500">
-                  {solicitacao.diretores.nome} · {dataHoraBR(a.decidido_em)}
+                  {solicitacao.diretores.nome}
+                  {a.registrado_por ? ' (registrado pelo super admin)' : ''} ·{' '}
+                  {dataHoraBR(a.decidido_em)}
                 </p>
                 {a.observacao && (
                   <p className="mt-1 whitespace-pre-wrap text-neutral-700">

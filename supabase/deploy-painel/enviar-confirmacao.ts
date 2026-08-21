@@ -344,9 +344,20 @@ Deno.serve(async (req) => {
     if (!['APROVADA', 'CONCLUIDA'].includes(s.status))
       return erro('A confirmação só pode ser enviada após a aprovação.', 409)
 
-    const colabs = s.colaboradores.sort(
+    // Quem o diretor reprovou individualmente NÃO entra na confirmação.
+    // Mandar o voo de alguém que foi barrado seria pior do que não mandar
+    // nada: a pessoa se programaria para viajar.
+    const todos = s.colaboradores.sort(
       (a: { ordem: number }, b: { ordem: number }) => a.ordem - b.ordem,
     )
+    const reprovados = todos.filter((c: { aprovacao: boolean | null }) => c.aprovacao === false)
+    const colabs = todos.filter((c: { aprovacao: boolean | null }) => c.aprovacao !== false)
+
+    if (colabs.length === 0 && todos.length > 0)
+      return erro(
+        'Todos os passageiros foram reprovados pelo diretor — não há o que confirmar.',
+        409,
+      )
     const ids = colabs.map((c: { id: string }) => c.id)
     const [{ data: voos }, { data: rodo }, { data: hosp }, { data: carro }] =
       await Promise.all([
@@ -367,6 +378,23 @@ Deno.serve(async (req) => {
        Sua estadia: ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}<br>
        ${EQUIPE_LABEL[s.equipe] ?? s.equipe} · ${colabs.length} colaborador(es)`,
     )
+
+    // O solicitante precisa saber de quem foi barrado — senão ele conta com
+    // uma pessoa que não vai, e descobre no aeroporto.
+    if (reprovados.length > 0)
+      corpo += secao(
+        'Não aprovados',
+        `<p style="margin:0">Estas pessoas <strong>não foram aprovadas</strong> por
+          ${s.diretores.nome} e não fazem parte desta viagem:</p>
+         <ul style="margin:8px 0 0;padding-left:18px">
+           ${reprovados
+             .map(
+               (c: { nome_completo: string; aprovacao_obs: string | null }) =>
+                 `<li>${c.nome_completo}${c.aprovacao_obs ? ` — ${c.aprovacao_obs}` : ''}</li>`,
+             )
+             .join('')}
+         </ul>`,
+      )
 
     const linhasHosp = colabs
       .map((c: { id: string; nome_completo: string }) => {
@@ -487,6 +515,9 @@ Deno.serve(async (req) => {
       resumoVoos ? `*Voos:* ${resumoVoos}` : '',
       resumoHosp ? `*Hospedagem:* ${resumoHosp}` : '',
       resumoCarro ? `*Carro:* ${resumoCarro}` : '',
+      reprovados.length
+        ? `:warning: *Não aprovados:* ${reprovados.map((c: { nome_completo: string }) => c.nome_completo).join(', ')}`
+        : '',
       '',
       site ? `:mag: <${site}/s/${s.token_acompanhamento}|Ver esta solicitação>` : '',
       site ? `:desktop_computer: Portal de consulta: ${site}/consulta` : '',
