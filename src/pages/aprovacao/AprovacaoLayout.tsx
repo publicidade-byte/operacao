@@ -4,7 +4,15 @@ import { supabase } from '../../lib/supabase'
 import { carregarPerfil } from '../Login'
 import { Aviso, Botao, Marca } from '../../components/ui'
 
-type Diretor = { id: string; nome: string }
+type Diretor = {
+  id: string
+  nome: string
+  /**
+   * Quem está aqui é o super admin, não o diretor dono das solicitações.
+   * As telas usam isto para deixar claro em nome de quem se está decidindo.
+   */
+  super_admin?: boolean
+}
 const Ctx = createContext<Diretor | null>(null)
 export const useDiretor = () => useContext(Ctx)
 
@@ -23,8 +31,13 @@ export default function AprovacaoLayout() {
       if (!data.session) return setEstado('deslogado')
       const perfil = await carregarPerfil()
       if (!vivo) return
-      if (perfil?.papel !== 'DIRETOR') return setEstado('negado')
-      setDiretor({ id: perfil.id, nome: perfil.nome })
+      // O super admin entra aqui de propósito: ele administra o sistema
+      // inteiro e precisa ver esta área para saber o que melhorar. A conta
+      // dele tem papel ADMIN, então checar só o papel o barrava.
+      const ehDiretor = perfil?.papel === 'DIRETOR'
+      const ehSuper = !!perfil?.super_admin
+      if (!perfil || (!ehDiretor && !ehSuper)) return setEstado('negado')
+      setDiretor({ id: perfil.id, nome: perfil.nome, super_admin: !ehDiretor && ehSuper })
       setEstado('ok')
     })()
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -81,6 +94,15 @@ export default function AprovacaoLayout() {
               <span className="hidden text-xs text-neutral-500 sm:block">
                 {diretor?.nome}
               </span>
+              {/* Quem veio do painel operacional precisa do caminho de volta. */}
+              {diretor?.super_admin && (
+                <Link
+                  to="/admin"
+                  className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                >
+                  Painel operacional
+                </Link>
+              )}
               {/* O diretor também troca a própria senha. */}
               <Link
                 to="/nova-senha"
@@ -100,7 +122,17 @@ export default function AprovacaoLayout() {
             </div>
           </div>
         </header>
-        <main className="mx-auto max-w-5xl px-4 py-6">
+        <main className="mx-auto max-w-5xl px-4 py-6 space-y-4">
+          {/* Sem este aviso o super admin poderia decidir achando que está
+              apenas olhando. O que ele decidir vai para o histórico com o
+              nome dele, e é justo que ele saiba disso antes de clicar. */}
+          {diretor?.super_admin && (
+            <Aviso tom="destaque">
+              Você está aqui como <strong>super admin</strong>, vendo as aprovações de
+              todos os diretores. Se decidir alguma coisa, o histórico vai registrar o seu
+              nome — não o do diretor responsável.
+            </Aviso>
+          )}
           <Outlet />
         </main>
       </div>

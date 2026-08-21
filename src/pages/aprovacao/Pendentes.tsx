@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { STATUS_CLASS, STATUS_LABEL, equipeLabel, servicoCurto } from '../../lib/constants'
 import { dataBR, dataCurta, moeda } from '../../lib/format'
-import { Card, Etiqueta, Vazio } from '../../components/ui'
+import { Aviso, Botao, Card, Etiqueta, Vazio } from '../../components/ui'
 
 export type LinhaAprovacao = {
   id: string
@@ -42,6 +42,10 @@ export default function Pendentes() {
   const [dados, setDados] = useState<LinhaAprovacao[]>([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState('')
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set())
+  const [aprovandoLote, setAprovandoLote] = useState(false)
+  const [resultadoLote, setResultadoLote] = useState<string | null>(null)
+  const [recarregar, setRecarregar] = useState(0)
 
   useEffect(() => {
     ;(async () => {
@@ -73,12 +77,74 @@ export default function Pendentes() {
       )
       setCarregando(false)
     })()
-  }, [])
+  }, [recarregar])
 
   const pendentes = useMemo(
     () => dados.filter((d) => d.status === 'AGUARDANDO_APROVACAO'),
     [dados],
   )
+
+  const alternar = (id: string) =>
+    setMarcadas((antes) => {
+      const novo = new Set(antes)
+      if (novo.has(id)) novo.delete(id)
+      else novo.add(id)
+      return novo
+    })
+
+  const selecionadas = pendentes.filter((d) => marcadas.has(d.id))
+  const totalSelecionado = selecionadas.reduce((t, d) => t + Number(d.custo_total ?? 0), 0)
+
+  /**
+   * Aprova em lote o que estiver marcado.
+   *
+   * O banco devolve uma linha por solicitação em vez de parar no primeiro
+   * erro. Se uma delas foi decidida por outro caminho enquanto a tela estava
+   * aberta, as outras passam e a tela diz exatamente qual não passou — some
+   * uma da lista sem explicação seria pior.
+   */
+  async function aprovarSelecionadas() {
+    if (selecionadas.length === 0) return
+    const quais = selecionadas.map((d) => d.protocolo).join(', ')
+    if (
+      !confirm(
+        `Aprovar ${selecionadas.length} ${selecionadas.length === 1 ? 'solicitação' : 'solicitações'} ` +
+          `(${quais}), somando ${moeda(totalSelecionado)}?\n\n` +
+          'Todos os passageiros de cada uma serão aprovados.',
+      )
+    )
+      return
+
+    setAprovandoLote(true)
+    setResultadoLote(null)
+    setErro('')
+    const { data, error } = await supabase.rpc('aprovar_varias', {
+      p_solicitacoes: selecionadas.map((d) => d.id),
+      p_observacao: null,
+    })
+    setAprovandoLote(false)
+
+    if (error) {
+      setErro(error.message)
+      return
+    }
+
+    const linhas = (data ?? []) as { solicitacao_id: string; ok: boolean; erro: string }[]
+    const protocoloDe = (id: string) =>
+      pendentes.find((d) => d.id === id)?.protocolo ?? id.slice(0, 8)
+    const falhas = linhas.filter((l) => !l.ok)
+    const passaram = linhas.length - falhas.length
+
+    setResultadoLote(
+      `${passaram} ${passaram === 1 ? 'aprovada' : 'aprovadas'}.` +
+        (falhas.length
+          ? ' Não passaram: ' +
+            falhas.map((f) => `${protocoloDe(f.solicitacao_id)} (${f.erro})`).join('; ')
+          : ''),
+    )
+    setMarcadas(new Set())
+    setRecarregar((n) => n + 1)
+  }
   const decididas = useMemo(
     () => dados.filter((d) => d.status !== 'AGUARDANDO_APROVACAO'),
     [dados],
@@ -104,14 +170,73 @@ export default function Pendentes() {
         </Card>
       )}
 
+      {resultadoLote && <Aviso tom="sucesso">{resultadoLote}</Aviso>}
+
+      {/* Barra de seleção.
+          Só aparece com mais de uma pendência: com uma só, marcar e clicar em
+          "aprovar selecionadas" dá mais trabalho do que abrir e decidir. */}
+      {pendentes.length > 1 && (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-sm text-neutral-700">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-neutral-900"
+                checked={marcadas.size === pendentes.length && pendentes.length > 0}
+                onChange={(e) =>
+                  setMarcadas(
+                    e.target.checked ? new Set(pendentes.map((d) => d.id)) : new Set(),
+                  )
+                }
+              />
+              Selecionar todas ({pendentes.length})
+            </label>
+            <div className="flex flex-wrap items-center gap-3">
+              {marcadas.size > 0 && (
+                <span className="text-sm text-neutral-600">
+                  {marcadas.size} marcada{marcadas.size === 1 ? '' : 's'} ·{' '}
+                  <strong className="text-neutral-900">{moeda(totalSelecionado)}</strong>
+                </span>
+              )}
+              <Botao
+                variante="sucesso"
+                disabled={marcadas.size === 0}
+                carregando={aprovandoLote}
+                onClick={aprovarSelecionadas}
+              >
+                Aprovar selecionadas
+              </Botao>
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-neutral-500">
+            A aprovação em lote aprova todos os passageiros de cada solicitação. Para
+            decidir pessoa por pessoa, abra a solicitação.
+          </p>
+        </Card>
+      )}
+
       {pendentes.length > 0 && (
         <section className="space-y-3">
           {pendentes.map((d) => (
-            <Link
+            <div
               key={d.id}
-              to={`/aprovacao/${d.id}`}
-              className="block rounded-xl border-2 border-marca-400 bg-white p-4 shadow-sm transition hover:border-marca-500 hover:shadow"
+              className={
+                'flex items-start gap-3 rounded-xl border-2 bg-white p-4 shadow-sm transition ' +
+                (marcadas.has(d.id)
+                  ? 'border-neutral-900'
+                  : 'border-marca-400 hover:border-marca-500 hover:shadow')
+              }
             >
+              {pendentes.length > 1 && (
+                <input
+                  type="checkbox"
+                  aria-label={`Selecionar ${d.protocolo}`}
+                  className="mt-1 h-4 w-4 shrink-0 accent-neutral-900"
+                  checked={marcadas.has(d.id)}
+                  onChange={() => alternar(d.id)}
+                />
+              )}
+              <Link to={`/aprovacao/${d.id}`} className="block flex-1">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
@@ -157,7 +282,8 @@ export default function Pendentes() {
                   </span>
                 </div>
               </div>
-            </Link>
+              </Link>
+            </div>
           ))}
         </section>
       )}

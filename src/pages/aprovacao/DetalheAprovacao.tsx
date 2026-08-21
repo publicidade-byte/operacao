@@ -59,7 +59,14 @@ function tem(s: Sol, servico: string) {
   return s.precisa_transporte && s.modal === servico
 }
 
-type Colab = { id: string; nome_completo: string; ordem: number }
+type Colab = {
+  id: string
+  nome_completo: string
+  ordem: number
+  /** Decisão do diretor sobre esta pessoa na rodada em curso. */
+  aprovacao: boolean | null
+  aprovacao_obs: string | null
+}
 type Voo = {
   colaborador_id: string
   trecho: string
@@ -129,6 +136,9 @@ export default function DetalheAprovacao() {
   const [decisoes, setDecisoes] = useState<Decisao[]>([])
   const [operacoes, setOperacoes] = useState<Operacao[]>([])
   const [obs, setObs] = useState('')
+  /** Pessoa cuja reprovação está sendo escrita, e o motivo. */
+  const [reprovandoPessoa, setReprovandoPessoa] = useState<string | null>(null)
+  const [motivoPessoa, setMotivoPessoa] = useState('')
   const [acao, setAcao] = useState<'APROVAR' | 'REPROVAR' | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
@@ -167,6 +177,31 @@ export default function DetalheAprovacao() {
   useEffect(() => {
     carregar()
   }, [carregar])
+
+  /**
+   * Decide sobre UMA pessoa.
+   *
+   * Quando a última pessoa é decidida, o banco fecha a rodada sozinho — por
+   * isso aqui não se mexe em status: quem sabe se acabou é quem tem a lista
+   * inteira à mão, e essa é a função no banco, não esta tela.
+   */
+  async function decidirPessoa(colaboradorId: string, aprovado: boolean, motivo?: string) {
+    setEnviando(true)
+    setErro('')
+    const { error } = await supabase.rpc('decidir_colaborador', {
+      p_colaborador: colaboradorId,
+      p_aprovado: aprovado,
+      p_observacao: motivo?.trim() || null,
+    })
+    setEnviando(false)
+    if (error) {
+      setErro(error.message)
+      return
+    }
+    setReprovandoPessoa(null)
+    setMotivoPessoa('')
+    await carregar()
+  }
 
   async function decidir(aprovado: boolean) {
     if (!aprovado && !obs.trim()) {
@@ -209,6 +244,9 @@ export default function DetalheAprovacao() {
    * existe: os serviços que faltam estão em R$ 0,00 justamente porque
    * ninguém cotou.
    */
+  /** Quantas pessoas já têm decisão individual nesta rodada. */
+  const decididos = colabs.filter((c) => c.aprovacao !== null).length
+
   const escopo = s.escopo_aprovacao?.length ? s.escopo_aprovacao : (s.servicos ?? [])
   const parcial = escopo.length > 0 && escopo.length < (s.servicos ?? []).length
   const jaAprovados = s.servicos_aprovados ?? []
@@ -375,7 +413,16 @@ export default function DetalheAprovacao() {
           </dl>
         </Card>
 
-        <Card titulo={`Pessoas e viagem (${colabs.length})`}>
+        <Card
+          titulo={`Pessoas e viagem (${colabs.length})`}
+          descricao={
+            pendente && colabs.length > 1
+              ? decididos === colabs.length
+                ? undefined
+                : `Você pode decidir pessoa por pessoa. Faltam ${colabs.length - decididos} de ${colabs.length} — quando a última for decidida, a solicitação se resolve sozinha.`
+              : undefined
+          }
+        >
           <div className="space-y-3">
             {/* Reserva por quarto: a lista de passageiros ainda não existe.
                 Sem isto o card apareceria vazio e pareceria erro. */}
@@ -397,8 +444,30 @@ export default function DetalheAprovacao() {
               const meuBus = rodo.find((r) => r.colaborador_id === c.id)
               const minhaHosp = hosp.find((h) => h.colaborador_id === c.id)
               return (
-                <div key={c.id} className="rounded-lg bg-neutral-50 p-3 text-sm">
-                  <p className="font-semibold text-neutral-900">{c.nome_completo}</p>
+                <div
+                  key={c.id}
+                  className={
+                    'rounded-lg p-3 text-sm ring-1 ring-inset ' +
+                    (c.aprovacao === true
+                      ? 'bg-emerald-50 ring-emerald-200'
+                      : c.aprovacao === false
+                        ? 'bg-red-50 ring-red-200'
+                        : 'bg-neutral-50 ring-transparent')
+                  }
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <p className="font-semibold text-neutral-900">{c.nome_completo}</p>
+                    {c.aprovacao === true && (
+                      <span className="text-xs font-semibold text-emerald-700">
+                        ✓ Aprovado
+                      </span>
+                    )}
+                    {c.aprovacao === false && (
+                      <span className="text-xs font-semibold text-red-700">
+                        ✕ Reprovado
+                      </span>
+                    )}
+                  </div>
                   {meusVoos
                     .sort((a) => (a.trecho === 'IDA' ? -1 : 1))
                     .map((v, i) => (
@@ -448,6 +517,69 @@ export default function DetalheAprovacao() {
                         Sem dados de viagem preenchidos.
                       </p>
                     )}
+
+                  {c.aprovacao === false && c.aprovacao_obs && (
+                    <p className="mt-1.5 text-xs text-red-700">
+                      Motivo: {c.aprovacao_obs}
+                    </p>
+                  )}
+
+                  {/* Decisão pessoa a pessoa.
+                      Só com mais de um nome: numa solicitação de uma pessoa,
+                      decidir por ela é decidir a solicitação, e dois caminhos
+                      para a mesma coisa só confundem. */}
+                  {pendente && colabs.length > 1 && (
+                    <div className="mt-2.5 border-t border-neutral-200 pt-2.5">
+                      {reprovandoPessoa === c.id ? (
+                        <div className="space-y-2">
+                          <Textarea
+                            rows={2}
+                            value={motivoPessoa}
+                            onChange={(e) => setMotivoPessoa(e.target.value)}
+                            placeholder={`Por que ${c.nome_completo.split(' ')[0]} não vai? (obrigatório)`}
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <Botao
+                              variante="perigo"
+                              carregando={enviando}
+                              onClick={() => decidirPessoa(c.id, false, motivoPessoa)}
+                            >
+                              Confirmar reprovação
+                            </Botao>
+                            <Botao
+                              variante="fantasma"
+                              onClick={() => {
+                                setReprovandoPessoa(null)
+                                setMotivoPessoa('')
+                              }}
+                            >
+                              Cancelar
+                            </Botao>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap gap-2">
+                          <Botao
+                            variante={c.aprovacao === true ? 'fantasma' : 'sucesso'}
+                            carregando={enviando}
+                            onClick={() => decidirPessoa(c.id, true)}
+                          >
+                            {c.aprovacao === true ? 'Aprovado ✓' : 'Aprovar'}
+                          </Botao>
+                          <Botao
+                            variante="secundario"
+                            onClick={() => {
+                              setReprovandoPessoa(c.id)
+                              setMotivoPessoa(c.aprovacao_obs ?? '')
+                              setErro('')
+                            }}
+                          >
+                            {c.aprovacao === false ? 'Reprovado ✕' : 'Reprovar'}
+                          </Botao>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )
             })}
@@ -472,7 +604,14 @@ export default function DetalheAprovacao() {
 
       {/* ---------- Decisão ---------- */}
       {pendente ? (
-        <Card titulo="Sua decisão">
+        <Card
+          titulo="Sua decisão"
+          descricao={
+            colabs.length > 1
+              ? 'Decide a solicitação inteira, com todos os passageiros de uma vez. Para separar por pessoa, use os botões dentro de cada card acima.'
+              : undefined
+          }
+        >
           {!acao ? (
             <div className="flex flex-col gap-2 sm:flex-row">
               <Botao

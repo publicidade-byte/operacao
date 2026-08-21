@@ -4,7 +4,13 @@ import { supabase } from '../lib/supabase'
 import { Aviso, Botao, Campo, Card, Input, Marca } from '../components/ui'
 
 /** Perfil resolvido pela função meu_perfil() no banco. */
-type Perfil = { papel: 'ADMIN' | 'DIRETOR'; id: string; nome: string }
+export type Perfil = {
+  papel: 'ADMIN' | 'DIRETOR'
+  id: string
+  nome: string
+  /** Super admin: enxerga e opera também a área dos diretores. */
+  super_admin?: boolean
+}
 
 export async function carregarPerfil(): Promise<Perfil | null> {
   const { data, error } = await supabase.rpc('meu_perfil')
