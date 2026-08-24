@@ -574,16 +574,30 @@ export default function Detalhe() {
     return <p className="py-16 text-center text-sm text-neutral-500">Carregando…</p>
 
   /**
-   * Depois de ir para aprovação, ser concluída ou cancelada, a solicitação
-   * trava — o diretor decide sobre o que viu, e o que fechou fica como está.
+   * O que a operação pode editar.
    *
-   * O super admin passa por cima disso: é quem conserta o que ninguém mais
-   * consegue. Não é o caminho normal, então a tela avisa quando ele está
-   * mexendo em algo que estaria travado.
+   * Aprovada e concluída deixaram de ser trancas: passagem tem prazo de
+   * emissão, e quando a reserva cai porque a aprovação demorou, quem refaz é
+   * o time de emissão inteiro — não só o super admin. Esperar por uma pessoa
+   * só era o gargalo.
+   *
+   * Duas coisas seguram a corda no lugar da tranca: a tela avisa em vermelho
+   * que aquilo já foi decidido, e o banco marca a solicitação como alterada
+   * até que ela volte para o diretor.
+   *
+   * CANCELADA continua fechada para todos menos o super admin. Cancelada não
+   * é "esperando ajuste", é encerrada — reabrir é decisão, não correção.
    */
-  const travada = ['AGUARDANDO_APROVACAO', 'CONCLUIDA', 'CANCELADA'].includes(s.status)
-  const podeEditar = !travada || !!admin?.super_admin
-  const editandoTravada = travada && !!admin?.super_admin
+  const cancelada = s.status === 'CANCELADA'
+  const decidida = ['APROVADA', 'CONCLUIDA'].includes(s.status)
+  const emAprovacao = s.status === 'AGUARDANDO_APROVACAO'
+  const podeEditar = cancelada
+    ? !!admin?.super_admin
+    : emAprovacao
+      ? !!admin?.super_admin
+      : true
+  /** Está mexendo em algo que o diretor já decidiu — merece aviso na tela. */
+  const editandoTravada = podeEditar && (decidida || emAprovacao || cancelada)
   const custo = s.custo_total_manual ?? s.custo_total
 
   /**
@@ -624,14 +638,15 @@ export default function Detalhe() {
    * inteira, só que na granularidade que a aprovação parcial criou. Sem isto,
    * aprovar o aéreo e depois mexer nele passaria por cima do diretor.
    */
-  const podeEditarServico = (sv: string) =>
-    podeEditar && (!(s.servicos_aprovados ?? []).includes(sv) || !!admin?.super_admin)
+  /**
+   * Serviço já aprovado também abre para a operação — é nele que a tarifa
+   * vencida precisa ser trocada. O que não pode é a troca valer sem novo
+   * martelo, e disso cuida a marca de alteração + o reenvio.
+   */
+  const podeEditarServico = (_sv: string) => podeEditar
 
-  const podeEnviar = aguardando
-    ? false
-    : ['APROVADA', 'CONCLUIDA'].includes(s.status)
-      ? !!admin?.super_admin
-      : !['CANCELADA'].includes(s.status)
+  /** Reenviar deixou de ser exclusivo do super admin. */
+  const podeEnviar = !aguardando && !cancelada
 
   return (
     <div className="space-y-4">
@@ -1104,10 +1119,21 @@ export default function Detalhe() {
         <div className="space-y-4">
           {editandoTravada && (
             <Aviso tom="destaque">
-              Esta solicitação está <strong>{STATUS_LABEL[s.status].toLowerCase()}</strong>{' '}
-              e normalmente não seria editável. Você está vendo os campos abertos
-              porque é super admin — o que mudar aqui altera um registro já
-              fechado, e o diretor não é avisado de novo.
+              Esta solicitação está <strong>{STATUS_LABEL[s.status].toLowerCase()}</strong>.
+              Você pode editar — é assim que se refaz uma reserva que caiu por prazo
+              de emissão — mas <strong>o que mudar aqui não está aprovado</strong>:{' '}
+              {s.diretores.nome} decidiu sobre os valores anteriores. Depois de salvar,
+              reenvie para aprovação.
+            </Aviso>
+          )}
+          {/* A marca vem do banco, posta por trigger em qualquer tabela que a
+              operação salve. Ela some sozinha quando a solicitação volta para
+              o diretor — enquanto estiver aqui, há alteração sem martelo. */}
+          {s.alterada_apos_aprovacao && (
+            <Aviso tom="erro">
+              <strong>Alterada depois de aprovada.</strong> Os dados desta solicitação
+              mudaram depois da decisão de {s.diretores.nome}. Reenvie para aprovação —
+              total ou só do serviço que você mexeu — para o novo valor valer.
             </Aviso>
           )}
           {/* Reserva por quarto: a solicitação pode ter chegado sem ninguém
@@ -1637,6 +1663,17 @@ function BlocoVoo({
             className="font-mono"
           />
         </Campo>
+        {/* Prazo de emissão: é o relógio que derruba a reserva. Fica ao lado
+            do localizador porque os dois vêm da mesma tela da companhia, e
+            vai junto para o diretor — a demora dele é o que estoura o prazo. */}
+        <DataHora
+          rotulo="Prazo de emissão"
+          valor={valor}
+          campoData="emissao_prazo_data"
+          campoHora="emissao_prazo_hora"
+          editavel={editavel}
+          onChange={onChange}
+        />
         <Campo label="Preço (R$)" obrigatorio={false}>
           <Input
             type="number"

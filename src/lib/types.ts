@@ -102,6 +102,9 @@ export type Voo = {
   chegada_data: string | null
   chegada_hora: string | null
   localizador: string | null
+  /** Até quando a reserva pode ser emitida. Passou disso, a tarifa cai. */
+  emissao_prazo_data: string | null
+  emissao_prazo_hora: string | null
   bagagem_despachada: boolean | null
   preco: number | null
   observacoes: string | null
@@ -215,6 +218,8 @@ export type Solicitacao = {
   escopo_aprovacao: string[] | null
   /** Serviços que o diretor já aprovou, acumulado entre rodadas. */
   servicos_aprovados: string[]
+  /** Dados mexidos depois da decisão do diretor. Sai ao reenviar. */
+  alterada_apos_aprovacao: boolean
   carro_condutor_nome: string | null
   carro_condutor_cpf: string | null
   carro_transmissao: string | null

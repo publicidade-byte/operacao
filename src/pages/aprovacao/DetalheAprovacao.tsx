@@ -79,6 +79,9 @@ type Voo = {
   chegada_data: string | null
   chegada_hora: string | null
   localizador: string | null
+  /** Até quando dá para emitir. Depois disso a tarifa some. */
+  emissao_prazo_data: string | null
+  emissao_prazo_hora: string | null
   preco: number | null
 }
 type Rodo = {
@@ -247,6 +250,27 @@ export default function DetalheAprovacao() {
   /** Quantas pessoas já têm decisão individual nesta rodada. */
   const decididos = colabs.filter((c) => c.aprovacao !== null).length
 
+  /**
+   * O prazo de emissão mais apertado entre os voos desta solicitação.
+   *
+   * Sobe para o topo da tela porque é a informação que muda o comportamento
+   * do diretor: sem ela, a demora dele parece de graça — e não é, a reserva
+   * cai e a operação refaz tudo com tarifa nova.
+   */
+  const prazoEmissao = voos
+    .map((v) => v.emissao_prazo_data)
+    .filter((d): d is string => !!d)
+    .sort()[0]
+  const horaDoPrazo = prazoEmissao
+    ? (voos.find((v) => v.emissao_prazo_data === prazoEmissao)?.emissao_prazo_hora ?? null)
+    : null
+  /** Dias até o prazo. Negativo = já venceu. */
+  const diasAteEmitir = prazoEmissao
+    ? Math.ceil(
+        (new Date(`${prazoEmissao}T12:00:00`).getTime() - Date.now()) / 86_400_000,
+      )
+    : null
+
   const escopo = s.escopo_aprovacao?.length ? s.escopo_aprovacao : (s.servicos ?? [])
   const parcial = escopo.length > 0 && escopo.length < (s.servicos ?? []).length
   const jaAprovados = s.servicos_aprovados ?? []
@@ -292,6 +316,32 @@ export default function DetalheAprovacao() {
           <p className="text-xl font-bold">{moeda(custoDecisao)}</p>
         </div>
       </header>
+
+      {/* Prazo de emissão em primeiro lugar. É o único dado desta tela cuja
+          consequência é o tempo passar. */}
+      {pendente && prazoEmissao && (
+        <Aviso tom={diasAteEmitir !== null && diasAteEmitir <= 2 ? 'erro' : 'destaque'}>
+          <strong>
+            {diasAteEmitir !== null && diasAteEmitir < 0
+              ? 'O prazo de emissão venceu'
+              : `Prazo de emissão: ${dataHora(prazoEmissao, horaDoPrazo)}`}
+          </strong>
+          {diasAteEmitir !== null && diasAteEmitir >= 0 && (
+            <>
+              {' — '}
+              {diasAteEmitir === 0
+                ? 'é hoje'
+                : diasAteEmitir === 1
+                  ? 'é amanhã'
+                  : `faltam ${diasAteEmitir} dias`}
+              .
+            </>
+          )}{' '}
+          {diasAteEmitir !== null && diasAteEmitir < 0
+            ? 'A tarifa provavelmente caiu — a operação vai precisar refazer a reserva com preço novo.'
+            : 'Depois disso a reserva cai e a tarifa muda.'}
+        </Aviso>
+      )}
 
       {/* Aviso de escopo: sem isto o diretor lê a tela inteira e assume que
           está decidindo sobre a viagem toda. */}
@@ -478,6 +528,12 @@ export default function DetalheAprovacao() {
                         {v.preco != null && (
                           <span className="ml-1 text-neutral-500">
                             ({moeda(v.preco)})
+                          </span>
+                        )}
+                        {v.emissao_prazo_data && (
+                          <span className="ml-1 font-medium text-amber-700">
+                            · emitir até{' '}
+                            {dataHora(v.emissao_prazo_data, v.emissao_prazo_hora)}
                           </span>
                         )}
                       </p>

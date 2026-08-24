@@ -230,16 +230,20 @@ Deno.serve(async (req) => {
         const volta = voos?.find((v) => v.colaborador_id === c.id && v.trecho === 'VOLTA')
         const bus = rodo?.find((r) => r.colaborador_id === c.id)
         const partes: string[] = []
+        // As colunas `partida`/`horario_ida` são as antigas timestamptz, que
+        // deslocavam a hora e pararam de ser preenchidas quando data e hora
+        // foram separadas. Quem ainda lia delas mostrava horário vazio para
+        // o diretor — que é o único lugar onde ninguém ia reclamar.
         if (ida)
           partes.push(
-            `ida ${ida.companhia ?? ''} ${ida.numero_voo ?? ''} ${dataHoraBR(ida.partida)}`.trim(),
+            `ida ${ida.companhia ?? ''} ${ida.numero_voo ?? ''} ${dataHora(ida.partida_data, ida.partida_hora)}`.trim(),
           )
         if (volta)
           partes.push(
-            `volta ${volta.companhia ?? ''} ${volta.numero_voo ?? ''} ${dataHoraBR(volta.partida)}`.trim(),
+            `volta ${volta.companhia ?? ''} ${volta.numero_voo ?? ''} ${dataHora(volta.partida_data, volta.partida_hora)}`.trim(),
           )
-        if (bus?.horario_ida)
-          partes.push(`ônibus ida ${dataHoraBR(bus.horario_ida)}`)
+        if (bus?.ida_data)
+          partes.push(`ônibus ida ${dataHora(bus.ida_data, bus.ida_hora)}`)
         return `• ${c.nome_completo}${partes.length ? ` — ${partes.join(' / ')}` : ''}`
       })
       .join('\n')
@@ -290,6 +294,36 @@ Deno.serve(async (req) => {
     }
     const escopoTexto = escopo.map((x) => ROTULO[x] ?? x).join(', ')
 
+    /**
+     * O prazo de emissão mais apertado da solicitação.
+     *
+     * Vai no topo da mensagem porque é a única informação aqui cuja
+     * consequência é o tempo passar: sem ela, adiar a decisão parece de
+     * graça — e não é, a reserva cai e a operação refaz com tarifa nova.
+     */
+    const prazos = (voos ?? [])
+      .filter((v) => v.emissao_prazo_data)
+      .sort((a, b) => String(a.emissao_prazo_data).localeCompare(String(b.emissao_prazo_data)))
+    const prazo = prazos[0] ?? null
+    const diasAteEmitir = prazo
+      ? Math.ceil(
+          (new Date(`${prazo.emissao_prazo_data}T12:00:00`).getTime() - Date.now()) /
+            86_400_000,
+        )
+      : null
+    const linhaPrazo = prazo
+      ? `:hourglass_flowing_sand: *Prazo de emissão: ${dataHora(prazo.emissao_prazo_data, prazo.emissao_prazo_hora)}*` +
+        (diasAteEmitir === null
+          ? ''
+          : diasAteEmitir < 0
+            ? ' — já venceu, a tarifa provavelmente caiu.'
+            : diasAteEmitir === 0
+              ? ' — é hoje. Depois disso a reserva cai.'
+              : diasAteEmitir === 1
+                ? ' — é amanhã. Depois disso a reserva cai.'
+                : ` — faltam ${diasAteEmitir} dias. Depois disso a reserva cai.`)
+      : null
+
     const transporte = !s.precisa_transporte
       ? 'não solicitado'
       : s.modal === 'AEREO'
@@ -307,6 +341,8 @@ Deno.serve(async (req) => {
           `o restante desta solicitação ainda está sendo cotado e virá depois.`
         : `Olá, ${primeiroNome}! Há uma pendência para você:`,
       '',
+      linhaPrazo,
+      linhaPrazo ? '' : null,
       `*Destino:* ${descreverDestino(s)}` +
         (s.edicoes.avulsa
           ? ''
@@ -374,6 +410,13 @@ Deno.serve(async (req) => {
                <tr><td style="padding:6px 0;color:#64748b">Solicitante</td><td>${s.solicitante_nome}</td></tr>
                <tr><td style="padding:6px 0;color:#64748b"><strong>${parcial ? `Custo de ${escopoTexto}` : 'Custo total'}</strong></td><td><strong>${moeda(total)}</strong></td></tr>
                <tr><td style="padding:6px 0;color:#64748b">Composição</td><td>${linhasCusto}</td></tr>
+               ${
+                 prazo
+                   ? `<tr><td style="padding:6px 0;color:#64748b"><strong>Prazo de emissão</strong></td>
+                        <td><strong style="color:#b45309">${dataHora(prazo.emissao_prazo_data, prazo.emissao_prazo_hora)}</strong>
+                        ${diasAteEmitir !== null && diasAteEmitir < 0 ? ' — já venceu' : ' — depois disso a reserva cai'}</td></tr>`
+                   : ''
+               }
              </table>
              ${link ? `<p><a href="${link}" style="background:#f5c400;color:#111;padding:12px 22px;border-radius:8px;text-decoration:none;display:inline-block;font-weight:600">Aprovar ou reprovar no sistema</a></p>` : ''}
              <p style="color:#64748b;font-size:13px">A decisão é registrada com seu nome, data e hora.</p>`,
