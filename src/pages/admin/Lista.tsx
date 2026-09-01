@@ -151,6 +151,7 @@ export default function Lista() {
       'Equipe',
       'Pax',
       'Servicos',
+      'Inserido no rooming',
       'Responsaveis',
       'Solicitante',
       'Email',
@@ -174,6 +175,9 @@ export default function Lista() {
       equipeLabel(d.equipe, d.equipe_outro),
       d.colaboradores?.length ?? 0,
       (d.servicos ?? []).map((sv) => SERVICO_CURTO[sv] ?? sv).join(' + '),
+      // Vazio (e não "Nao") onde não há hospedagem: numa solicitação de carro
+      // a pergunta não existe, e "Nao" na planilha pareceria pendência.
+      (d.servicos ?? []).includes('HOSPEDAGEM') ? (d.rooming_ok ? 'Sim' : 'Nao') : '',
       (d.responsaveis ?? []).join(' + '),
       d.solicitante_nome,
       d.solicitante_email,
@@ -223,6 +227,27 @@ export default function Lista() {
     setDados((ds) =>
       ds.map((x) => (x.id === d.id ? { ...x, excluida_em: new Date().toISOString() } : x)),
     )
+  }
+
+  /**
+   * Marca que as pessoas já entraram no rooming do hotel.
+   *
+   * Controle da equipe, não etapa do processo: não mexe em status, não avisa
+   * ninguém, não precisa de aprovação. Atualiza a tela na hora e só desfaz se
+   * o banco recusar — marcar rooming é o tipo de clique que se dá em série,
+   * e esperar ida e volta de rede a cada um travaria o trabalho.
+   */
+  async function alternarRooming(d: Linha) {
+    const novo = !d.rooming_ok
+    setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, rooming_ok: novo } : x)))
+    const { error } = await supabase
+      .from('solicitacoes')
+      .update({ rooming_ok: novo })
+      .eq('id', d.id)
+    if (error) {
+      setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, rooming_ok: !novo } : x)))
+      alert(`Não foi possível marcar o rooming: ${error.message}`)
+    }
   }
 
   /** Devolve para a lista. */
@@ -347,6 +372,11 @@ export default function Lista() {
                   <th className="px-4 py-2.5 font-medium">Equipe</th>
                   <th className="px-4 py-2.5 text-center font-medium">Pax</th>
                   <th className="px-4 py-2.5 font-medium">Solicitado</th>
+                  <th className="px-3 py-2.5 text-center font-medium">
+                    Inserido no
+                    <br />
+                    Rooming
+                  </th>
                   <th className="px-4 py-2.5 font-medium">Solicitante</th>
                   <th className="px-4 py-2.5 font-medium">Diretor</th>
                   <th className="px-4 py-2.5 font-medium">Status</th>
@@ -357,7 +387,17 @@ export default function Lista() {
               </thead>
               <tbody className="divide-y divide-neutral-100">
                 {filtrados.map((d) => (
-                  <tr key={d.id} className="hover:bg-neutral-50">
+                  <tr
+                    key={d.id}
+                    className={
+                      // Verde discreto e uma faixa na borda: dá para varrer a
+                      // lista e ver o que já foi feito sem ler linha por linha,
+                      // e o texto continua legível por cima.
+                      d.rooming_ok
+                        ? 'bg-emerald-50 hover:bg-emerald-100/70 border-l-2 border-l-emerald-500'
+                        : 'hover:bg-neutral-50'
+                    }
+                  >
                     <td className="px-4 py-2.5">
                       <Link
                         to={`/admin/solicitacoes/${d.id}`}
@@ -393,6 +433,34 @@ export default function Lista() {
                           <span className="text-xs text-neutral-400">—</span>
                         )}
                       </div>
+                    </td>
+                    {/* Controle de rooming.
+                        Só existe onde há hospedagem — numa solicitação de
+                        carro não há hotel em que inserir ninguém, e uma
+                        caixinha marcável ali só convidaria a marcar errado. */}
+                    <td className="px-3 py-2.5 text-center">
+                      {(d.servicos ?? []).includes('HOSPEDAGEM') ? (
+                        <label
+                          className="inline-flex cursor-pointer items-center justify-center"
+                          title={
+                            d.rooming_ok
+                              ? 'Inserido no rooming — clique para desmarcar'
+                              : 'Marcar como inserido no rooming do hotel'
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 cursor-pointer accent-emerald-600"
+                            checked={!!d.rooming_ok}
+                            onChange={() => alternarRooming(d)}
+                          />
+                          <span className="sr-only">
+                            Inserido no rooming — {d.protocolo}
+                          </span>
+                        </label>
+                      ) : (
+                        <span className="text-xs text-neutral-300">—</span>
+                      )}
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="text-neutral-700">{d.solicitante_nome}</span>

@@ -13,7 +13,21 @@ import {
 } from '../_shared/comum.ts'
 
 const MAX_COLABORADORES = 50
-const LIMITE_POR_IP_HORA = 5
+
+/**
+ * Teto de abuso, não regra de uso.
+ *
+ * Era 5 por hora — e por IP. Como a empresa inteira sai pelo mesmo IP do
+ * escritório, isso virava um orçamento de 5 solicitações por hora para TODO
+ * MUNDO junto: a sexta pessoa do dia levava "muitas solicitações em pouco
+ * tempo" sem nunca ter mandado nada. Era uma trava contra os próprios
+ * usuários.
+ *
+ * O número agora está num patamar que nenhuma pessoa alcança digitando um
+ * formulário de cinco passos. Ele existe só para que um script apontado para
+ * este endereço — que é público e sem login — não encha o banco sozinho.
+ */
+const TETO_ABUSO_POR_IP_HORA = 300
 
 function cpfValido(cpf: string) {
   if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false
@@ -39,7 +53,7 @@ Deno.serve(async (req) => {
     // ---- honeypot -----------------------------------------------------
     if (b.website) return json({ protocolo: 'F9-0000-0000', token: 'x' }) // finge sucesso
 
-    // ---- rate limit por IP --------------------------------------------
+    // ---- teto de abuso ------------------------------------------------
     const ip =
       req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? 'desconhecido'
     const umaHoraAtras = new Date(Date.now() - 3600_000).toISOString()
@@ -49,8 +63,13 @@ Deno.serve(async (req) => {
       .eq('tipo', 'CRIADA')
       .gte('created_at', umaHoraAtras)
       .filter('payload->>ip', 'eq', ip)
-    if ((count ?? 0) >= LIMITE_POR_IP_HORA)
-      return erro('Muitas solicitações em pouco tempo. Tente novamente mais tarde.', 429)
+    if ((count ?? 0) >= TETO_ABUSO_POR_IP_HORA)
+      return erro(
+        'O sistema recebeu um volume fora do normal deste endereço e pausou os envios ' +
+          'por segurança. Se isto aconteceu com você usando o formulário normalmente, ' +
+          'avise a equipe operacional — é defeito nosso, não seu.',
+        429,
+      )
 
     // ---- validação ----------------------------------------------------
     const obrig = [

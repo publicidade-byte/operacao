@@ -220,6 +220,13 @@ export type Solicitacao = {
   servicos_aprovados: string[]
   /** Dados mexidos depois da decisão do diretor. Sai ao reenviar. */
   alterada_apos_aprovacao: boolean
+  /**
+   * Controle interno da operação: as pessoas já entraram no rooming do hotel.
+   * Não é etapa de aprovação e não mexe no status.
+   */
+  rooming_ok: boolean
+  rooming_em: string | null
+  rooming_por: string | null
   carro_condutor_nome: string | null
   carro_condutor_cpf: string | null
   carro_transmissao: string | null
