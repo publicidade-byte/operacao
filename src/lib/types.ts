@@ -153,6 +153,18 @@ export type HospedagemDetalhe = {
   observacoes: string | null
 }
 
+export type DayUseDetalhe = {
+  id?: string
+  colaborador_id: string
+  hotel: string | null
+  /** O dia vem da solicitação; fica aqui para a operação poder ajustar. */
+  data: string | null
+  /** Por pessoa, que é como o hotel cobra day use. */
+  valor: number | null
+  codigo_reserva: string | null
+  observacoes: string | null
+}
+
 export type LocacaoCarro = {
   id?: string
   solicitacao_id: string
@@ -236,6 +248,8 @@ export type Solicitacao = {
   rooming_ok: boolean
   rooming_em: string | null
   rooming_por: string | null
+  /** Dia do day use. Um só: quem faz day use não dorme no destino. */
+  day_use_data: string | null
   /** Controle da operação: a passagem aérea já foi emitida. */
   aereo_emitido: boolean
   aereo_emitido_em: string | null

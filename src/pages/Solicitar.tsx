@@ -63,6 +63,8 @@ type Form = {
   centro_custo: string // só na operação avulsa: Colab, Universidade Forma…
   edicao_ids: string[] // uma solicitação pode cobrir várias operações
   data_entrada: string
+  /** Dia do day use. Um só: quem faz day use não dorme no destino. */
+  day_use_data: string
   data_saida: string
   tipo_hospedagem: string
   hosp_externa_operacao: string
@@ -111,6 +113,7 @@ const VAZIO: Form = {
   edicao_ids: [],
   data_entrada: '',
   data_saida: '',
+  day_use_data: '',
   tipo_hospedagem: '',
   hosp_externa_operacao: '',
   hosp_externa_obs: '',
@@ -660,6 +663,8 @@ export default function Solicitar() {
       // O que não pode é a saída ser ANTES da entrada.
       if (form.data_entrada && form.data_saida && form.data_saida < form.data_entrada)
         e.data_saida = 'A saída não pode ser antes da entrada.'
+      if (form.servicos.includes('DAY_USE') && !form.day_use_data)
+        e.day_use_data = 'Informe o dia do day use.'
       // Só cobra os detalhes de quem pediu hospedagem FORA do hotel do pax.
       // A do hotel da operação não tem o que perguntar: o hotel é o da
       // operação e as datas são as da estadia.
@@ -863,6 +868,7 @@ export default function Solicitar() {
           solicitante_email: form.solicitante_email.trim().toLowerCase(),
           solicitante_whatsapp: soDigitos(form.solicitante_whatsapp),
           data_entrada: form.data_entrada,
+          day_use_data: form.servicos.includes('DAY_USE') ? form.day_use_data : null,
           data_saida: form.data_saida,
           // A coluna não aceita nulo. Quem não pediu hospedagem não respondeu
           // a pergunta — mandamos o padrão, que não é usado em lugar nenhum
@@ -1353,6 +1359,29 @@ export default function Solicitar() {
                                     />
                                   </Campo>
                                 </div>
+
+                                {/* Day use é um dia só, e é aqui — junto do
+                                    hotel — que a pessoa está pensando em datas.
+                                    Perguntar noutro passo faria voltar. */}
+                                {form.servicos.includes('DAY_USE') && (
+                                  <div className="mt-4 rounded-lg bg-teal-50 p-3.5 ring-1 ring-inset ring-teal-200">
+                                    <Campo
+                                      label="Qual o dia do day use?"
+                                      erro={erros.day_use_data}
+                                      dica={`Um dia só — quem faz day use não dorme em ${d.hotel || 'no destino'}.`}
+                                    >
+                                      <Input
+                                        type="date"
+                                        className="max-w-xs"
+                                        value={form.day_use_data}
+                                        erro={!!erros.day_use_data}
+                                        onChange={(ev) =>
+                                          set('day_use_data', ev.target.value)
+                                        }
+                                      />
+                                    </Campo>
+                                  </div>
+                                )}
 
                                 {/* A pergunta "onde será a hospedagem?" saiu
                                     daqui: era escolha única, e quem chega na
@@ -2428,6 +2457,11 @@ export default function Solicitar() {
                   <Linha rotulo="Sua estadia" onEditar={() => setPasso(1)}>
                     {dataBR(form.data_entrada)} a {dataBR(form.data_saida)}
                   </Linha>
+                  {form.servicos.includes('DAY_USE') && (
+                    <Linha rotulo="Day use" onEditar={() => setPasso(1)}>
+                      {dataBR(form.day_use_data)}
+                    </Linha>
+                  )}
                   {/* Sem hospedagem pedida não há o que mostrar. Com as duas,
                       as duas aparecem — é o ponto da mudança. */}
                   {(form.servicos.includes('HOSPEDAGEM') ||

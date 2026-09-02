@@ -87,6 +87,9 @@ const CORES_SERVICO: Record<string, string> = {
   // Fora do hotel do pax é operação diferente: outro hotel, outra reserva,
   // outro custo. A cor precisa separar de longe as duas na mesma linha.
   HOSPEDAGEM_FORA: 'bg-fuchsia-100 text-fuchsia-900 ring-fuchsia-300',
+  // Day use nao e hospedagem: a pessoa nao dorme. Cor propria para nao ser
+  // confundida com as duas de hospedagem na mesma linha.
+  DAY_USE: 'bg-teal-100 text-teal-900 ring-teal-300',
   VAN: 'bg-violet-100 text-violet-900 ring-violet-300',
   RODOVIARIO: 'bg-amber-100 text-amber-900 ring-amber-300',
 }
@@ -99,6 +102,7 @@ export const ETIQUETA_SERVICO: Record<string, string> = {
   AEREO: 'AÉREO',
   HOSPEDAGEM: 'HOSPEDAGEM OP.',
   HOSPEDAGEM_FORA: 'HOSPEDAGEM FORA',
+  DAY_USE: 'DAY USE',
   CARRO: 'CARRO',
   VAN: 'VAN/ÔNIBUS',
   RODOVIARIO: 'RODOVIÁRIO',
@@ -259,6 +263,11 @@ export const SERVICOS = [
     label: 'Solicitação de hospedagem fora',
     descricao:
       'Hotel separado do dos passageiros — para chegar antes, sair depois ou ficar em outra cidade',
+  },
+  {
+    value: 'DAY_USE',
+    label: 'Solicitação de day use',
+    descricao: 'Passar o dia no destino, sem dormir lá',
   },
   {
     value: 'CARRO',

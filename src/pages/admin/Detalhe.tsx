@@ -8,6 +8,7 @@ import type {
   Diretor,
   Edicao,
   Evento,
+  DayUseDetalhe,
   HospedagemDetalhe,
   LocacaoCarro,
   LocacaoVan,
@@ -161,6 +162,7 @@ export default function Detalhe() {
   const [hosp, setHosp] = useState<Record<string, Partial<HospedagemDetalhe>>>({})
   /** Endereço por hotel, para preencher o bloco de hospedagem sozinho. */
   const [hoteis, setHoteis] = useState<Map<string, string>>(new Map())
+  const [dayUse, setDayUse] = useState<Record<string, Partial<DayUseDetalhe>>>({})
   const [carros, setCarros] = useState<Record<string, Partial<LocacaoCarro>>>({})
   const [van, setVan] = useState<Partial<LocacaoVan>>({})
   const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
@@ -185,10 +187,11 @@ export default function Detalhe() {
     setS(sol)
 
     const ids = sol.colaboradores.map((c) => c.id)
-    const [v, r, h, l, vn, ev, ap, sc, ht] = await Promise.all([
+    const [v, r, h, du, l, vn, ev, ap, sc, ht] = await Promise.all([
       supabase.from('voos').select('*').in('colaborador_id', ids),
       supabase.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
       supabase.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
+      supabase.from('day_use_detalhe').select('*').in('colaborador_id', ids),
       supabase.from('locacao_carro').select('*').eq('solicitacao_id', id),
       supabase.from('locacao_van').select('*').eq('solicitacao_id', id).maybeSingle(),
       supabase
@@ -316,6 +319,21 @@ export default function Detalhe() {
       })
     })
     setHosp(mh)
+
+    // Day use: o dia vem do pedido, o hotel vem da operação. A pessoa só
+    // confirma e lança o valor, que o hotel cobra por cabeça.
+    const md: Record<string, Partial<DayUseDetalhe>> = {}
+    ;(du.data ?? []).forEach((x: DayUseDetalhe) => (md[x.colaborador_id] = x))
+    if ((sol.servicos ?? []).includes('DAY_USE'))
+      sol.colaboradores.forEach((c) => {
+        if (!md[c.id])
+          md[c.id] = {
+            colaborador_id: c.id,
+            hotel: sol.edicoes?.hotel ?? null,
+            data: sol.day_use_data,
+          }
+      })
+    setDayUse(md)
 
     // Carro: uma locação por condutor pedido. Antes era uma só para a
     // solicitação inteira, então quatro condutores dividiam uma locadora, uma
@@ -526,6 +544,19 @@ export default function Detalhe() {
             .upsert(upHosp, { onConflict: 'colaborador_id,tipo' }),
         )
 
+      const upDayUse = Object.entries(dayUse)
+        .filter(([, v]) => v && Object.keys(v).length > 0)
+        .map(([colaborador_id, v]) => {
+          const { id: _i, ...resto } = v as DayUseDetalhe
+          return { ...limpar(resto), colaborador_id }
+        })
+      if (tem(s, 'DAY_USE') && upDayUse.length)
+        await erro(
+          supabase
+            .from('day_use_detalhe')
+            .upsert(upDayUse, { onConflict: 'colaborador_id' }),
+        )
+
       const upCarros = Object.entries(carros)
         .filter(([, v]) => v && Object.keys(v).length > 0)
         .map(([pedido_id, v]) => {
@@ -659,6 +690,7 @@ export default function Detalhe() {
     RODOVIARIO: soma(Object.values(rodo).map((r) => r.preco)),
     HOSPEDAGEM: somaHosp('HOTEL_PAX'),
     HOSPEDAGEM_FORA: somaHosp('FORA_HOTEL_PAX'),
+    DAY_USE: soma(Object.values(dayUse).map((d) => d.valor)),
     // Uma locação por condutor: somar só a primeira esconderia as outras.
     CARRO: soma(Object.values(carros).map((c) => c.preco)),
     VAN: Number(van.preco ?? 0),
@@ -1294,6 +1326,14 @@ export default function Detalhe() {
                   />
                 )}
 
+                {tem(s, 'DAY_USE') && (
+                  <BlocoDayUse
+                    valor={dayUse[c.id] ?? {}}
+                    editavel={podeEditarServico('DAY_USE')}
+                    onChange={(v) => setDayUse((p) => ({ ...p, [c.id]: v }))}
+                  />
+                )}
+
                 {/* Um bloco por hospedagem pedida. Quem marcou as duas tem
                     duas estadias de verdade — hotéis, datas e reservas
                     diferentes — e por isso são dois blocos, não um. */}
@@ -1566,6 +1606,16 @@ export default function Detalhe() {
           n[`${c.id}:${tipo}`] = { ...resto, colaborador_id: c.id, tipo }
         })
       }
+      return n
+    })
+    setDayUse((p) => {
+      const base = p[origemId]
+      if (!base) return p
+      const n = { ...p }
+      alvos.forEach((c) => {
+        const { id: _i, codigo_reserva: _r, ...resto } = base as DayUseDetalhe
+        n[c.id] = { ...resto, colaborador_id: c.id }
+      })
       return n
     })
     setMsg({
@@ -1938,6 +1988,71 @@ function BlocoCarro({
         </Campo>
       </div>
     </div>
+  )
+}
+
+/** Day use de uma pessoa: o dia é do pedido, o valor é por cabeça. */
+function BlocoDayUse({
+  valor,
+  editavel,
+  onChange,
+}: {
+  valor: Partial<DayUseDetalhe>
+  editavel: boolean
+  onChange: (v: Partial<DayUseDetalhe>) => void
+}) {
+  const up = (k: keyof DayUseDetalhe, v: unknown) => onChange({ ...valor, [k]: v })
+  return (
+    <fieldset className="rounded-lg border border-teal-200 bg-teal-50/40 p-3.5">
+      <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-teal-700">
+        Day use
+      </legend>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="lg:col-span-2">
+          <Campo label="Hotel" obrigatorio={false}>
+            <Input
+              disabled={!editavel}
+              value={valor.hotel ?? ''}
+              onChange={(e) => up('hotel', e.target.value)}
+            />
+          </Campo>
+        </div>
+        <Campo label="Dia" obrigatorio={false}>
+          <Input
+            type="date"
+            disabled={!editavel}
+            value={(valor.data ?? '').slice(0, 10)}
+            onChange={(e) => up('data', e.target.value || null)}
+          />
+        </Campo>
+        <Campo label="Código da reserva" obrigatorio={false}>
+          <Input
+            disabled={!editavel}
+            value={valor.codigo_reserva ?? ''}
+            onChange={(e) => up('codigo_reserva', e.target.value.toUpperCase())}
+            className="font-mono"
+          />
+        </Campo>
+        <Campo label="Valor por pessoa (R$)" obrigatorio={false}>
+          <Input
+            type="number"
+            step="0.01"
+            disabled={!editavel}
+            value={valor.valor ?? ''}
+            onChange={(e) => up('valor', e.target.value ? +e.target.value : null)}
+          />
+        </Campo>
+        <div className="sm:col-span-2 lg:col-span-3">
+          <Campo label="Observações" obrigatorio={false}>
+            <Input
+              disabled={!editavel}
+              value={valor.observacoes ?? ''}
+              onChange={(e) => up('observacoes', e.target.value)}
+            />
+          </Campo>
+        </div>
+      </div>
+    </fieldset>
   )
 }
 

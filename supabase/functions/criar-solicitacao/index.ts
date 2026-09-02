@@ -94,6 +94,7 @@ Deno.serve(async (req) => {
       'CARRO',
       'HOSPEDAGEM',
       'HOSPEDAGEM_FORA',
+      'DAY_USE',
     ]
     const servicos: string[] = Array.isArray(b.servicos)
       ? [...new Set(b.servicos.filter((s: string) => SERVICOS_OK.includes(s)))]
@@ -162,6 +163,10 @@ Deno.serve(async (req) => {
           return erro('No mesmo dia, a devolução precisa ser depois da retirada.')
       }
     }
+
+    // Day use sem dia é um pedido que ninguém consegue reservar.
+    if (servicos.includes('DAY_USE') && !b.day_use_data)
+      return erro('Informe o dia do day use.')
 
     if (servicos.includes('RODOVIARIO')) {
       if (!String(b.rodo_regiao_saida ?? '').trim())
@@ -288,6 +293,8 @@ Deno.serve(async (req) => {
         data_entrada: b.data_entrada,
         data_saida: b.data_saida,
         tipo_hospedagem: b.tipo_hospedagem,
+        // Day use e um dia so, do pedido inteiro: quem passa o dia nao dorme la.
+        day_use_data: servicos.includes('DAY_USE') ? b.day_use_data : null,
         centro_custo: ehAvulsa ? String(b.centro_custo).trim() : null,
         servicos,
         // `precisa_transporte` e `modal` seguem preenchidos por compatibilidade
