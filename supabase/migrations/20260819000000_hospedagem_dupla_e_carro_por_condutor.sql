@@ -48,12 +48,14 @@ comment on column hospedagem_detalhe.tipo is
   'A qual das duas hospedagens esta linha responde. Uma pessoa pode ter as duas.';
 
 -- O que já existe recebe o tipo que a solicitação pedia.
+-- `tipo_hospedagem` é enum e `tipo` é texto: sem o cast o Postgres não sabe
+-- comparar os dois.
 update hospedagem_detalhe h
-   set tipo = s.tipo_hospedagem
+   set tipo = s.tipo_hospedagem::text
   from colaboradores c, solicitacoes s
  where c.id = h.colaborador_id and s.id = c.solicitacao_id
-   and s.tipo_hospedagem in ('HOTEL_PAX', 'FORA_HOTEL_PAX')
-   and h.tipo <> s.tipo_hospedagem;
+   and s.tipo_hospedagem::text in ('HOTEL_PAX', 'FORA_HOTEL_PAX')
+   and h.tipo <> s.tipo_hospedagem::text;
 
 alter table hospedagem_detalhe drop constraint if exists hospedagem_detalhe_colaborador_id_key;
 create unique index if not exists hospedagem_detalhe_colab_tipo_idx
