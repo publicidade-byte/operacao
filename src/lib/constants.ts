@@ -84,9 +84,30 @@ const CORES_SERVICO: Record<string, string> = {
   AEREO: 'bg-emerald-100 text-emerald-900 ring-emerald-300',
   CARRO: 'bg-red-100 text-red-900 ring-red-300',
   HOSPEDAGEM: 'bg-sky-100 text-sky-900 ring-sky-300',
+  // Fora do hotel do pax é operação diferente: outro hotel, outra reserva,
+  // outro custo. A cor precisa separar de longe as duas na mesma linha.
+  HOSPEDAGEM_FORA: 'bg-fuchsia-100 text-fuchsia-900 ring-fuchsia-300',
   VAN: 'bg-violet-100 text-violet-900 ring-violet-300',
   RODOVIARIO: 'bg-amber-100 text-amber-900 ring-amber-300',
 }
+
+/**
+ * Etiquetas do painel. Curtas porque dividem a coluna com outras, e em caixa
+ * alta porque é assim que a operação lê a lista: varrendo, não lendo.
+ */
+export const ETIQUETA_SERVICO: Record<string, string> = {
+  AEREO: 'AÉREO',
+  HOSPEDAGEM: 'HOSPEDAGEM OP.',
+  HOSPEDAGEM_FORA: 'HOSPEDAGEM FORA',
+  CARRO: 'CARRO',
+  VAN: 'VAN/ÔNIBUS',
+  RODOVIARIO: 'RODOVIÁRIO',
+}
+
+export const etiquetaServico = (v: string) => ETIQUETA_SERVICO[v] ?? v
+
+/** Os dois serviços de hospedagem, para quem precisa tratar os dois juntos. */
+export const SERVICOS_HOSPEDAGEM = ['HOSPEDAGEM', 'HOSPEDAGEM_FORA']
 
 export const corServico = (v: string) =>
   CORES_SERVICO[v] ?? 'bg-neutral-100 text-neutral-700 ring-neutral-300'
@@ -230,8 +251,14 @@ export const SERVICOS = [
   },
   {
     value: 'HOSPEDAGEM',
-    label: 'Solicitação de hospedagem',
-    descricao: 'Reserva de hotel para o período da operação',
+    label: 'Solicitação de hospedagem (hotel da operação)',
+    descricao: 'Quarto no mesmo hotel dos passageiros, no período da operação',
+  },
+  {
+    value: 'HOSPEDAGEM_FORA',
+    label: 'Solicitação de hospedagem fora',
+    descricao:
+      'Hotel separado do dos passageiros — para chegar antes, sair depois ou ficar em outra cidade',
   },
   {
     value: 'CARRO',

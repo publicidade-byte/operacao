@@ -85,7 +85,16 @@ Deno.serve(async (req) => {
     ]
     for (const c of obrig) if (!b[c]) return erro(`Campo obrigatório ausente: ${c}`)
 
-    const SERVICOS_OK = ['AEREO', 'RODOVIARIO', 'VAN', 'CARRO', 'HOSPEDAGEM']
+    // HOSPEDAGEM e HOSPEDAGEM_FORA sao servicos distintos e podem vir juntos:
+    // quem chega na vespera dorme na cidade antes e no hotel da operacao depois.
+    const SERVICOS_OK = [
+      'AEREO',
+      'RODOVIARIO',
+      'VAN',
+      'CARRO',
+      'HOSPEDAGEM',
+      'HOSPEDAGEM_FORA',
+    ]
     const servicos: string[] = Array.isArray(b.servicos)
       ? [...new Set(b.servicos.filter((s: string) => SERVICOS_OK.includes(s)))]
       : []
@@ -180,7 +189,7 @@ Deno.serve(async (req) => {
     // único caso em que a lista de pessoas pode faltar: a empresa de ônibus
     // manda os dados depois. Aí se reserva quarto, não pessoa.
     const reservaPorQuarto =
-      b.tipo_hospedagem === 'FORA_HOTEL_PAX' && b.hosp_externa_operacao === true
+      servicos.includes('HOSPEDAGEM_FORA') && b.hosp_externa_operacao === true
 
     if (reservaPorQuarto) {
       const q = Number(b.hosp_qtd_quartos)

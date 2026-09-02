@@ -548,7 +548,7 @@ export default function Solicitar() {
    * quantidade, tipo de quarto e alimentação.
    */
   const reservaPorQuarto =
-    form.tipo_hospedagem === 'FORA_HOTEL_PAX' && form.hosp_externa_operacao === 'SIM'
+    form.servicos.includes('HOSPEDAGEM_FORA') && form.hosp_externa_operacao === 'SIM'
 
   /** Linha de colaborador em branco — ignorada quando a lista é opcional. */
   const colabVazio = (c: ColabForm) =>
@@ -642,10 +642,10 @@ export default function Solicitar() {
       // O que não pode é a saída ser ANTES da entrada.
       if (form.data_entrada && form.data_saida && form.data_saida < form.data_entrada)
         e.data_saida = 'A saída não pode ser antes da entrada.'
-      // Só cobra hospedagem de quem pediu hospedagem.
-      if (form.servicos.includes('HOSPEDAGEM') && !form.tipo_hospedagem)
-        e.tipo_hospedagem = 'Selecione o tipo de hospedagem.'
-      if (form.servicos.includes('HOSPEDAGEM') && form.tipo_hospedagem === 'FORA_HOTEL_PAX') {
+      // Só cobra os detalhes de quem pediu hospedagem FORA do hotel do pax.
+      // A do hotel da operação não tem o que perguntar: o hotel é o da
+      // operação e as datas são as da estadia.
+      if (form.servicos.includes('HOSPEDAGEM_FORA')) {
         if (!form.hosp_externa_operacao)
           e.hosp_externa_operacao = 'Informe se a operação precisa reservar.'
         if (form.hosp_externa_operacao === 'SIM' && !form.hosp_externa_obs.trim())
@@ -849,11 +849,17 @@ export default function Solicitar() {
           // A coluna não aceita nulo. Quem não pediu hospedagem não respondeu
           // a pergunta — mandamos o padrão, que não é usado em lugar nenhum
           // quando HOSPEDAGEM não está entre os serviços.
-          tipo_hospedagem: form.tipo_hospedagem || 'HOTEL_PAX',
+          // Coluna antiga, mantida preenchida para leitura de código legado.
+          // Quem manda agora é `servicos`; aqui vai o tipo predominante.
+          tipo_hospedagem: form.servicos.includes('HOSPEDAGEM')
+            ? 'HOTEL_PAX'
+            : form.servicos.includes('HOSPEDAGEM_FORA')
+              ? 'FORA_HOTEL_PAX'
+              : 'HOTEL_PAX',
           centro_custo: destinoAvulso ? form.centro_custo.trim() : null,
           servicos: form.servicos,
           hosp_externa_operacao:
-            form.tipo_hospedagem === 'FORA_HOTEL_PAX'
+            form.servicos.includes('HOSPEDAGEM_FORA')
               ? form.hosp_externa_operacao === 'SIM'
               : null,
           hosp_externa_obs:
@@ -1330,42 +1336,15 @@ export default function Solicitar() {
                                   </Campo>
                                 </div>
 
-                                {/* Só para quem pediu hospedagem: quem entra
-                                    aqui só para alugar carro não tem o que
-                                    responder. */}
-                                {form.servicos.includes('HOSPEDAGEM') && (
-                                <div className="mt-4">
-                                  <Campo
-                                    label="Onde será a hospedagem?"
-                                    erro={erros.tipo_hospedagem}
-                                  >
-                                    <Radios
-                                      valor={form.tipo_hospedagem}
-                                      erro={!!erros.tipo_hospedagem}
-                                      onChange={(v) => set('tipo_hospedagem', v)}
-                                      opcoes={[
-                                        {
-                                          value: 'HOTEL_PAX',
-                                          label: 'Hotel do pax',
-                                          descricao: 'Mesmo hotel dos passageiros',
-                                        },
-                                        {
-                                          value: 'FORA_HOTEL_PAX',
-                                          label: 'Fora do hotel do pax',
-                                          descricao:
-                                            'Hotel separado, a definir pela operação',
-                                        },
-                                      ]}
-                                    />
-                                  </Campo>
-                                </div>
-                                )}
+                                {/* A pergunta "onde será a hospedagem?" saiu
+                                    daqui: era escolha única, e quem chega na
+                                    véspera precisa das duas. Hoje cada uma é um
+                                    serviço próprio, marcável no passo anterior.
 
-                                {/* Fora do hotel do pax pode ser reserva da
+                                    Fora do hotel do pax pode ser reserva da
                                     operação ou por conta própria — muda quem
                                     faz o trabalho e quem paga. */}
-                                {form.servicos.includes('HOSPEDAGEM') &&
-                                  form.tipo_hospedagem === 'FORA_HOTEL_PAX' && (
+                                {form.servicos.includes('HOSPEDAGEM_FORA') && (
                                   <div className="mt-4">
                                     <Campo
                                       label="A operação precisa reservar essa hospedagem?"
@@ -1550,6 +1529,17 @@ export default function Solicitar() {
                     {erros.servicos}
                   </p>
                 )}
+                {/* As duas hospedagens não se excluem, e quem chega na véspera
+                    costuma não perceber que precisa marcar as duas. O aviso só
+                    aparece depois de marcar a do hotel da operação, que é o
+                    momento em que a pergunta faz sentido. */}
+                {form.servicos.includes('HOSPEDAGEM') &&
+                  !form.servicos.includes('HOSPEDAGEM_FORA') && (
+                    <Aviso className="mt-3">
+                      Precisa se hospedar na cidade antes da operação? Solicite também a{' '}
+                      <strong>Hospedagem fora</strong>.
+                    </Aviso>
+                  )}
               </Card>
 
               {/* Cada serviço marcado abre só os campos que ele precisa. */}
@@ -2403,13 +2393,17 @@ export default function Solicitar() {
                   <Linha rotulo="Sua estadia" onEditar={() => setPasso(1)}>
                     {dataBR(form.data_entrada)} a {dataBR(form.data_saida)}
                   </Linha>
-                  {/* Sem hospedagem pedida não há o que mostrar — a linha
-                      caía no "Fora do hotel do pax" por falta de valor. */}
-                  {form.servicos.includes('HOSPEDAGEM') && (
-                  <Linha rotulo="Hospedagem" onEditar={() => setPasso(1)}>
-                    {form.tipo_hospedagem === 'HOTEL_PAX'
-                      ? 'Hotel do pax'
-                      : 'Fora do hotel do pax'}
+                  {/* Sem hospedagem pedida não há o que mostrar. Com as duas,
+                      as duas aparecem — é o ponto da mudança. */}
+                  {(form.servicos.includes('HOSPEDAGEM') ||
+                    form.servicos.includes('HOSPEDAGEM_FORA')) && (
+                  <Linha rotulo="Hospedagem" onEditar={() => setPasso(0)}>
+                    {[
+                      form.servicos.includes('HOSPEDAGEM') && 'Hotel da operação',
+                      form.servicos.includes('HOSPEDAGEM_FORA') && 'Fora do hotel do pax',
+                    ]
+                      .filter(Boolean)
+                      .join(' + ')}
                     {reservaPorQuarto && (
                       <span className="block text-neutral-600">
                         {form.hosp_qtd_quartos} quarto

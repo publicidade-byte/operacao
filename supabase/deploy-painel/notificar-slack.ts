@@ -267,10 +267,18 @@ Deno.serve(async (req) => {
     const parcial = escopo.length < (s.servicos?.length ?? 0)
     const noEscopo = (sv: string) => escopo.includes(sv)
 
+    // As duas hospedagens são serviços separados e podem ser aprovadas em
+    // rodadas diferentes — por isso cada uma soma o seu.
+    const somaHosp = (tipo: string) =>
+      (hosp ?? [])
+        .filter((h) => (h.tipo ?? 'HOTEL_PAX') === tipo)
+        .reduce((t, h) => t + Number(h.valor_total ?? 0), 0)
+
     const porServico: [string, string, number][] = [
       ['AEREO', 'Aéreo', totalVoos],
       ['RODOVIARIO', 'Rodoviário', totalBus],
-      ['HOSPEDAGEM', 'Hospedagem', totalHosp],
+      ['HOSPEDAGEM', 'Hospedagem op.', somaHosp('HOTEL_PAX')],
+      ['HOSPEDAGEM_FORA', 'Hospedagem fora', somaHosp('FORA_HOTEL_PAX')],
       ['CARRO', 'Carro', totalCarro],
       ['VAN', 'Van/ônibus', totalVan],
     ]
@@ -288,7 +296,8 @@ Deno.serve(async (req) => {
     const ROTULO: Record<string, string> = {
       AEREO: 'aéreo',
       RODOVIARIO: 'rodoviário',
-      HOSPEDAGEM: 'hospedagem',
+      HOSPEDAGEM: 'hospedagem no hotel da operação',
+      HOSPEDAGEM_FORA: 'hospedagem fora do hotel do pax',
       CARRO: 'locação de carro',
       VAN: 'van/ônibus',
     }

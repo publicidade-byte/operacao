@@ -161,7 +161,7 @@ export default function Detalhe() {
   const [hosp, setHosp] = useState<Record<string, Partial<HospedagemDetalhe>>>({})
   /** Endereço por hotel, para preencher o bloco de hospedagem sozinho. */
   const [hoteis, setHoteis] = useState<Map<string, string>>(new Map())
-  const [carro, setCarro] = useState<Partial<LocacaoCarro>>({})
+  const [carros, setCarros] = useState<Record<string, Partial<LocacaoCarro>>>({})
   const [van, setVan] = useState<Partial<LocacaoVan>>({})
   const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
   const [eventos, setEventos] = useState<Evento[]>([])
@@ -189,7 +189,7 @@ export default function Detalhe() {
       supabase.from('voos').select('*').in('colaborador_id', ids),
       supabase.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
       supabase.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
-      supabase.from('locacao_carro').select('*').eq('solicitacao_id', id).maybeSingle(),
+      supabase.from('locacao_carro').select('*').eq('solicitacao_id', id),
       supabase.from('locacao_van').select('*').eq('solicitacao_id', id).maybeSingle(),
       supabase
         .from('eventos_solicitacao')
@@ -273,52 +273,73 @@ export default function Detalhe() {
         }
     })
     setRodo(mr)
+    // A chave passa a ser pessoa + tipo: quem pede as duas hospedagens tem
+    // duas estadias, com hotéis, datas e reservas diferentes.
     const mh: Record<string, Partial<HospedagemDetalhe>> = {}
-    ;(h.data ?? []).forEach((x: HospedagemDetalhe) => (mh[x.colaborador_id] = x))
+    ;(h.data ?? []).forEach(
+      (x: HospedagemDetalhe) => (mh[`${x.colaborador_id}:${x.tipo ?? 'HOTEL_PAX'}`] = x),
+    )
     // Colaborador ainda sem hospedagem cadastrada já vem com as datas que o
     // solicitante pediu — a operação só confirma ou ajusta, não redigita.
     // Fora do hotel do pax, o tipo de quarto e a alimentação também vêm do
     // pedido — a operação confirma, não redigita.
-    const fora = sol.tipo_hospedagem === 'FORA_HOTEL_PAX'
+    const tiposPedidos = tiposHospedagem(sol)
     sol.colaboradores.forEach((c) => {
-      if (!mh[c.id])
-        mh[c.id] = {
-          colaborador_id: c.id,
-          hotel: sol.edicoes?.hotel ?? null,
-          check_in: sol.data_entrada,
-          check_out: sol.data_saida,
-          ...(fora
-            ? {
-                tipo_quarto: sol.hosp_tipo_quarto,
-                alimentacao: sol.hosp_alimentacao,
-              }
-            : {}),
+      tiposPedidos.forEach((tipo) => {
+        const chave = `${c.id}:${tipo}`
+        const fora = tipo === 'FORA_HOTEL_PAX'
+        if (!mh[chave])
+          mh[chave] = {
+            colaborador_id: c.id,
+            tipo,
+            // O hotel da operação só serve de padrão para a estadia da
+            // operação. Na de fora, quem escolhe o hotel é quem reserva.
+            hotel: fora ? null : (sol.edicoes?.hotel ?? null),
+            check_in: sol.data_entrada,
+            check_out: sol.data_saida,
+            ...(fora
+              ? {
+                  tipo_quarto: sol.hosp_tipo_quarto,
+                  alimentacao: sol.hosp_alimentacao,
+                }
+              : {}),
+          }
+        // O endereço vem do catálogo, mas só onde ainda está vazio: quem já
+        // digitou alguma coisa aqui sabia o que estava fazendo, e sobrescrever
+        // seria trocar o dado bom pelo genérico.
+        const linha = mh[chave]
+        if (!linha.endereco?.trim()) {
+          const nome = linha.hotel_hospedagem?.trim() || linha.hotel?.trim()
+          const achado = nome ? enderecos.get(chaveHotel(nome)) : undefined
+          if (achado) linha.endereco = achado
         }
-      // O endereço vem do catálogo, mas só onde ainda está vazio: quem já
-      // digitou alguma coisa aqui sabia o que estava fazendo, e sobrescrever
-      // seria trocar o dado bom pelo genérico.
-      const linha = mh[c.id]
-      if (!linha.endereco?.trim()) {
-        const nome = linha.hotel_hospedagem?.trim() || linha.hotel?.trim()
-        const achado = nome ? enderecos.get(chaveHotel(nome)) : undefined
-        if (achado) linha.endereco = achado
-      }
+      })
     })
     setHosp(mh)
 
-    // Carro e van: as datas também vêm do pedido. No carro elas são do
-    // solicitante (ele diz quando pega e devolve); na van, do período da
-    // estadia, que é o que existe.
-    setCarro(
-      (l.data as LocacaoCarro) ?? {
-        retirada_data: reservas[0]?.retirada_data ?? sol.data_entrada,
-        retirada_hora: reservas[0]?.retirada_hora ?? null,
-        devolucao_data: reservas[0]?.devolucao_data ?? sol.data_saida,
-        devolucao_hora: reservas[0]?.devolucao_hora ?? null,
-        retirada_local: reservas[0]?.local_retirada ?? null,
-        categoria: reservas[0]?.tipo_carro ?? null,
-      },
-    )
+    // Carro: uma locação por condutor pedido. Antes era uma só para a
+    // solicitação inteira, então quatro condutores dividiam uma locadora, uma
+    // diária e um preço — e o custo saía errado por construção.
+    //
+    // As datas vêm do que o solicitante pediu para AQUELE carro: ele diz
+    // quando pega e devolve, e cada condutor pode ter período diferente.
+    const mc: Record<string, Partial<LocacaoCarro>> = {}
+    ;(l.data ?? []).forEach((x: LocacaoCarro) => {
+      if (x.pedido_id) mc[x.pedido_id] = x
+    })
+    reservas.forEach((r) => {
+      if (!mc[r.id])
+        mc[r.id] = {
+          pedido_id: r.id,
+          retirada_data: r.retirada_data ?? sol.data_entrada,
+          retirada_hora: r.retirada_hora ?? null,
+          devolucao_data: r.devolucao_data ?? sol.data_saida,
+          devolucao_hora: r.devolucao_hora ?? null,
+          retirada_local: r.local_retirada ?? null,
+          categoria: r.tipo_carro ?? null,
+        }
+    })
+    setCarros(mc)
     // A van chega com a data e a hora que o solicitante informou — antes só
     // vinha o dia da estadia, e a hora ficava zerada para alguém perguntar.
     setVan(
@@ -478,27 +499,28 @@ export default function Detalhe() {
 
       const upHosp = Object.entries(hosp)
         .filter(([, v]) => v && Object.keys(v).length > 0)
-        .map(([colaborador_id, v]) => {
+        .map(([chave, v]) => {
+          const [colaborador_id, tipo] = chave.split(':')
           const { id: _i, ...resto } = v as HospedagemDetalhe
-          return { ...limpar(resto), colaborador_id }
+          return { ...limpar(resto), colaborador_id, tipo }
         })
       if (upHosp.length)
         await erro(
           supabase
             .from('hospedagem_detalhe')
-            .upsert(upHosp, { onConflict: 'colaborador_id' }),
+            .upsert(upHosp, { onConflict: 'colaborador_id,tipo' }),
         )
 
-      if (tem(s, 'CARRO') && Object.keys(carro).length) {
-        const { id: _i, ...resto } = carro as LocacaoCarro
+      const upCarros = Object.entries(carros)
+        .filter(([, v]) => v && Object.keys(v).length > 0)
+        .map(([pedido_id, v]) => {
+          const { id: _i, ...resto } = v as LocacaoCarro
+          return { ...limpar(resto), pedido_id, solicitacao_id: s.id }
+        })
+      if (tem(s, 'CARRO') && upCarros.length)
         await erro(
-          supabase
-            .from('locacao_carro')
-            .upsert({ ...limpar(resto), solicitacao_id: s.id }, {
-              onConflict: 'solicitacao_id',
-            }),
+          supabase.from('locacao_carro').upsert(upCarros, { onConflict: 'pedido_id' }),
         )
-      }
 
       if (tem(s, 'VAN') && Object.keys(van).length) {
         const { id: _i, ...resto } = van as LocacaoVan
@@ -610,11 +632,21 @@ export default function Detalhe() {
   const soma = (ns: (number | null | undefined)[]) =>
     ns.reduce<number>((t, n) => t + Number(n ?? 0), 0)
 
+  /** Soma só as hospedagens de um tipo — as duas são serviços separados. */
+  const somaHosp = (tipo: string) =>
+    soma(
+      Object.entries(hosp)
+        .filter(([chave]) => chave.endsWith(`:${tipo}`))
+        .map(([, h]) => h.valor_total),
+    )
+
   const totalPorServico: Record<string, number> = {
     AEREO: soma(Object.values(voos).map((v) => v.preco)),
     RODOVIARIO: soma(Object.values(rodo).map((r) => r.preco)),
-    HOSPEDAGEM: soma(Object.values(hosp).map((h) => h.valor_total)),
-    CARRO: Number(carro.preco ?? 0),
+    HOSPEDAGEM: somaHosp('HOTEL_PAX'),
+    HOSPEDAGEM_FORA: somaHosp('FORA_HOTEL_PAX'),
+    // Uma locação por condutor: somar só a primeira esconderia as outras.
+    CARRO: soma(Object.values(carros).map((c) => c.preco)),
     VAN: Number(van.preco ?? 0),
   }
 
@@ -1221,24 +1253,35 @@ export default function Detalhe() {
                   />
                 )}
 
-                {tem(s, 'HOSPEDAGEM') && (
-                <BlocoHospedagem
-                  valor={hosp[c.id] ?? {}}
-                  editavel={podeEditarServico('HOSPEDAGEM')}
-                  padraoHotel={s.edicoes.hotel}
-                  enderecoDe={(nome) => hoteis.get(chaveHotel(nome))}
-                  padraoIn={s.data_entrada}
-                  padraoOut={s.data_saida}
-                  fora={s.tipo_hospedagem === 'FORA_HOTEL_PAX'}
-                  pedido={{
-                    qtd: s.hosp_qtd_quartos,
-                    tipo: s.hosp_tipo_quarto,
-                    alimentacao: s.hosp_alimentacao,
-                    obs: s.hosp_externa_obs,
-                  }}
-                  onChange={(v) => setHosp((p) => ({ ...p, [c.id]: v }))}
-                />
-                )}
+                {/* Um bloco por hospedagem pedida. Quem marcou as duas tem
+                    duas estadias de verdade — hotéis, datas e reservas
+                    diferentes — e por isso são dois blocos, não um. */}
+                {tiposHospedagem(s).map((tipo) => {
+                  const fora = tipo === 'FORA_HOTEL_PAX'
+                  const servico = fora ? 'HOSPEDAGEM_FORA' : 'HOSPEDAGEM'
+                  return (
+                    <BlocoHospedagem
+                      key={tipo}
+                      titulo={ROTULO_HOSPEDAGEM[tipo]}
+                      valor={hosp[`${c.id}:${tipo}`] ?? {}}
+                      editavel={podeEditarServico(servico)}
+                      padraoHotel={fora ? '' : s.edicoes.hotel}
+                      enderecoDe={(nome) => hoteis.get(chaveHotel(nome))}
+                      padraoIn={s.data_entrada}
+                      padraoOut={s.data_saida}
+                      fora={fora}
+                      pedido={{
+                        qtd: s.hosp_qtd_quartos,
+                        tipo: s.hosp_tipo_quarto,
+                        alimentacao: s.hosp_alimentacao,
+                        obs: s.hosp_externa_obs,
+                      }}
+                      onChange={(v) =>
+                        setHosp((p) => ({ ...p, [`${c.id}:${tipo}`]: v }))
+                      }
+                    />
+                  )
+                })}
               </div>
             </Card>
           ))}
@@ -1357,121 +1400,55 @@ export default function Detalhe() {
           )}
 
           {tem(s, 'CARRO') && (
-            <Card titulo="Locação de carro">
-              {/* O que o solicitante pediu. Pode ser mais de um carro, cada um
-                  com seu condutor e seu período — antes isso não aparecia
-                  aqui e a operação só via o primeiro condutor. */}
-              {carrosPedidos.length > 0 && (
-                <div className="mb-4 rounded-lg bg-neutral-50 p-3">
-                  <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
-                    Pedido pelo solicitante ({carrosPedidos.length}{' '}
-                    {carrosPedidos.length === 1 ? 'carro' : 'carros'})
-                  </p>
-                  <ul className="space-y-1.5 text-xs text-neutral-700">
-                    {carrosPedidos.map((c) => (
-                      <li key={c.id}>
-                        <span className="font-medium">{c.condutor_nome}</span> ·{' '}
-                        {TIPOS_CARRO.find((t) => t.value === c.tipo_carro)?.label ??
-                          c.tipo_carro ??
-                          '—'}{' '}
-                        · {c.transmissao === 'AUTOMATICO' ? 'automático' : 'manual'}
-                        <br />
-                        <span className="text-neutral-500">
-                          {dataBR(c.retirada_data)}
-                          {hora(c.retirada_hora)} a {dataBR(c.devolucao_data)}
-                          {hora(c.devolucao_hora)}
-                          {c.local_retirada ? ` · retirada: ${c.local_retirada}` : ''}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                <Campo label="Locadora" obrigatorio={false}>
-                  <Input
-                    disabled={!podeEditarServico('CARRO')}
-                    value={carro.locadora ?? ''}
-                    onChange={(e) => setCarro((c) => ({ ...c, locadora: e.target.value }))}
-                  />
-                </Campo>
-                <Campo label="Categoria" obrigatorio={false}>
-                  <Input
-                    disabled={!podeEditarServico('CARRO')}
-                    value={carro.categoria ?? ''}
-                    onChange={(e) => setCarro((c) => ({ ...c, categoria: e.target.value }))}
-                  />
-                </Campo>
-                <Campo label="Condutor" obrigatorio={false}>
-                  <Select
-                    disabled={!podeEditarServico('CARRO')}
-                    value={carro.condutor_colaborador_id ?? ''}
-                    onChange={(e) =>
-                      setCarro((c) => ({ ...c, condutor_colaborador_id: e.target.value || null }))
-                    }
-                  >
-                    <option value="">Selecione…</option>
-                    {s.colaboradores.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nome_completo}
-                      </option>
-                    ))}
-                  </Select>
-                </Campo>
-                <Campo label="Local de retirada" obrigatorio={false}>
-                  <Input
-                    disabled={!podeEditarServico('CARRO')}
-                    value={carro.retirada_local ?? ''}
-                    onChange={(e) => setCarro((c) => ({ ...c, retirada_local: e.target.value }))}
-                  />
-                </Campo>
-                <DataHora
-                  rotulo="Retirada"
-                  valor={carro}
-                  campoData="retirada_data"
-                  campoHora="retirada_hora"
-                  editavel={podeEditarServico('CARRO')}
-                  onChange={setCarro}
-                />
-                <Campo label="Preço (R$)" obrigatorio={false}>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    disabled={!podeEditarServico('CARRO')}
-                    value={carro.preco ?? ''}
-                    onChange={(e) =>
-                      setCarro((c) => ({ ...c, preco: e.target.value ? +e.target.value : null }))
-                    }
-                  />
-                </Campo>
-                <Campo label="Local de devolução" obrigatorio={false}>
-                  <Input
-                    disabled={!podeEditarServico('CARRO')}
-                    value={carro.devolucao_local ?? ''}
-                    onChange={(e) => setCarro((c) => ({ ...c, devolucao_local: e.target.value }))}
-                  />
-                </Campo>
-                <DataHora
-                  rotulo="Devolução"
-                  valor={carro}
-                  campoData="devolucao_data"
-                  campoHora="devolucao_hora"
-                  editavel={podeEditarServico('CARRO')}
-                  onChange={setCarro}
-                />
-                <div className="sm:col-span-2 lg:col-span-3">
-                  <Campo label="Observações" obrigatorio={false}>
-                    <Textarea
-                      rows={2}
-                      disabled={!podeEditarServico('CARRO')}
-                      value={carro.observacoes ?? ''}
-                      onChange={(e) => setCarro((c) => ({ ...c, observacoes: e.target.value }))}
-                    />
-                  </Campo>
-                </div>
+            <>
+            {carrosPedidos.length === 0 && (
+              <Card titulo="Locação de carro">
+                <p className="text-sm text-neutral-600">
+                  Esta solicitação pede carro, mas não tem condutor cadastrado. Sem um
+                  condutor não há reserva para preencher — confira o pedido com quem
+                  solicitou.
+                </p>
+              </Card>
+            )}
+            {/* Uma reserva por condutor. Antes havia UMA locação para a
+                solicitação inteira, então quatro condutores dividiam uma
+                locadora, uma diária e um preço — e o custo saía errado por
+                construção. */}
+            {carrosPedidos.map((pedido, idx) => (
+            <Card
+              key={pedido.id}
+              titulo={`Locação de carro ${carrosPedidos.length > 1 ? `${idx + 1}. ` : '— '}${pedido.condutor_nome}`}
+            >
+              <div className="mb-4 rounded-lg bg-neutral-50 p-3">
+                <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-neutral-500">
+                  Pedido pelo solicitante
+                </p>
+                <p className="text-xs text-neutral-700">
+                  <span className="font-medium">{pedido.condutor_nome}</span> ·{' '}
+                  {TIPOS_CARRO.find((t) => t.value === pedido.tipo_carro)?.label ??
+                    pedido.tipo_carro ??
+                    '—'}{' '}
+                  · {pedido.transmissao === 'AUTOMATICO' ? 'automático' : 'manual'}
+                  <br />
+                  <span className="text-neutral-500">
+                    {dataBR(pedido.retirada_data)}
+                    {hora(pedido.retirada_hora)} a {dataBR(pedido.devolucao_data)}
+                    {hora(pedido.devolucao_hora)}
+                    {pedido.local_retirada ? ` · retirada: ${pedido.local_retirada}` : ''}
+                  </span>
+                </p>
               </div>
+              <BlocoCarro
+                valor={carros[pedido.id] ?? {}}
+                editavel={podeEditarServico('CARRO')}
+                colaboradores={s.colaboradores}
+                onChange={(v) => setCarros((p) => ({ ...p, [pedido.id]: v }))}
+              />
             </Card>
+            ))}
+            </>
           )}
+
 
           <div className="sticky bottom-4 flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
             <span className="text-sm text-neutral-600">
@@ -1532,13 +1509,22 @@ export default function Detalhe() {
       return n
     })
     setHosp((p) => {
-      const base = p[origemId]
-      if (!base) return p
       const n = { ...p }
-      alvos.forEach((c) => {
-        const { id: _i, codigo_reserva: _r, dividindo_com: _d, ...resto } = base as HospedagemDetalhe
-        n[c.id] = { ...resto, colaborador_id: c.id }
-      })
+      // Replica cada tipo de hospedagem no seu par: a estadia no hotel da
+      // operação não deve vazar para a de fora, nem o contrário.
+      for (const tipo of tiposHospedagem(s)) {
+        const base = p[`${origemId}:${tipo}`]
+        if (!base) continue
+        alvos.forEach((c) => {
+          const {
+            id: _i,
+            codigo_reserva: _r,
+            dividindo_com: _d,
+            ...resto
+          } = base as HospedagemDetalhe
+          n[`${c.id}:${tipo}`] = { ...resto, colaborador_id: c.id, tipo }
+        })
+      }
       return n
     })
     setMsg({
@@ -1565,6 +1551,30 @@ export default function Detalhe() {
  */
 function chaveHotel(nome: string) {
   return nome.trim().replace(/\s+/g, ' ').toUpperCase()
+}
+
+/**
+ * Quais hospedagens a solicitação pediu, na ordem em que fazem sentido ler:
+ * primeiro a da operação, depois a de fora.
+ *
+ * Solicitações anteriores à separação não têm os serviços novos — para elas
+ * vale o `tipo_hospedagem` antigo, que era escolha única.
+ */
+type TipoHospedagem = 'HOTEL_PAX' | 'FORA_HOTEL_PAX'
+
+function tiposHospedagem(s: Solicitacao): TipoHospedagem[] {
+  const lista = s.servicos ?? []
+  const tipos: TipoHospedagem[] = []
+  if (lista.includes('HOSPEDAGEM')) tipos.push('HOTEL_PAX')
+  if (lista.includes('HOSPEDAGEM_FORA')) tipos.push('FORA_HOTEL_PAX')
+  if (tipos.length) return tipos
+  if (lista.length) return []
+  return [(s.tipo_hospedagem as TipoHospedagem) ?? 'HOTEL_PAX']
+}
+
+const ROTULO_HOSPEDAGEM: Record<string, string> = {
+  HOTEL_PAX: 'Hospedagem — hotel da operação',
+  FORA_HOTEL_PAX: 'Hospedagem — fora do hotel do pax',
 }
 
 function tem(s: Solicitacao, servico: string) {
@@ -1779,7 +1789,119 @@ function BlocoRodoviario({
   )
 }
 
+/**
+ * Uma reserva de carro. Um bloco por condutor pedido.
+ *
+ * Virou componente pelo mesmo motivo que voo e hospedagem viraram: com mais de
+ * um condutor, os campos se repetem, e repetir JSX é repetir defeito.
+ */
+function BlocoCarro({
+  valor,
+  editavel,
+  colaboradores,
+  onChange,
+}: {
+  valor: Partial<LocacaoCarro>
+  editavel: boolean
+  colaboradores: Colaborador[]
+  onChange: (v: Partial<LocacaoCarro>) => void
+}) {
+  const up = (k: keyof LocacaoCarro, v: unknown) => onChange({ ...valor, [k]: v })
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Campo label="Locadora" obrigatorio={false}>
+        <Input
+          disabled={!editavel}
+          value={valor.locadora ?? ''}
+          onChange={(e) => up('locadora', e.target.value)}
+        />
+      </Campo>
+      <Campo label="Categoria" obrigatorio={false}>
+        <Input
+          disabled={!editavel}
+          value={valor.categoria ?? ''}
+          onChange={(e) => up('categoria', e.target.value)}
+        />
+      </Campo>
+      {/* Código da reserva: é por ele que a locadora acha o carro no balcão,
+          e sem campo próprio ele acabava perdido nas observações. */}
+      <Campo label="Código da reserva" obrigatorio={false}>
+        <Input
+          disabled={!editavel}
+          value={valor.codigo_reserva ?? ''}
+          onChange={(e) => up('codigo_reserva', e.target.value.toUpperCase())}
+          className="font-mono"
+        />
+      </Campo>
+      <Campo label="Condutor (colaborador)" obrigatorio={false}>
+        <Select
+          disabled={!editavel}
+          value={valor.condutor_colaborador_id ?? ''}
+          onChange={(e) => up('condutor_colaborador_id', e.target.value || null)}
+        >
+          <option value="">Selecione…</option>
+          {colaboradores.map((c) => (
+            <option key={c.id} value={c.id}>
+              {c.nome_completo}
+            </option>
+          ))}
+        </Select>
+      </Campo>
+      <Campo label="Local de retirada" obrigatorio={false}>
+        <Input
+          disabled={!editavel}
+          value={valor.retirada_local ?? ''}
+          onChange={(e) => up('retirada_local', e.target.value)}
+        />
+      </Campo>
+      <DataHora
+        rotulo="Retirada"
+        valor={valor}
+        campoData="retirada_data"
+        campoHora="retirada_hora"
+        editavel={editavel}
+        onChange={onChange}
+      />
+      <Campo label="Local de devolução" obrigatorio={false}>
+        <Input
+          disabled={!editavel}
+          value={valor.devolucao_local ?? ''}
+          onChange={(e) => up('devolucao_local', e.target.value)}
+        />
+      </Campo>
+      <DataHora
+        rotulo="Devolução"
+        valor={valor}
+        campoData="devolucao_data"
+        campoHora="devolucao_hora"
+        editavel={editavel}
+        onChange={onChange}
+      />
+      <Campo label="Preço (R$)" obrigatorio={false}>
+        <Input
+          type="number"
+          step="0.01"
+          disabled={!editavel}
+          value={valor.preco ?? ''}
+          onChange={(e) => up('preco', e.target.value ? +e.target.value : null)}
+        />
+      </Campo>
+      <div className="sm:col-span-2 lg:col-span-3">
+        <Campo label="Observações" obrigatorio={false}>
+          <Textarea
+            rows={2}
+            disabled={!editavel}
+            value={valor.observacoes ?? ''}
+            onChange={(e) => up('observacoes', e.target.value)}
+          />
+        </Campo>
+      </div>
+    </div>
+  )
+}
+
 function BlocoHospedagem({
+  titulo,
   valor,
   editavel,
   padraoHotel,
@@ -1790,6 +1912,8 @@ function BlocoHospedagem({
   enderecoDe,
   onChange,
 }: {
+  /** Diz de qual das duas hospedagens este bloco trata. */
+  titulo: string
   valor: Partial<HospedagemDetalhe>
   editavel: boolean
   padraoHotel: string
@@ -1827,7 +1951,7 @@ function BlocoHospedagem({
   return (
     <fieldset className="rounded-lg border border-neutral-200 p-3.5">
       <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-neutral-500">
-        Hospedagem
+        {titulo}
       </legend>
 
       {/* Fora do hotel do pax: o que o solicitante pediu fica à vista, senão

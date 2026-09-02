@@ -9,6 +9,8 @@ import {
   STATUS_LABEL,
   corResponsavel,
   corServico,
+  etiquetaServico,
+  SERVICOS_HOSPEDAGEM,
   equipeLabel,
   nomeDestino,
 } from '../../lib/constants'
@@ -21,15 +23,8 @@ type Linha = Solicitacao & {
   diretores: Diretor
   colaboradores: { id: string; nome_completo: string; cpf: string }[]
   responsaveis?: string[]
-}
-
-/** Rótulos curtos, para caber na coluna da tabela. */
-const SERVICO_CURTO: Record<string, string> = {
-  AEREO: 'Aéreo',
-  HOSPEDAGEM: 'Hospedagem',
-  CARRO: 'Carro',
-  VAN: 'Van/Ônibus',
-  RODOVIARIO: 'Rodoviário',
+  /** Quantas operações (edições) esta solicitação cobre. */
+  qtd_operacoes?: number
 }
 
 const STATUS_FILTROS = [
@@ -67,6 +62,17 @@ export default function Lista() {
         supabase.from('solicitacao_responsaveis').select('solicitacao_id, admin_id'),
       ])
 
+      // Quantas operações cada solicitação cobre. Uma solicitação que atende
+      // duas edições do mesmo destino é logisticamente outra coisa — dois
+      // períodos, dois voucher, duas listas — e isso não aparecia em lugar
+      // nenhum da lista.
+      const { data: vinculos } = await supabase
+        .from('solicitacao_edicoes')
+        .select('solicitacao_id')
+      const operacoesPor = new Map<string, number>()
+      for (const v of vinculos ?? [])
+        operacoesPor.set(v.solicitacao_id, (operacoesPor.get(v.solicitacao_id) ?? 0) + 1)
+
       // Nomes dos responsáveis, para mostrar ao lado do status.
       const { data: equipe } = await supabase.from('v_equipe').select('id, nome')
       const nomePorId = new Map((equipe ?? []).map((u) => [u.id, u.nome]))
@@ -81,6 +87,7 @@ export default function Lista() {
         ((sol.data ?? []) as Linha[]).map((d) => ({
           ...d,
           responsaveis: porSolicitacao.get(d.id) ?? [],
+          qtd_operacoes: operacoesPor.get(d.id) ?? 0,
         })),
       )
       setCarregando(false)
@@ -174,10 +181,14 @@ export default function Lista() {
       d.data_saida,
       equipeLabel(d.equipe, d.equipe_outro),
       d.colaboradores?.length ?? 0,
-      (d.servicos ?? []).map((sv) => SERVICO_CURTO[sv] ?? sv).join(' + '),
+      (d.servicos ?? []).map((sv) => etiquetaServico(sv)).join(' + '),
       // Vazio (e não "Nao") onde não há hospedagem: numa solicitação de carro
       // a pergunta não existe, e "Nao" na planilha pareceria pendência.
-      (d.servicos ?? []).includes('HOSPEDAGEM') ? (d.rooming_ok ? 'Sim' : 'Nao') : '',
+      (d.servicos ?? []).some((sv) => SERVICOS_HOSPEDAGEM.includes(sv))
+        ? d.rooming_ok
+          ? 'Sim'
+          : 'Nao'
+        : '',
       (d.responsaveis ?? []).join(' + '),
       d.solicitante_nome,
       d.solicitante_email,
@@ -408,6 +419,14 @@ export default function Lista() {
                     </td>
                     <td className="px-4 py-2.5">
                       <span className="font-medium">{nomeDestino(d)}</span>
+                      {/* Mais de uma operação no mesmo destino: são dois
+                          períodos dentro de um pedido só, com voucher e lista
+                          próprios. Sem a marca, a operação trata como uma. */}
+                      {(d.qtd_operacoes ?? 0) > 1 && (
+                        <span className="ml-1.5 whitespace-nowrap rounded bg-marca-100 px-1.5 py-0.5 text-[11px] font-bold text-neutral-800 ring-1 ring-inset ring-marca-400">
+                          {d.qtd_operacoes} operações
+                        </span>
+                      )}
                       <span className="block text-xs text-neutral-500">
                         {d.edicoes?.hotel}
                       </span>
@@ -426,7 +445,7 @@ export default function Lista() {
                             key={sv}
                             className={`rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${corServico(sv)}`}
                           >
-                            {SERVICO_CURTO[sv] ?? sv}
+                            {etiquetaServico(sv)}
                           </span>
                         ))}
                         {(d.servicos ?? []).length === 0 && (
@@ -439,7 +458,9 @@ export default function Lista() {
                         carro não há hotel em que inserir ninguém, e uma
                         caixinha marcável ali só convidaria a marcar errado. */}
                     <td className="px-3 py-2.5 text-center">
-                      {(d.servicos ?? []).includes('HOSPEDAGEM') ? (
+                      {(d.servicos ?? []).some((sv) =>
+                        SERVICOS_HOSPEDAGEM.includes(sv),
+                      ) ? (
                         <label
                           className="inline-flex cursor-pointer items-center justify-center"
                           title={

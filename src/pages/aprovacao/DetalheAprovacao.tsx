@@ -95,6 +95,8 @@ type Rodo = {
 }
 type Hosp = {
   colaborador_id: string
+  /** Hotel da operação ou hotel de fora — a mesma pessoa pode ter os dois. */
+  tipo: string | null
   hotel: string | null
   hotel_hospedagem: string | null
   tipo_quarto: string | null
@@ -234,7 +236,6 @@ export default function DetalheAprovacao() {
   const totalRodo = rodo.reduce((t, v) => t + Number(v.preco ?? 0), 0)
   // A operação lança o valor fechado da hospedagem — não há mais diária
   // para multiplicar por noites.
-  const totalHosp = hosp.reduce((t, h) => t + Number(h.valor_total ?? 0), 0)
   const totalCarro = Number(carro?.preco ?? 0)
   const totalVan = Number(van?.preco ?? 0)
 
@@ -275,10 +276,17 @@ export default function DetalheAprovacao() {
   const parcial = escopo.length > 0 && escopo.length < (s.servicos ?? []).length
   const jaAprovados = s.servicos_aprovados ?? []
 
+  /** Cada hospedagem soma o seu: são serviços separados, aprovados à parte. */
+  const somaHosp = (tipo: string) =>
+    hosp
+      .filter((h) => (h.tipo ?? 'HOTEL_PAX') === tipo)
+      .reduce((t, h) => t + Number(h.valor_total ?? 0), 0)
+
   const porServico: [string, string, number][] = [
     ['AEREO', 'Aéreo', totalVoos],
     ['RODOVIARIO', 'Rodoviário', totalRodo],
-    ['HOSPEDAGEM', 'Hospedagem', totalHosp],
+    ['HOSPEDAGEM', 'Hospedagem op.', somaHosp('HOTEL_PAX')],
+    ['HOSPEDAGEM_FORA', 'Hospedagem fora', somaHosp('FORA_HOTEL_PAX')],
     ['CARRO', 'Locação de carro', totalCarro],
     ['VAN', 'Locação de van ou ônibus', totalVan],
   ]
@@ -492,7 +500,7 @@ export default function DetalheAprovacao() {
             {colabs.map((c) => {
               const meusVoos = voos.filter((v) => v.colaborador_id === c.id)
               const meuBus = rodo.find((r) => r.colaborador_id === c.id)
-              const minhaHosp = hosp.find((h) => h.colaborador_id === c.id)
+              const minhasHosp = hosp.filter((h) => h.colaborador_id === c.id)
               return (
                 <div
                   key={c.id}
@@ -548,27 +556,34 @@ export default function DetalheAprovacao() {
                       )}
                     </p>
                   )}
-                  {/* Fora do hotel do pax, `hotel` é só a referência da
-                      operação — o diretor precisa ver onde a pessoa dorme. */}
-                  {(minhaHosp?.hotel_hospedagem || minhaHosp?.hotel) && (
-                    <p className="mt-1 text-neutral-600">
-                      {minhaHosp.hotel_hospedagem || minhaHosp.hotel}
-                      {minhaHosp.tipo_quarto &&
-                        ` · ${tipoQuartoLabel(minhaHosp.tipo_quarto)}`}
-                      {minhaHosp.alimentacao &&
-                        ` · ${alimentacaoLabel(minhaHosp.alimentacao).toLowerCase()}`}{' '}
-                      · {dataBR(minhaHosp.check_in)} a {dataBR(minhaHosp.check_out)}
-                      {minhaHosp.valor_total != null && (
-                        <span className="ml-1 text-neutral-500">
-                          ({moeda(minhaHosp.valor_total)})
-                        </span>
-                      )}
-                    </p>
-                  )}
+                  {/* Uma linha por hospedagem: a mesma pessoa pode ter o hotel
+                      da operação e um hotel fora, e são dois custos. Fora do
+                      hotel do pax, `hotel` é só a referência da operação — o
+                      diretor precisa ver onde a pessoa realmente dorme. */}
+                  {minhasHosp.map((h, i) => {
+                    const hotel = h.hotel_hospedagem || h.hotel
+                    if (!hotel) return null
+                    return (
+                      <p key={i} className="mt-1 text-neutral-600">
+                        <span className="font-medium text-neutral-700">
+                          {h.tipo === 'FORA_HOTEL_PAX' ? 'FORA' : 'OPERAÇÃO'}
+                        </span>{' '}
+                        {hotel}
+                        {h.tipo_quarto && ` · ${tipoQuartoLabel(h.tipo_quarto)}`}
+                        {h.alimentacao &&
+                          ` · ${alimentacaoLabel(h.alimentacao).toLowerCase()}`}{' '}
+                        · {dataBR(h.check_in)} a {dataBR(h.check_out)}
+                        {h.valor_total != null && (
+                          <span className="ml-1 text-neutral-500">
+                            ({moeda(h.valor_total)})
+                          </span>
+                        )}
+                      </p>
+                    )
+                  })}
                   {meusVoos.length === 0 &&
                     !meuBus?.empresa &&
-                    !minhaHosp?.hotel &&
-                    !minhaHosp?.hotel_hospedagem && (
+                    !minhasHosp.some((h) => h.hotel || h.hotel_hospedagem) && (
                       <p className="mt-1 text-xs text-neutral-400">
                         Sem dados de viagem preenchidos.
                       </p>

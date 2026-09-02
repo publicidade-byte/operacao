@@ -133,6 +133,11 @@ export type Rodoviario = {
 export type HospedagemDetalhe = {
   id?: string
   colaborador_id: string
+  /**
+   * Qual das duas hospedagens esta linha responde. A mesma pessoa pode ter as
+   * duas: o hotel da operação e um hotel fora, para chegar antes ou sair depois.
+   */
+  tipo?: 'HOTEL_PAX' | 'FORA_HOTEL_PAX'
   hotel: string | null
   /** Fora do hotel do pax: onde a operação de fato hospedou a pessoa. */
   hotel_hospedagem: string | null
@@ -162,6 +167,10 @@ export type LocacaoCarro = {
   devolucao_data: string | null
   devolucao_hora: string | null
   condutor_colaborador_id: string | null
+  /** A qual condutor pedido (`solicitacao_carros`) esta locação responde. */
+  pedido_id?: string | null
+  /** Código pelo qual a locadora acha o carro no balcão. */
+  codigo_reserva?: string | null
   preco: number | null
   observacoes: string | null
 }

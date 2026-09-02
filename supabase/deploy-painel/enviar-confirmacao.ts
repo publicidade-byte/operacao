@@ -396,26 +396,37 @@ Deno.serve(async (req) => {
          </ul>`,
       )
 
+    // Uma pessoa pode ter DUAS hospedagens: o hotel da operação e um hotel
+    // fora, para chegar antes ou sair depois. Mostrar só a primeira faria a
+    // pessoa aparecer no aeroporto sem saber onde dorme na véspera.
+    const ROTULO_HOSP: Record<string, string> = {
+      HOTEL_PAX: 'Hotel da operação',
+      FORA_HOTEL_PAX: 'Fora do hotel dos passageiros',
+    }
     const linhasHosp = colabs
       .map((c: { id: string; nome_completo: string }) => {
-        const h = hosp?.find((x) => x.colaborador_id === c.id)
-        // Fora do hotel do pax, `hotel` é só a referência da operação — quem
-        // viaja precisa do endereço onde vai realmente dormir.
-        const hotel = h?.hotel_hospedagem || h?.hotel
-        if (!hotel) return ''
-        return `<p style="margin:0 0 10px"><strong>${c.nome_completo}</strong><br>
-          ${hotel}${h.tipo_quarto ? ` · ${QUARTO[h.tipo_quarto] ?? h.tipo_quarto}` : ''}${h.alimentacao ? ` · ${h.alimentacao === 'COM_CAFE' ? 'com café' : 'sem café'}` : ''}<br>
-          ${h.endereco ? `${h.endereco}<br>` : ''}
-          Check-in ${dataBR(h.check_in)} · Check-out ${dataBR(h.check_out)}
-          ${h.codigo_reserva ? `<br>Reserva <strong>${h.codigo_reserva}</strong>` : ''}
-          ${h.dividindo_com ? `<br>Dividindo quarto com ${h.dividindo_com}` : ''}</p>`
+        const minhas = (hosp ?? []).filter((x) => x.colaborador_id === c.id)
+        const blocos = minhas
+          .sort((a, b) => String(a.tipo ?? '').localeCompare(String(b.tipo ?? '')))
+          .map((h) => {
+            // Fora do hotel do pax, `hotel` é só a referência da operação —
+            // quem viaja precisa do endereço onde vai realmente dormir.
+            const hotel = h.hotel_hospedagem || h.hotel
+            if (!hotel) return ''
+            return `<p style="margin:0 0 10px">
+              <span style="font-size:11px;text-transform:uppercase;letter-spacing:1px;color:#64748b">${ROTULO_HOSP[h.tipo ?? 'HOTEL_PAX'] ?? ''}</span><br>
+              ${hotel}${h.tipo_quarto ? ` · ${QUARTO[h.tipo_quarto] ?? h.tipo_quarto}` : ''}${h.alimentacao ? ` · ${h.alimentacao === 'COM_CAFE' ? 'com café' : 'sem café'}` : ''}<br>
+              ${h.endereco ? `${h.endereco}<br>` : ''}
+              Check-in ${dataBR(h.check_in)} · Check-out ${dataBR(h.check_out)}
+              ${h.codigo_reserva ? `<br>Reserva <strong>${h.codigo_reserva}</strong>` : ''}
+              ${h.dividindo_com ? `<br>Dividindo quarto com ${h.dividindo_com}` : ''}</p>`
+          })
+          .join('')
+        if (!blocos) return ''
+        return `<p style="margin:0 0 4px"><strong>${c.nome_completo}</strong></p>${blocos}`
       })
       .join('')
-    if (linhasHosp)
-      corpo += secao(
-        'Hospedagem',
-        `${s.tipo_hospedagem === 'FORA_HOTEL_PAX' ? '<em>Hospedagem fora do hotel de passageiros.</em><br><br>' : ''}${linhasHosp}`,
-      )
+    if (linhasHosp) corpo += secao('Hospedagem', linhasHosp)
 
     const linhasVoo = colabs
       .map((c: { id: string; nome_completo: string }) => {
