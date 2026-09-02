@@ -265,16 +265,16 @@ export default function Lista() {
    * o banco recusar — marcar rooming é o tipo de clique que se dá em série,
    * e esperar ida e volta de rede a cada um travaria o trabalho.
    */
-  async function alternarRooming(d: Linha) {
-    const novo = !d.rooming_ok
-    setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, rooming_ok: novo } : x)))
+  async function alternarControle(d: Linha, campo: 'rooming_ok' | 'rodoviario_ok') {
+    const novo = !d[campo]
+    setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, [campo]: novo } : x)))
     const { error } = await supabase
       .from('solicitacoes')
-      .update({ rooming_ok: novo })
+      .update({ [campo]: novo })
       .eq('id', d.id)
     if (error) {
-      setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, rooming_ok: !novo } : x)))
-      alert(`Não foi possível marcar o rooming: ${error.message}`)
+      setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, [campo]: !novo } : x)))
+      alert(`Não foi possível marcar: ${error.message}`)
     }
   }
 
@@ -395,12 +395,28 @@ export default function Lista() {
               const temHosp = (d.servicos ?? []).some((sv) =>
                 SERVICOS_HOSPEDAGEM.includes(sv),
               )
+              const temRodo = (d.servicos ?? []).includes('RODOVIARIO')
+              /**
+               * Cor do card pelos dois controles combinados.
+               *
+               * Verde = rooming feito · vermelho = rodoviário feito ·
+               * amarelo = os dois. A cor responde "o que falta nesta linha?"
+               * antes de qualquer leitura — que é como a lista é usada.
+               */
+              const fundo =
+                d.rooming_ok && d.rodoviario_ok
+                  ? 'bg-amber-50 hover:bg-amber-100/70'
+                  : d.rooming_ok
+                    ? 'bg-emerald-50/70 hover:bg-emerald-50'
+                    : d.rodoviario_ok
+                      ? 'bg-red-50/70 hover:bg-red-50'
+                      : 'hover:bg-neutral-50'
               return (
                 <div
                   key={d.id}
                   className={
                     'group relative flex flex-col gap-3 px-4 py-3.5 pl-5 transition lg:flex-row lg:items-center lg:gap-5 ' +
-                    (d.rooming_ok ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'hover:bg-neutral-50')
+                    fundo
                   }
                 >
                   {/* Faixa de status na borda: dá para varrer a coluna e ver
@@ -481,9 +497,34 @@ export default function Lista() {
                             type="checkbox"
                             className="h-3.5 w-3.5 cursor-pointer accent-emerald-600"
                             checked={!!d.rooming_ok}
-                            onChange={() => alternarRooming(d)}
+                            onChange={() => alternarControle(d, 'rooming_ok')}
                           />
                           {d.rooming_ok ? 'No rooming' : 'Rooming'}
+                        </label>
+                      )}
+                      {/* Rodoviário: mesma ideia do rooming, para o ônibus da
+                          operação. Só aparece onde o serviço foi pedido. */}
+                      {temRodo && (
+                        <label
+                          className={
+                            'inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset transition ' +
+                            (d.rodoviario_ok
+                              ? 'bg-red-100 text-red-800 ring-red-400'
+                              : 'bg-white text-neutral-500 ring-neutral-300 hover:ring-neutral-400')
+                          }
+                          title={
+                            d.rodoviario_ok
+                              ? 'Rodoviário comprado — clique para desmarcar'
+                              : 'Marcar o rodoviário como comprado'
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            className="h-3.5 w-3.5 cursor-pointer accent-red-600"
+                            checked={!!d.rodoviario_ok}
+                            onChange={() => alternarControle(d, 'rodoviario_ok')}
+                          />
+                          {d.rodoviario_ok ? 'Rodoviário ok' : 'Rodoviário'}
                         </label>
                       )}
                     </div>

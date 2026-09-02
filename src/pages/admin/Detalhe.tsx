@@ -437,6 +437,21 @@ export default function Detalhe() {
    * um botão "Concluir sem avisar" que deixava a pessoa no escuro justamente
    * no momento em que ela mais precisa da informação.
    */
+  /**
+   * Liga ou desliga um controle da operação (emitido, rooming, rodoviário).
+   *
+   * Grava na hora, sem passar pelo botão de salvar: são marcações de conferência
+   * feitas em série, e um formulário inteiro para um booleano só atrapalha.
+   */
+  async function alternarControle(campo: 'aereo_emitido' | 'rodoviario_ok', valor: boolean) {
+    const { error } = await supabase
+      .from('solicitacoes')
+      .update({ [campo]: valor })
+      .eq('id', id)
+    if (error) return setMsg({ tom: 'erro', texto: error.message })
+    carregar()
+  }
+
   async function mudarStatus(novo: Status, descricao: string) {
     const { error } = await supabase
       .from('solicitacoes')
@@ -848,11 +863,38 @@ export default function Detalhe() {
                   key={sv}
                   className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-200 px-3 py-2"
                 >
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <Etiqueta className={corServico(sv)}>{servicoCurto(sv)}</Etiqueta>
                     <span className="text-sm text-neutral-700">{moeda(valor)}</span>
                     {valor === 0 && !jaAprovado && (
                       <span className="text-xs text-amber-700">sem valor lançado</span>
+                    )}
+                    {/* Emissão é o passo que vem DEPOIS da aprovação e não tem
+                        onde ser registrado hoje: aprovado e emitido pareciam a
+                        mesma coisa na tela, e não são — entre um e outro está
+                        o prazo que derruba a reserva. */}
+                    {sv === 'AEREO' && (
+                      <label
+                        className={
+                          'inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset transition ' +
+                          (s.aereo_emitido
+                            ? 'bg-emerald-100 text-emerald-800 ring-emerald-400'
+                            : 'bg-white text-neutral-500 ring-neutral-300 hover:ring-neutral-400')
+                        }
+                        title={
+                          s.aereo_emitido
+                            ? `Emitido${s.aereo_emitido_em ? ` em ${dataHoraBR(s.aereo_emitido_em)}` : ''} — clique para desmarcar`
+                            : 'Marcar como passagem emitida'
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          className="h-3.5 w-3.5 cursor-pointer accent-emerald-600"
+                          checked={!!s.aereo_emitido}
+                          onChange={() => alternarControle('aereo_emitido', !s.aereo_emitido)}
+                        />
+                        {s.aereo_emitido ? 'EMITIDO' : 'Emitido?'}
+                      </label>
                     )}
                   </div>
                   {jaAprovado ? (

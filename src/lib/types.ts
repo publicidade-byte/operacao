@@ -236,6 +236,12 @@ export type Solicitacao = {
   rooming_ok: boolean
   rooming_em: string | null
   rooming_por: string | null
+  /** Controle da operação: a passagem aérea já foi emitida. */
+  aereo_emitido: boolean
+  aereo_emitido_em: string | null
+  /** Controle da operação: a passagem do ônibus da operação já foi comprada. */
+  rodoviario_ok: boolean
+  rodoviario_em: string | null
   carro_condutor_nome: string | null
   carro_condutor_cpf: string | null
   carro_transmissao: string | null
