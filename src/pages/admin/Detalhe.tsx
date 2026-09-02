@@ -613,11 +613,10 @@ export default function Detalhe() {
   const cancelada = s.status === 'CANCELADA'
   const decidida = ['APROVADA', 'CONCLUIDA'].includes(s.status)
   const emAprovacao = s.status === 'AGUARDANDO_APROVACAO'
-  const podeEditar = cancelada
-    ? !!admin?.super_admin
-    : emAprovacao
-      ? !!admin?.super_admin
-      : true
+  // Sem exceção: qualquer pessoa da operação edita qualquer solicitação, em
+  // qualquer status. As travas por status ficavam no caminho justamente quando
+  // havia pressa — reserva que caiu, data errada indo para a locadora.
+  const podeEditar = true
   /** Está mexendo em algo que o diretor já decidiu — merece aviso na tela. */
   const editandoTravada = podeEditar && (decidida || emAprovacao || cancelada)
   const custo = s.custo_total_manual ?? s.custo_total
