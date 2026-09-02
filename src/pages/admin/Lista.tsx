@@ -419,9 +419,6 @@ export default function Lista() {
                       >
                         {d.protocolo}
                       </Link>
-                      <Etiqueta className={STATUS_CLASS[d.status]}>
-                        {STATUS_LABEL[d.status]}
-                      </Etiqueta>
                       {/* Mais de uma operação: são dois períodos dentro de um
                           pedido só, com voucher e lista próprios. */}
                       {(d.qtd_operacoes ?? 0) > 1 && (
@@ -490,6 +487,17 @@ export default function Lista() {
                         </label>
                       )}
                     </div>
+                  </div>
+
+                  {/* ---- Status ----
+                      No meio da linha, centralizado: fica na mesma coluna em
+                      todas as linhas, então a coluna inteira se lê de uma vez.
+                      Junto do protocolo ele dançava conforme o tamanho do
+                      número e do badge de operações. */}
+                  <div className="flex shrink-0 justify-center lg:w-44">
+                    <Etiqueta className={STATUS_CLASS[d.status]}>
+                      {STATUS_LABEL[d.status]}
+                    </Etiqueta>
                   </div>
 
                   {/* ---- Pessoas ---- */}

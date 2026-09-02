@@ -509,11 +509,20 @@ export default function Solicitar() {
         data_saida: saida,
         voo_data_ida: manter(f.voo_data_ida, nosso.voo_ida, entrada),
         voo_data_volta: manter(f.voo_data_volta, nosso.voo_volta, saida),
-        carros: f.carros.map((c) => ({
-          ...c,
-          retirada_data: manter(c.retirada_data, nosso.retirada, entrada),
-          devolucao_data: manter(c.devolucao_data, nosso.devolucao, saida),
-        })),
+        // O carro só acompanha a estadia quando a solicitação cobre UMA
+        // operação. Com várias, `entrada`/`saida` são o envelope da temporada,
+        // e sincronizar por aí levou seis carros a devolver todos no mesmo dia,
+        // dois meses depois da retirada: cada operação marcada empurrava a
+        // devolução de TODOS eles para o fim do envelope, e como o campo
+        // parecia preenchido, ninguém conferia.
+        carros:
+          ids.length === 1
+            ? f.carros.map((c) => ({
+                ...c,
+                retirada_data: manter(c.retirada_data, nosso.retirada, entrada),
+                devolucao_data: manter(c.devolucao_data, nosso.devolucao, saida),
+              }))
+            : f.carros,
       }
       auto.current = {
         voo_ida: entrada,
@@ -580,6 +589,15 @@ export default function Solicitar() {
         data_nascimento: c.nascimento,
         ordem: i + 1,
       }))
+  }
+
+  /** Dias entre retirada e devolução. 0 quando falta alguma das datas. */
+  const diasDeLocacao = (c: CarroForm) => {
+    if (!c.retirada_data || !c.devolucao_data) return 0
+    const ms =
+      new Date(`${c.devolucao_data}T12:00:00`).getTime() -
+      new Date(`${c.retirada_data}T12:00:00`).getTime()
+    return Math.round(ms / 86_400_000)
   }
 
   const setCarro = (i: number, k: keyof CarroForm, v: string) => {
@@ -2041,7 +2059,14 @@ export default function Solicitar() {
                           <Campo
                             label="Data de devolução"
                             erro={erros[`carro.${i}.devolucao_data`]}
-                            dica="Sugerimos a saída; ajuste se devolver depois."
+                            dica={
+                              // Locação muito longa quase sempre é data errada,
+                              // não intenção. O aviso não bloqueia: existe
+                              // aluguel mensal — mas obriga a olhar.
+                              diasDeLocacao(c) > 30
+                                ? `Atenção: ${diasDeLocacao(c)} dias de locação. Confira se a data está certa.`
+                                : 'Quando o carro volta para a locadora.'
+                            }
                           >
                             <Input
                               type="date"
@@ -2082,9 +2107,19 @@ export default function Solicitar() {
                           transmissao: '',
                           tipo: '',
                           retirada: '',
-                          retirada_data: form.data_entrada,
+                          // As datas só vêm preenchidas quando a solicitação
+                          // cobre UMA operação — aí a estadia é o período do
+                          // carro e o palpite acerta.
+                          //
+                          // Cobrindo várias, `data_entrada`/`data_saida` são o
+                          // envelope da temporada inteira. Preencher a
+                          // devolução com isso já mandou seis carros para a
+                          // locadora com o mesmo retorno, dois meses depois da
+                          // retirada, sem ninguém perceber: o campo parecia
+                          // respondido. Em branco, obriga a resposta.
+                          retirada_data: form.edicao_ids.length === 1 ? form.data_entrada : '',
                           retirada_hora: '',
-                          devolucao_data: form.data_saida,
+                          devolucao_data: form.edicao_ids.length === 1 ? form.data_saida : '',
                           devolucao_hora: '',
                         },
                       ])
