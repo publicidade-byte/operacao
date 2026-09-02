@@ -27,6 +27,23 @@ type Linha = Solicitacao & {
   qtd_operacoes?: number
 }
 
+/**
+ * Faixa colorida na borda esquerda de cada linha.
+ *
+ * A etiqueta de status já diz o estado por escrito, mas ler 60 etiquetas é
+ * trabalho. A faixa deixa a coluna inteira legível de relance — dá para achar
+ * as que esperam aprovação sem passar o olho em cada linha.
+ */
+const FAIXA_STATUS: Record<string, string> = {
+  RECEBIDA: 'bg-violet-400',
+  EM_PREENCHIMENTO: 'bg-sky-400',
+  AGUARDANDO_APROVACAO: 'bg-marca-400',
+  APROVADA: 'bg-emerald-400',
+  REPROVADA: 'bg-red-400',
+  CONCLUIDA: 'bg-neutral-800',
+  CANCELADA: 'bg-red-600',
+}
+
 const STATUS_FILTROS = [
   'RECEBIDA',
   'EM_PREENCHIMENTO',
@@ -373,96 +390,90 @@ export default function Lista() {
         ) : filtrados.length === 0 ? (
           <Vazio>Nenhuma solicitação encontrada com esses filtros.</Vazio>
         ) : (
-          <div className="scroll-fino -m-4 overflow-x-auto">
-            <table className="w-full min-w-[1180px] text-sm">
-              <thead className="border-b border-neutral-200 bg-neutral-50 text-left text-xs uppercase tracking-wide text-neutral-500">
-                <tr>
-                  <th className="px-4 py-2.5 font-medium">Protocolo</th>
-                  <th className="px-4 py-2.5 font-medium">Destino</th>
-                  <th className="px-4 py-2.5 font-medium">Período</th>
-                  <th className="px-4 py-2.5 font-medium">Equipe</th>
-                  <th className="px-4 py-2.5 text-center font-medium">Pax</th>
-                  <th className="px-4 py-2.5 font-medium">Solicitado</th>
-                  <th className="px-3 py-2.5 text-center font-medium">
-                    Inserido no
-                    <br />
-                    Rooming
-                  </th>
-                  <th className="px-4 py-2.5 font-medium">Solicitante</th>
-                  <th className="px-4 py-2.5 font-medium">Diretor</th>
-                  <th className="px-4 py-2.5 font-medium">Status</th>
-                  <th className="px-4 py-2.5 font-medium">Responsáveis</th>
-                  <th className="px-4 py-2.5 text-right font-medium">Custo</th>
-                  <th className="px-2 py-2.5"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-100">
-                {filtrados.map((d) => (
-                  <tr
-                    key={d.id}
-                    className={
-                      // Verde discreto e uma faixa na borda: dá para varrer a
-                      // lista e ver o que já foi feito sem ler linha por linha,
-                      // e o texto continua legível por cima.
-                      d.rooming_ok
-                        ? 'bg-emerald-50 hover:bg-emerald-100/70 border-l-2 border-l-emerald-500'
-                        : 'hover:bg-neutral-50'
-                    }
-                  >
-                    <td className="px-4 py-2.5">
+          <div className="-m-4 divide-y divide-neutral-100">
+            {filtrados.map((d) => {
+              const temHosp = (d.servicos ?? []).some((sv) =>
+                SERVICOS_HOSPEDAGEM.includes(sv),
+              )
+              return (
+                <div
+                  key={d.id}
+                  className={
+                    'group relative flex flex-col gap-3 px-4 py-3.5 pl-5 transition lg:flex-row lg:items-center lg:gap-5 ' +
+                    (d.rooming_ok ? 'bg-emerald-50/60 hover:bg-emerald-50' : 'hover:bg-neutral-50')
+                  }
+                >
+                  {/* Faixa de status na borda: dá para varrer a coluna e ver
+                      onde cada solicitação está sem ler uma palavra. */}
+                  <span
+                    aria-hidden="true"
+                    className={`absolute inset-y-0 left-0 w-1.5 ${FAIXA_STATUS[d.status] ?? 'bg-neutral-200'}`}
+                  />
+
+                  {/* ---- Identificação e destino ---- */}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <Link
                         to={`/admin/solicitacoes/${d.id}`}
-                        className="font-mono text-xs font-semibold text-neutral-700 hover:underline"
+                        className="font-mono text-xs font-semibold text-neutral-500 hover:text-neutral-900 hover:underline"
                       >
                         {d.protocolo}
                       </Link>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="font-medium">{nomeDestino(d)}</span>
-                      {/* Mais de uma operação no mesmo destino: são dois
-                          períodos dentro de um pedido só, com voucher e lista
-                          próprios. Sem a marca, a operação trata como uma. */}
+                      <Etiqueta className={STATUS_CLASS[d.status]}>
+                        {STATUS_LABEL[d.status]}
+                      </Etiqueta>
+                      {/* Mais de uma operação: são dois períodos dentro de um
+                          pedido só, com voucher e lista próprios. */}
                       {(d.qtd_operacoes ?? 0) > 1 && (
-                        <span className="ml-1.5 whitespace-nowrap rounded bg-marca-100 px-1.5 py-0.5 text-[11px] font-bold text-neutral-800 ring-1 ring-inset ring-marca-400">
+                        <span className="rounded bg-marca-100 px-1.5 py-0.5 text-[11px] font-bold text-neutral-800 ring-1 ring-inset ring-marca-400">
                           {d.qtd_operacoes} operações
                         </span>
                       )}
-                      <span className="block text-xs text-neutral-500">
-                        {d.edicoes?.hotel}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-neutral-600">
+                    </div>
+
+                    <Link
+                      to={`/admin/solicitacoes/${d.id}`}
+                      className="mt-1 block truncate text-base font-bold text-neutral-900 hover:underline"
+                      title={`${nomeDestino(d)}${d.edicoes?.hotel ? ` — ${d.edicoes.hotel}` : ''}`}
+                    >
+                      {nomeDestino(d)}
+                      {d.edicoes?.hotel && (
+                        <span className="ml-1.5 text-sm font-normal text-neutral-500">
+                          {d.edicoes.hotel}
+                        </span>
+                      )}
+                    </Link>
+
+                    <p className="mt-0.5 text-xs text-neutral-600">
                       {dataCurta(d.data_entrada)} a {dataCurta(d.data_saida)}
-                    </td>
-                    <td className="px-4 py-2.5 text-neutral-600">{equipeLabel(d.equipe, d.equipe_outro)}</td>
-                    <td className="px-4 py-2.5 text-center text-neutral-600">
-                      {d.colaboradores?.length ?? 0}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex flex-wrap gap-1">
-                        {(d.servicos ?? []).map((sv) => (
-                          <span
-                            key={sv}
-                            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ring-1 ring-inset ${corServico(sv)}`}
-                          >
-                            {etiquetaServico(sv)}
-                          </span>
-                        ))}
-                        {(d.servicos ?? []).length === 0 && (
-                          <span className="text-xs text-neutral-400">—</span>
-                        )}
-                      </div>
-                    </td>
-                    {/* Controle de rooming.
-                        Só existe onde há hospedagem — numa solicitação de
-                        carro não há hotel em que inserir ninguém, e uma
-                        caixinha marcável ali só convidaria a marcar errado. */}
-                    <td className="px-3 py-2.5 text-center">
-                      {(d.servicos ?? []).some((sv) =>
-                        SERVICOS_HOSPEDAGEM.includes(sv),
-                      ) ? (
+                      {' · '}
+                      {equipeLabel(d.equipe, d.equipe_outro)}
+                      {' · '}
+                      {d.colaboradores?.length ?? 0} pax
+                    </p>
+
+                    <div className="mt-1.5 flex flex-wrap items-center gap-1">
+                      {(d.servicos ?? []).map((sv) => (
+                        <span
+                          key={sv}
+                          className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${corServico(sv)}`}
+                        >
+                          {etiquetaServico(sv)}
+                        </span>
+                      ))}
+                      {(d.servicos ?? []).length === 0 && (
+                        <span className="text-xs text-neutral-400">—</span>
+                      )}
+                      {/* Rooming ao lado das etiquetas: é sobre a hospedagem,
+                          e é aqui que o olho já está quando procura por ela. */}
+                      {temHosp && (
                         <label
-                          className="inline-flex cursor-pointer items-center justify-center"
+                          className={
+                            'ml-1 inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset transition ' +
+                            (d.rooming_ok
+                              ? 'bg-emerald-100 text-emerald-800 ring-emerald-400'
+                              : 'bg-white text-neutral-500 ring-neutral-300 hover:ring-neutral-400')
+                          }
                           title={
                             d.rooming_ok
                               ? 'Inserido no rooming — clique para desmarcar'
@@ -471,77 +482,81 @@ export default function Lista() {
                         >
                           <input
                             type="checkbox"
-                            className="h-4 w-4 cursor-pointer accent-emerald-600"
+                            className="h-3.5 w-3.5 cursor-pointer accent-emerald-600"
                             checked={!!d.rooming_ok}
                             onChange={() => alternarRooming(d)}
                           />
-                          <span className="sr-only">
-                            Inserido no rooming — {d.protocolo}
-                          </span>
+                          {d.rooming_ok ? 'No rooming' : 'Rooming'}
                         </label>
-                      ) : (
-                        <span className="text-xs text-neutral-300">—</span>
                       )}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <span className="text-neutral-700">{d.solicitante_nome}</span>
-                      <span className="block text-xs text-neutral-500">
-                        {d.solicitante_email}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 text-neutral-600">{d.diretores?.nome}</td>
-                    <td className="px-4 py-2.5">
-                      <Etiqueta className={STATUS_CLASS[d.status]}>
-                        {STATUS_LABEL[d.status]}
-                      </Etiqueta>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      {d.responsaveis && d.responsaveis.length > 0 ? (
-                        <div className="flex flex-wrap gap-1">
-                          {d.responsaveis.map((n) => (
-                            <span
-                              key={n}
-                              title={n}
-                              className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${corResponsavel(n)}`}
-                            >
-                              {n.split(' ')[0]}
-                            </span>
-                          ))}
-                        </div>
-                      ) : (
-                        <span className="text-xs text-neutral-400">ninguém</span>
-                      )}
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-2.5 text-right text-neutral-700">
+                    </div>
+                  </div>
+
+                  {/* ---- Pessoas ---- */}
+                  <div className="min-w-0 lg:w-56">
+                    <p className="truncate text-sm text-neutral-800" title={d.solicitante_nome}>
+                      {d.solicitante_nome}
+                    </p>
+                    <p
+                      className="truncate text-xs text-neutral-500"
+                      title={d.solicitante_email}
+                    >
+                      {d.solicitante_email}
+                    </p>
+                    <p className="mt-0.5 truncate text-xs text-neutral-500">
+                      Diretor: {d.diretores?.nome ?? '—'}
+                    </p>
+                  </div>
+
+                  {/* ---- Responsáveis ---- */}
+                  <div className="lg:w-40">
+                    {d.responsaveis && d.responsaveis.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {d.responsaveis.map((n) => (
+                          <span
+                            key={n}
+                            title={n}
+                            className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${corResponsavel(n)}`}
+                          >
+                            {n.split(' ')[0]}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-neutral-400">ninguém assumiu</span>
+                    )}
+                  </div>
+
+                  {/* ---- Custo e ação ---- */}
+                  <div className="flex items-center justify-between gap-3 lg:w-36 lg:justify-end">
+                    <span className="whitespace-nowrap text-base font-bold text-neutral-900">
                       {moeda(d.custo_total_manual ?? d.custo_total)}
-                    </td>
-                    <td className="px-2 py-2.5 text-right">
-                      {verLixeira ? (
-                        <button
-                          onClick={() => restaurar(d)}
-                          title="Restaurar solicitação"
-                          aria-label={`Restaurar ${d.protocolo}`}
-                          className="rounded px-2 py-1 text-xs font-semibold text-neutral-700 underline decoration-marca-400 decoration-2 underline-offset-2 transition hover:bg-marca-50"
-                        >
-                          Restaurar
-                        </button>
-                      ) : (
+                    </span>
+                    {verLixeira ? (
+                      <button
+                        onClick={() => restaurar(d)}
+                        title="Restaurar solicitação"
+                        aria-label={`Restaurar ${d.protocolo}`}
+                        className="rounded px-2 py-1 text-xs font-semibold text-neutral-700 underline decoration-marca-400 decoration-2 underline-offset-2 transition hover:bg-marca-50"
+                      >
+                        Restaurar
+                      </button>
+                    ) : (
                       <button
                         onClick={() => excluir(d)}
                         title="Mover para a lixeira"
                         aria-label={`Excluir ${d.protocolo}`}
-                        className="rounded p-1.5 text-neutral-300 transition hover:bg-red-50 hover:text-red-600"
+                        className="rounded p-1.5 text-neutral-300 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover:opacity-100"
                       >
                         <svg viewBox="0 0 16 16" className="size-4 fill-current">
                           <path d="M6.5 1a.5.5 0 00-.5.5V2H3.5a.5.5 0 000 1H4v9.5A1.5 1.5 0 005.5 14h5a1.5 1.5 0 001.5-1.5V3h.5a.5.5 0 000-1H10v-.5a.5.5 0 00-.5-.5h-3zM5 3h6v9.5a.5.5 0 01-.5.5h-5a.5.5 0 01-.5-.5V3zm1.5 1.5v6h1v-6h-1zm2 0v6h1v-6h-1z" />
                         </svg>
                       </button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         )}
       </Card>
