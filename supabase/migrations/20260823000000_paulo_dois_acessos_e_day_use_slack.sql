@@ -67,7 +67,9 @@ on conflict (id) do update
 --
 -- Day use é do Ander e do Vinicius. Sem esta linha a solicitação entrava e
 -- ninguém era avisado: a área não existia na lista de ninguém.
+-- O cast é obrigatório: sem ele o Postgres tenta ler 'DAY_USE' como literal
+-- de array e reclama que não começa com chave.
 update admin_users
-   set areas = (select array_agg(distinct x) from unnest(areas || 'DAY_USE') x)
+   set areas = (select array_agg(distinct x) from unnest(areas || 'DAY_USE'::text) x)
  where nome in ('Ander Sousa', 'Vinicius Fernandes')
    and not ('DAY_USE' = any(areas));
