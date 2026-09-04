@@ -12,6 +12,8 @@ type Diretor = {
    * As telas usam isto para deixar claro em nome de quem se está decidindo.
    */
   super_admin?: boolean
+  /** Também tem cadastro na operação — ganha o atalho para o painel. */
+  tem_admin?: boolean
 }
 const Ctx = createContext<Diretor | null>(null)
 export const useDiretor = () => useContext(Ctx)
@@ -34,10 +36,17 @@ export default function AprovacaoLayout() {
       // O super admin entra aqui de propósito: ele administra o sistema
       // inteiro e precisa ver esta área para saber o que melhorar. A conta
       // dele tem papel ADMIN, então checar só o papel o barrava.
-      const ehDiretor = perfil?.papel === 'DIRETOR'
+      // "Tem cadastro de diretor?" — não "entrou como diretor?". Quem tem os
+      // dois cadastros entra como ADMIN e mesmo assim aprova aqui.
+      const ehDiretor = !!perfil?.tem_diretor
       const ehSuper = !!perfil?.super_admin
       if (!perfil || (!ehDiretor && !ehSuper)) return setEstado('negado')
-      setDiretor({ id: perfil.id, nome: perfil.nome, super_admin: !ehDiretor && ehSuper })
+      setDiretor({
+        id: perfil.id,
+        nome: perfil.nome,
+        super_admin: !ehDiretor && ehSuper,
+        tem_admin: !!perfil.tem_admin,
+      })
       setEstado('ok')
     })()
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -95,7 +104,7 @@ export default function AprovacaoLayout() {
                 {diretor?.nome}
               </span>
               {/* Quem veio do painel operacional precisa do caminho de volta. */}
-              {diretor?.super_admin && (
+              {(diretor?.super_admin || diretor?.tem_admin) && (
                 <Link
                   to="/admin"
                   className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"

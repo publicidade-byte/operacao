@@ -237,6 +237,18 @@ export default function Detalhe() {
         .filter(Boolean)
         .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)),
     )
+    /**
+     * Sugerir data só quando a solicitação cobre UMA operação.
+     *
+     * `data_entrada`/`data_saida` de uma solicitação com várias operações são
+     * o envelope da temporada, não o período de nada. Preencher voo,
+     * rodoviário e hospedagem com isso entrega à operação um campo que parece
+     * respondido e está errado — foi o que levou seis carros a devolver todos
+     * no mesmo dia. Em branco, o campo cobra a resposta.
+     */
+    const umaOperacao = (ops ?? []).length <= 1
+    const sugerir = (d: string | null) => (umaOperacao ? d : null)
+
     const mv: Record<string, Partial<Voo>> = {}
     ;(v.data ?? []).forEach((x: Voo) => (mv[`${x.colaborador_id}:${x.trecho}`] = x))
     // Voo ainda não preenchido já chega com a data que o solicitante pediu.
@@ -271,8 +283,8 @@ export default function Detalhe() {
       if (!mr[c.id])
         mr[c.id] = {
           colaborador_id: c.id,
-          ida_data: sol.data_entrada,
-          volta_data: sol.data_saida,
+          ida_data: sugerir(sol.data_entrada),
+          volta_data: sugerir(sol.data_saida),
         }
     })
     setRodo(mr)
@@ -298,8 +310,8 @@ export default function Detalhe() {
             // O hotel da operação só serve de padrão para a estadia da
             // operação. Na de fora, quem escolhe o hotel é quem reserva.
             hotel: fora ? null : (sol.edicoes?.hotel ?? null),
-            check_in: sol.data_entrada,
-            check_out: sol.data_saida,
+            check_in: sugerir(sol.data_entrada),
+            check_out: sugerir(sol.data_saida),
             ...(fora
               ? {
                   tipo_quarto: sol.hosp_tipo_quarto,

@@ -14,7 +14,7 @@ import {
   equipeLabel,
   nomeDestino,
 } from '../../lib/constants'
-import { dataBR, dataCurta, moeda, soDigitos } from '../../lib/format'
+import { dataBR, dataCurta, dataHoraBR, moeda, soDigitos } from '../../lib/format'
 import { Botao, Card, Etiqueta, Input, Select, Vazio } from '../../components/ui'
 import { useAdmin } from './AdminLayout'
 
@@ -463,6 +463,12 @@ export default function Lista() {
                       {equipeLabel(d.equipe, d.equipe_outro)}
                       {' · '}
                       {d.colaboradores?.length ?? 0} pax
+                    </p>
+                    {/* Quando o pedido chegou. É o que responde "isso está
+                        parado há quanto tempo?" — pergunta que a lista recebe
+                        o dia inteiro e não tinha como responder. */}
+                    <p className="mt-0.5 text-[11px] text-neutral-400">
+                      Solicitada em {dataHoraBR(d.created_at)}
                     </p>
 
                     <div className="mt-1.5 flex flex-wrap items-center gap-1">

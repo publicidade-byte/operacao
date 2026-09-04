@@ -10,6 +10,12 @@ export type Perfil = {
   nome: string
   /** Super admin: enxerga e opera também a área dos diretores. */
   super_admin?: boolean
+  /**
+   * A que a pessoa tem direito, independente de por onde entra.
+   * Quem tem os dois usa o mesmo login nas duas áreas.
+   */
+  tem_admin?: boolean
+  tem_diretor?: boolean
 }
 
 export async function carregarPerfil(): Promise<Perfil | null> {

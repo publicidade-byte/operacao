@@ -221,11 +221,20 @@ export default function Solicitar() {
    * Serve para distinguir "campo intocado" de "campo que a pessoa digitou":
    * o primeiro pode ser atualizado quando ela troca de operação, o segundo não.
    */
+  /**
+   * O que FOMOS NÓS que preenchemos, por campo de data.
+   *
+   * Serve para saber o que pode ser atualizado quando a operação muda: o que
+   * a pessoa digitou fica, o que nós sugerimos acompanha.
+   */
   const auto = useRef<{
     voo_ida?: string
     voo_volta?: string
     retirada?: string
     devolucao?: string
+    van_saida?: string
+    van_retorno?: string
+    day_use?: string
   }>({})
   const [form, setForm] = useState<Form>(() => {
     try {
@@ -505,33 +514,59 @@ export default function Solicitar() {
       const manter = (atual: string, anterior: string | undefined, novo: string) =>
         !atual || atual === anterior ? novo : atual
 
+      /**
+       * Só sugerimos data de serviço quando a solicitação cobre UMA operação.
+       *
+       * Com uma, `entrada`/`saida` são o período real e o palpite acerta. Com
+       * várias, são o envelope da temporada inteira — e cada operação marcada
+       * empurrava a data de TODOS os itens para o novo fim do envelope. Foi
+       * assim que seis carros foram devolver no mesmo dia, dois meses depois
+       * da retirada, sem ninguém notar: o campo parecia respondido.
+       *
+       * A regra vale para tudo que tem data própria — voo, carro, van, day
+       * use. Em branco, o campo cobra a resposta de quem sabe qual operação
+       * aquele item atende.
+       */
+      const umaOperacao = ids.length === 1
+
       const novoForm = {
         ...f,
         edicao_ids: ids,
         data_entrada: entrada,
         data_saida: saida,
-        voo_data_ida: manter(f.voo_data_ida, nosso.voo_ida, entrada),
-        voo_data_volta: manter(f.voo_data_volta, nosso.voo_volta, saida),
-        // O carro só acompanha a estadia quando a solicitação cobre UMA
-        // operação. Com várias, `entrada`/`saida` são o envelope da temporada,
-        // e sincronizar por aí levou seis carros a devolver todos no mesmo dia,
-        // dois meses depois da retirada: cada operação marcada empurrava a
-        // devolução de TODOS eles para o fim do envelope, e como o campo
-        // parecia preenchido, ninguém conferia.
-        carros:
-          ids.length === 1
-            ? f.carros.map((c) => ({
-                ...c,
-                retirada_data: manter(c.retirada_data, nosso.retirada, entrada),
-                devolucao_data: manter(c.devolucao_data, nosso.devolucao, saida),
-              }))
-            : f.carros,
+        voo_data_ida: umaOperacao
+          ? manter(f.voo_data_ida, nosso.voo_ida, entrada)
+          : f.voo_data_ida,
+        voo_data_volta: umaOperacao
+          ? manter(f.voo_data_volta, nosso.voo_volta, saida)
+          : f.voo_data_volta,
+        van_data_saida: umaOperacao
+          ? manter(f.van_data_saida, nosso.van_saida, entrada)
+          : f.van_data_saida,
+        van_retorno_data: umaOperacao
+          ? manter(f.van_retorno_data, nosso.van_retorno, saida)
+          : f.van_retorno_data,
+        // Day use é um dia só: com várias operações não há como adivinhar
+        // qual delas, e sugerir a primeira seria chutar por quem sabe.
+        day_use_data: umaOperacao
+          ? manter(f.day_use_data, nosso.day_use, entrada)
+          : f.day_use_data,
+        carros: umaOperacao
+          ? f.carros.map((c) => ({
+              ...c,
+              retirada_data: manter(c.retirada_data, nosso.retirada, entrada),
+              devolucao_data: manter(c.devolucao_data, nosso.devolucao, saida),
+            }))
+          : f.carros,
       }
       auto.current = {
         voo_ida: entrada,
         voo_volta: saida,
         retirada: entrada,
         devolucao: saida,
+        van_saida: entrada,
+        van_retorno: saida,
+        day_use: entrada,
       }
       return novoForm
     })

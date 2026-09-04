@@ -14,6 +14,8 @@ export default function AdminLayout() {
     'carregando',
   )
   const [admin, setAdmin] = useState<AdminUser | null>(null)
+  /** Também é diretor aprovador: ganha o atalho para a outra área. */
+  const [ehDiretor, setEhDiretor] = useState(false)
 
   useEffect(() => {
     let vivo = true
@@ -24,8 +26,11 @@ export default function AdminLayout() {
 
       const perfil = await carregarPerfil()
       if (!vivo) return
-      if (perfil?.papel === 'DIRETOR') return setEstado('diretor')
-      if (perfil?.papel !== 'ADMIN') return setEstado('negado')
+      // A pergunta é "tem cadastro de operação?", não "é diretor?". Quem tem
+      // os dois — o diretor geral do departamento, que também acompanha as
+      // demandas — entra aqui e continua entrando na área de aprovação.
+      if (!perfil?.tem_admin)
+        return setEstado(perfil?.tem_diretor ? 'diretor' : 'negado')
 
       const { data: reg } = await supabase
         .from('admin_users')
@@ -34,6 +39,7 @@ export default function AdminLayout() {
         .maybeSingle()
       if (!vivo) return
       setAdmin(reg as AdminUser)
+      setEhDiretor(!!perfil.tem_diretor)
       setEstado('ok')
     })()
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
@@ -116,6 +122,16 @@ export default function AdminLayout() {
               <span className="hidden text-xs text-neutral-500 sm:block">
                 {admin?.nome} · {admin?.role === 'GESTOR' ? 'Gestor' : 'Operacional'}
               </span>
+              {/* Quem também é diretor aprovador troca de área por aqui, com
+                  o mesmo login — sem sair e entrar de novo. */}
+              {ehDiretor && (
+                <NavLink
+                  to="/aprovacao"
+                  className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+                >
+                  Minhas aprovações
+                </NavLink>
+              )}
               {/* Cada pessoa troca a própria senha — ninguém precisa pedir
                   isso para a operação. */}
               <NavLink

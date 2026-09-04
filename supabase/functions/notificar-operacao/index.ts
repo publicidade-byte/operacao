@@ -62,12 +62,15 @@ Deno.serve(async (req) => {
 
     // As "áreas" tocadas por esta solicitação. Hospedagem se divide entre
     // hotel do pax e fora dele — são responsáveis diferentes.
-    const areas = new Set<string>()
-    for (const sv of servicos) {
-      if (sv === 'HOSPEDAGEM')
-        areas.add(s.tipo_hospedagem === 'HOTEL_PAX' ? 'HOSP_PAX' : 'HOSP_FORA')
-      else areas.add(sv)
+    // HOSPEDAGEM passou a significar exatamente "hotel do pax", e a de fora
+    // ganhou serviço próprio. Antes disso o tipo vinha de `tipo_hospedagem`,
+    // que era escolha única — e quem pedisse as duas cairia numa área só,
+    // deixando metade da equipe sem aviso.
+    const AREA_DO_SERVICO: Record<string, string> = {
+      HOSPEDAGEM: 'HOSP_PAX',
+      HOSPEDAGEM_FORA: 'HOSP_FORA',
     }
+    const areas = new Set<string>(servicos.map((sv) => AREA_DO_SERVICO[sv] ?? sv))
 
     // Quem recebe: usuários do sistema + pessoas cadastradas só para
     // notificação (têm Slack mas não têm login, como a Carol).
