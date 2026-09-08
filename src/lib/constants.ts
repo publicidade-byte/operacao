@@ -110,6 +110,26 @@ export const ETIQUETA_SERVICO: Record<string, string> = {
 
 export const etiquetaServico = (v: string) => ETIQUETA_SERVICO[v] ?? v
 
+/**
+ * Etiqueta do aéreo depois de emitido.
+ *
+ * A caixa "emitido" fica do lado direito do card; a etiqueta, do esquerdo.
+ * Quem varre a lista lê as etiquetas, não as caixas — então a informação que
+ * mais importa depois da aprovação ficava no canto que ninguém olha.
+ *
+ * Fundo cheio, e não claro como as outras: emitido é estado final, e precisa
+ * se distinguir do aéreo que ainda vai ser comprado.
+ */
+export const AEREO_EMITIDO_CLASSE = 'bg-emerald-600 text-white ring-emerald-700'
+
+export function etiquetaDoServico(sv: string, s: { aereo_emitido?: boolean }) {
+  const emitido = sv === 'AEREO' && !!s.aereo_emitido
+  return {
+    texto: emitido ? 'AÉREO EMITIDO' : etiquetaServico(sv),
+    classe: emitido ? AEREO_EMITIDO_CLASSE : corServico(sv),
+  }
+}
+
 /** Os dois serviços de hospedagem, para quem precisa tratar os dois juntos. */
 export const SERVICOS_HOSPEDAGEM = ['HOSPEDAGEM', 'HOSPEDAGEM_FORA']
 

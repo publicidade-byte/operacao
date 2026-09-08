@@ -8,8 +8,7 @@ import {
   STATUS_CLASS,
   STATUS_LABEL,
   corResponsavel,
-  corServico,
-  etiquetaServico,
+  etiquetaDoServico,
   SERVICOS_HOSPEDAGEM,
   equipeLabel,
   nomeDestino,
@@ -198,7 +197,9 @@ export default function Lista() {
       d.data_saida,
       equipeLabel(d.equipe, d.equipe_outro),
       d.colaboradores?.length ?? 0,
-      (d.servicos ?? []).map((sv) => etiquetaServico(sv)).join(' + '),
+      // O CSV acompanha a tela: quem exporta precisa saber o que ja foi
+      // emitido sem cruzar com outra coluna.
+      (d.servicos ?? []).map((sv) => etiquetaDoServico(sv, d).texto).join(' + '),
       // Vazio (e não "Nao") onde não há hospedagem: numa solicitação de carro
       // a pergunta não existe, e "Nao" na planilha pareceria pendência.
       (d.servicos ?? []).some((sv) => SERVICOS_HOSPEDAGEM.includes(sv))
@@ -475,9 +476,9 @@ export default function Lista() {
                       {(d.servicos ?? []).map((sv) => (
                         <span
                           key={sv}
-                          className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${corServico(sv)}`}
+                          className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${etiquetaDoServico(sv, d).classe}`}
                         >
-                          {etiquetaServico(sv)}
+                          {etiquetaDoServico(sv, d).texto}
                         </span>
                       ))}
                       {(d.servicos ?? []).length === 0 && (
