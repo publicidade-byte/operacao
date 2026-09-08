@@ -482,6 +482,43 @@ export default function Detalhe() {
     carregar()
   }
 
+  /**
+   * Tira uma operação da solicitação, mantendo as outras.
+   *
+   * O caso é o solicitante avisar que a equipe não vai mais numa das datas. A
+   * alternativa antes era cancelar tudo e refazer, perdendo protocolo,
+   * histórico, aprovação e o que a operação já tinha preenchido.
+   */
+  async function removerOperacao(o: Edicao) {
+    if (!s) return
+    const periodo = `${dataBR(o.data_inicio)} a ${dataBR(o.data_fim)}`
+    const restantes = operacoes.filter((x) => x.id !== o.id)
+    const novaEstadia = restantes.length
+      ? `${dataBR(restantes[0].data_inicio)} a ${dataBR(
+          restantes[restantes.length - 1].data_fim,
+        )}`
+      : '—'
+    if (
+      !confirm(
+        `Remover a operação ${o.codigo} (${periodo}) desta solicitação?\n\n` +
+          `Sobram ${restantes.length} operação(ões), e a estadia passa a ser ${novaEstadia}.\n\n` +
+          'Voos, hospedagem e demais dados já preenchidos NÃO são apagados — ' +
+          'confira se algum deles era só desta data.',
+      )
+    )
+      return
+
+    setSalvando(true)
+    const { error } = await supabase.rpc('remover_operacao', {
+      p_solicitacao: s.id,
+      p_edicao: o.id,
+    })
+    setSalvando(false)
+    if (error) return setMsg({ tom: 'erro', texto: error.message })
+    setMsg({ tom: 'sucesso', texto: `Operação ${o.codigo} removida.` })
+    carregar()
+  }
+
   async function mudarStatus(novo: Status, descricao: string) {
     const { error } = await supabase
       .from('solicitacoes')
@@ -1058,11 +1095,26 @@ export default function Detalhe() {
                 {operacoes.length > 0 ? (
                   <ul className="space-y-0.5">
                     {operacoes.map((o) => (
-                      <li key={o.id}>
-                        {dataBR(o.data_inicio)} a {dataBR(o.data_fim)}
-                        <span className="ml-1.5 text-xs text-neutral-500">
-                          {o.codigo}
+                      <li key={o.id} className="group/op flex items-center gap-2">
+                        <span>
+                          {dataBR(o.data_inicio)} a {dataBR(o.data_fim)}
+                          <span className="ml-1.5 text-xs text-neutral-500">
+                            {o.codigo}
+                          </span>
                         </span>
+                        {/* Só com mais de uma: tirar a última deixaria a
+                            solicitação sem destino nem período. Para encerrar
+                            existe o Cancelar, que preserva o histórico. */}
+                        {operacoes.length > 1 && podeEditar && (
+                          <button
+                            onClick={() => removerOperacao(o)}
+                            title={`Remover a operação ${o.codigo} desta solicitação`}
+                            aria-label={`Remover operação ${o.codigo}`}
+                            className="rounded px-1.5 py-0.5 text-xs font-semibold text-neutral-400 opacity-0 transition hover:bg-red-50 hover:text-red-600 focus:opacity-100 group-hover/op:opacity-100"
+                          >
+                            remover
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
