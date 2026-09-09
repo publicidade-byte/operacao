@@ -87,11 +87,11 @@ async function acharNoSlack(sb: Banco, token: string, email: string) {
   if (!achado.ok) {
     if (achado.error === 'users_not_found')
       return { motivo: `${email} não tem conta neste Slack` }
+    // A mensagem aparece para a operação no meio do trabalho: ela precisa
+    // dizer o que fazer AGORA, não explicar a arquitetura do app do Slack.
     if (achado.error === 'missing_scope')
       return {
-        motivo:
-          `${email} não está no mapa slack_pessoas, e o app do Slack não tem o escopo ` +
-          `users:read.email para procurar sozinho — cadastre a pessoa no mapa`,
+        motivo: `${email} ainda não está no mapa de Slack — peça para a TI incluir`,
       }
     return { motivo: `Slack: ${achado.error}` }
   }
