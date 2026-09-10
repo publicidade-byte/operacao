@@ -256,7 +256,12 @@ export default function Detalhe() {
     // Só o trecho que foi pedido: quem pediu só ida não ganha uma volta.
     const trechos: ('IDA' | 'VOLTA')[] =
       sol.tipo_voo === 'IDA' ? ['IDA'] : sol.tipo_voo === 'VOLTA' ? ['VOLTA'] : ['IDA', 'VOLTA']
-    sol.colaboradores.forEach((c) => {
+    // Só monta voo para quem PEDIU aéreo. Sem este teste, toda solicitação
+    // ganhava duas linhas de voo em branco, e o "Salvar" as gravava — foram 76
+    // cascas vazias em 15 solicitações de rodoviário e hospedagem, que depois
+    // apareciam na consulta e no e-mail como "IDA · — —", sugerindo uma
+    // passagem que ninguém pediu.
+    if (tem(sol, 'AEREO')) sol.colaboradores.forEach((c) => {
       for (const t of trechos) {
         const chave = `${c.id}:${t}`
         if (mv[chave]) continue
@@ -564,8 +569,23 @@ export default function Detalhe() {
     setSalvando(true)
     setMsg(null)
     try {
+      // Grava só voo que a operação de fato preencheu. Ter chave não basta: o
+      // pré-preenchimento cria o objeto com data e aeroporto do pedido, e isso
+      // sozinho não é um voo — é o esqueleto de um.
+      const vooPreenchido = (v: Partial<Voo>) =>
+        !!(
+          v.companhia ||
+          v.numero_voo ||
+          v.localizador ||
+          v.preco != null ||
+          v.partida_hora ||
+          v.chegada_hora ||
+          v.emissao_prazo_data ||
+          v.observacoes ||
+          v.id
+        )
       const upVoos = Object.entries(voos)
-        .filter(([, v]) => v && Object.keys(v).length > 0)
+        .filter(([, v]) => v && vooPreenchido(v))
         .map(([k, v]) => {
           const [colaborador_id, trecho] = k.split(':')
           const { id: _ignorado, ...resto } = v as Voo

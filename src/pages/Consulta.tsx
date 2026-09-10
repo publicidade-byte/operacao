@@ -271,6 +271,22 @@ export default function Consulta() {
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+/** Voo com alguma informação de verdade — não a linha vazia do pré-preenchimento. */
+const temVoo = (v: any) =>
+  !!(v.companhia || v.numero_voo || v.localizador || v.partida_hora || v.preco)
+
+/** Rodoviário com alguma informação de verdade, de ida ou de volta. */
+const temRodo = (r: any) =>
+  !!(
+    r.empresa ||
+    r.numero_onibus ||
+    r.ida_hora ||
+    r.volta_hora ||
+    r.local_embarque_ida ||
+    r.local_embarque_volta
+  )
+
 function DetalheConsulta({ dados }: { dados: any }) {
   const s = dados.solicitacao
   const voos = dados.voos ?? []
@@ -309,10 +325,14 @@ function DetalheConsulta({ dados }: { dados: any }) {
         </ul>
       </Bloco>
 
-      {voos.length > 0 && (
+      {/* Só voo com alguma coisa preenchida. Linha vazia (sem companhia, número,
+          data nem localizador) virava "IDA · — — → — —" — inclusive em
+          solicitação que nem pediu aéreo, o que faz parecer que falta emitir
+          uma passagem que ninguém pediu. */}
+      {voos.some(temVoo) && (
         <Bloco titulo="Voos">
           {(s.colaboradores ?? []).map((c: any) => {
-            const meus = voos.filter((v: any) => v.colaborador_id === c.id)
+            const meus = voos.filter((v: any) => v.colaborador_id === c.id && temVoo(v))
             if (meus.length === 0) return null
             return (
               <div key={c.id} className="mb-2">
@@ -341,60 +361,111 @@ function DetalheConsulta({ dados }: { dados: any }) {
         </Bloco>
       )}
 
-      {hosp.some((h: any) => h.hotel) && (
+      {/* Uma pessoa pode ter as duas hospedagens (hotel da operação e hotel
+          fora). Com `find`, só a primeira aparecia — e a pessoa chegaria na
+          véspera sem saber onde dorme. Fora do hotel do pax, o hotel de
+          verdade está em `hotel_hospedagem`; `hotel` é só a referência. */}
+      {hosp.some((h: any) => h.hotel_hospedagem || h.hotel) && (
         <Bloco titulo="Hospedagem">
           {(s.colaboradores ?? []).map((c: any) => {
-            const h = hosp.find((x: any) => x.colaborador_id === c.id)
-            if (!h?.hotel) return null
+            const minhas = hosp.filter(
+              (x: any) => x.colaborador_id === c.id && (x.hotel_hospedagem || x.hotel),
+            )
+            if (minhas.length === 0) return null
             return (
-              <p key={c.id} className="text-neutral-700">
-                <span className="font-medium text-neutral-900">{c.nome_completo}</span>
-                {' — '}
-                {h.hotel}
-                {h.endereco && ` · ${h.endereco}`}
-                {' · '}
-                {dataBR(h.check_in)} a {dataBR(h.check_out)}
-                {h.codigo_reserva && ` · reserva ${h.codigo_reserva}`}
-              </p>
+              <div key={c.id} className="mb-2 text-neutral-700">
+                <p className="font-medium text-neutral-900">{c.nome_completo}</p>
+                {minhas.map((h: any, i: number) => (
+                  <p key={i}>
+                    {minhas.length > 1 && (
+                      <span className="font-semibold">
+                        {h.tipo === 'FORA_HOTEL_PAX' ? 'FORA ' : 'OPERAÇÃO '}
+                      </span>
+                    )}
+                    {h.hotel_hospedagem || h.hotel}
+                    {h.endereco && ` · ${h.endereco}`}
+                    {' · '}
+                    {dataBR(h.check_in)} a {dataBR(h.check_out)}
+                    {h.codigo_reserva && ` · reserva ${h.codigo_reserva}`}
+                  </p>
+                ))}
+              </div>
             )
           })}
         </Bloco>
       )}
 
-      {rodo.some((r: any) => r.empresa || r.horario_ida) && (
+      {/* Rodoviário: ida E volta.
+          A volta nunca foi montada aqui — a consulta mostrava só apresentação
+          e ida, e quem abria para saber a que horas o ônibus volta não achava.
+          O filtro também deixou de olhar `horario_ida`, a coluna antiga de
+          timestamp que parou de ser preenchida quando data e hora separaram:
+          com ela, um trecho só de volta nem aparecia. */}
+      {rodo.some((r: any) => temRodo(r)) && (
         <Bloco titulo="Rodoviário">
           {(s.colaboradores ?? []).map((c: any) => {
             const r = rodo.find((x: any) => x.colaborador_id === c.id)
-            if (!r?.empresa && !r?.horario_ida) return null
+            if (!r || !temRodo(r)) return null
             return (
-              <p key={c.id} className="text-neutral-700">
-                <span className="font-medium text-neutral-900">{c.nome_completo}</span>
-                {' — '}
-                {r.empresa}
-                {r.numero_onibus && ` · ônibus ${r.numero_onibus}`}
-                <br />
-                Apresentação {dataHora(r.apresentacao_data, r.apresentacao_hora)} · saída{' '}
-                {dataHora(r.ida_data, r.ida_hora)}
-                {r.local_embarque_ida && ` — ${r.local_embarque_ida}`}
-              </p>
+              <div key={c.id} className="mb-2 text-neutral-700">
+                <p>
+                  <span className="font-medium text-neutral-900">{c.nome_completo}</span>
+                  {r.empresa && <>{' — '}{r.empresa}</>}
+                  {r.numero_onibus && ` · ônibus ${r.numero_onibus}`}
+                </p>
+                {(r.apresentacao_data || r.apresentacao_hora) && (
+                  <p>Apresentação {dataHora(r.apresentacao_data, r.apresentacao_hora)}</p>
+                )}
+                {(r.ida_data || r.ida_hora || r.local_embarque_ida) && (
+                  <p>
+                    <span className="font-semibold">IDA</span>{' '}
+                    {dataHora(r.ida_data, r.ida_hora)}
+                    {r.local_embarque_ida && ` — ${r.local_embarque_ida}`}
+                  </p>
+                )}
+                {(r.volta_data || r.volta_hora || r.local_embarque_volta) && (
+                  <p>
+                    <span className="font-semibold">VOLTA</span>{' '}
+                    {dataHora(r.volta_data, r.volta_hora)}
+                    {r.local_embarque_volta && ` — ${r.local_embarque_volta}`}
+                  </p>
+                )}
+              </div>
             )
           })}
         </Bloco>
       )}
 
-      {dados.van && (dados.van.empresa || dados.van.saida_em) && (
-        <Bloco titulo="Van ou ônibus">
-          <p className="text-neutral-700">
-            {dados.van.empresa}
-            {dados.van.motorista && ` · motorista ${dados.van.motorista}`}
-            {dados.van.telefone && ` · ${dados.van.telefone}`}
-            {dados.van.placa && ` · placa ${dados.van.placa}`}
-            <br />
-            Saída {dataHoraBR(dados.van.saida_em)}
-            {dados.van.local_saida && ` — ${dados.van.local_saida}`}
-          </p>
-        </Bloco>
-      )}
+      {/* Van: lia `saida_em`, a coluna antiga de timestamp que parou de ser
+          preenchida quando data e hora separaram — a saída aparecia vazia e o
+          retorno nem existia na tela. */}
+      {dados.van &&
+        (dados.van.empresa || dados.van.saida_data || dados.van.chegada_data) && (
+          <Bloco titulo="Van ou ônibus">
+            <div className="text-neutral-700">
+              <p>
+                {dados.van.empresa}
+                {dados.van.motorista && ` · motorista ${dados.van.motorista}`}
+                {dados.van.telefone && ` · ${dados.van.telefone}`}
+                {dados.van.placa && ` · placa ${dados.van.placa}`}
+              </p>
+              {(dados.van.saida_data || dados.van.local_saida) && (
+                <p>
+                  <span className="font-semibold">SAÍDA</span>{' '}
+                  {dataHora(dados.van.saida_data, dados.van.saida_hora)}
+                  {dados.van.local_saida && ` — ${dados.van.local_saida}`}
+                </p>
+              )}
+              {(dados.van.chegada_data || dados.van.local_chegada) && (
+                <p>
+                  <span className="font-semibold">RETORNO</span>{' '}
+                  {dataHora(dados.van.chegada_data, dados.van.chegada_hora)}
+                  {dados.van.local_chegada && ` — ${dados.van.local_chegada}`}
+                </p>
+              )}
+            </div>
+          </Bloco>
+        )}
 
       {dados.carro?.locadora && (
         <Bloco titulo="Locação de carro">
