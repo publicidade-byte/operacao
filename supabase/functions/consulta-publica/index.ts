@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       const { data } = await sb
         .from('solicitacoes')
         .select(
-          'id, protocolo, status, servicos, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id)',
+          'id, protocolo, status, servicos, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo)',
         )
         // A lixeira nao aparece na consulta publica.
         .is('excluida_em', null)
@@ -52,6 +52,12 @@ Deno.serve(async (req) => {
           evento_inicio: s.edicoes?.data_inicio,
           evento_fim: s.edicoes?.data_fim,
           qtd_pax: s.colaboradores?.length ?? 0,
+          // Só o nome, para a busca por colaborador. CPF e nascimento
+          // continuam só no detalhe — a lista não precisa deles para achar
+          // ninguém.
+          colaboradores: (s.colaboradores ?? []).map(
+            (c: { nome_completo: string }) => c.nome_completo,
+          ),
         })),
       })
     }

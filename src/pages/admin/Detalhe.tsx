@@ -279,6 +279,14 @@ export default function Detalhe() {
     const mr: Record<string, Partial<Rodoviario>> = {}
     ;(r.data ?? []).forEach((x: Rodoviario) => (mr[x.colaborador_id] = x))
     // Mesma ideia no rodoviário: o dia vem da estadia pedida.
+    // O embarque da ida é de onde o solicitante disse que sai. Vale também
+    // para linha que já existia com o campo em branco — foi assim que ficaram
+    // as solicitações anteriores, quando o painel não lia essa informação.
+    // Só preenche vazio: o que a operação digitou fica.
+    const embarquePedido = [sol.rodo_regiao_saida, sol.rodo_cidade_estado]
+      .map((x) => x?.trim())
+      .filter(Boolean)
+      .join(' — ')
     sol.colaboradores.forEach((c) => {
       if (!mr[c.id])
         mr[c.id] = {
@@ -286,6 +294,8 @@ export default function Detalhe() {
           ida_data: sugerir(sol.data_entrada),
           volta_data: sugerir(sol.data_saida),
         }
+      if (embarquePedido && !mr[c.id].local_embarque_ida?.trim())
+        mr[c.id] = { ...mr[c.id], local_embarque_ida: embarquePedido }
     })
     setRodo(mr)
     // A chave passa a ser pessoa + tipo: quem pede as duas hospedagens tem
@@ -1170,6 +1180,19 @@ export default function Detalhe() {
                   .filter(Boolean)
                   .join(' · ') || 'Não solicitado'}
               </L>
+              {/* De onde a pessoa sai. O formulário sempre gravou isto, mas o
+                  painel nunca lia — a operação via "Rodoviário" e mais nada, e
+                  tinha que perguntar ao solicitante o que ele já tinha dito. */}
+              {tem(s, 'RODOVIARIO') && (
+                <>
+                  <L t="Saída rodoviária">
+                    {s.rodo_regiao_saida || '—'}
+                  </L>
+                  <L t="Cidade / estado">
+                    {s.rodo_cidade_estado || '—'}
+                  </L>
+                </>
+              )}
               {tem(s, 'AEREO') && (
                 <>
                   <L t="Aeroporto saída">{aeroportoLabel(s.aeroporto_saida)}</L>

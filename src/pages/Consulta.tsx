@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { invocar } from '../lib/supabase'
 import {
+  EQUIPES,
   STATUS_CLASS,
   STATUS_LABEL,
   aeroportoLabel,
@@ -41,6 +42,8 @@ type Resumo = {
   destino: string
   hotel: string
   qtd_pax: number
+  /** Nomes de quem viaja — só para a busca. */
+  colaboradores?: string[]
 }
 
 const CHAVE = 'f9:consulta'
@@ -53,6 +56,7 @@ export default function Consulta() {
   const [lista, setLista] = useState<Resumo[]>([])
   const [busca, setBusca] = useState('')
   const [fStatus, setFStatus] = useState('')
+  const [fEquipe, setFEquipe] = useState('')
   const [aberta, setAberta] = useState<string | null>(null)
   const [detalhe, setDetalhe] = useState<Record<string, unknown> | null>(null)
 
@@ -102,17 +106,25 @@ export default function Consulta() {
   }
 
   const filtrados = useMemo(() => {
-    const q = busca.trim().toLowerCase()
+    // Busca sem acento e sem caixa: "joao" acha "João", que é como as pessoas
+    // digitam na pressa.
+    const norm = (x: string) =>
+      x.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+    const q = norm(busca.trim())
     return lista.filter((d) => {
       if (fStatus && d.status !== fStatus) return false
+      if (fEquipe && d.equipe !== fEquipe) return false
       if (!q) return true
       return (
-        d.protocolo.toLowerCase().includes(q) ||
-        d.destino?.toLowerCase().includes(q) ||
-        d.solicitante_nome.toLowerCase().includes(q)
+        norm(d.protocolo).includes(q) ||
+        norm(d.destino ?? '').includes(q) ||
+        norm(d.solicitante_nome).includes(q) ||
+        // Quem viaja: é o nome que a pessoa lembra quando vem perguntar
+        // "cadê a passagem do Fulano?" — raramente o protocolo.
+        (d.colaboradores ?? []).some((n) => norm(n).includes(q))
       )
     })
-  }, [lista, busca, fStatus])
+  }, [lista, busca, fStatus, fEquipe])
 
   // ---------- tela de senha ----------
   if (!autenticado)
@@ -174,13 +186,23 @@ export default function Consulta() {
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">
         <Card>
-          <div className="grid gap-3 sm:grid-cols-3">
+          <div className="grid gap-3 sm:grid-cols-4">
             <Input
-              placeholder="Buscar por protocolo, destino ou solicitante…"
+              placeholder="Buscar por protocolo, destino, solicitante ou colaborador…"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="sm:col-span-2"
             />
+            {/* Mesma lista de equipes do formulário: o filtro precisa
+                oferecer exatamente o que o solicitante pôde escolher. */}
+            <Select value={fEquipe} onChange={(e) => setFEquipe(e.target.value)}>
+              <option value="">Todas as equipes</option>
+              {EQUIPES.map((e) => (
+                <option key={e.value} value={e.value}>
+                  {e.label.replace(/ — informar a área$/, '')}
+                </option>
+              ))}
+            </Select>
             <Select value={fStatus} onChange={(e) => setFStatus(e.target.value)}>
               <option value="">Todos os status</option>
               {Object.entries(STATUS_LABEL).map(([v, l]) => (
