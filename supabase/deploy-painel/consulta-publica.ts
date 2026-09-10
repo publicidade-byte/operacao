@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
       const { data } = await sb
         .from('solicitacoes')
         .select(
-          'id, protocolo, status, servicos, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo)',
+          'id, protocolo, status, servicos, aereo_emitido, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo)',
         )
         // A lixeira nao aparece na consulta publica.
         .is('excluida_em', null)
@@ -221,6 +221,9 @@ Deno.serve(async (req) => {
           protocolo: s.protocolo,
           status: s.status,
           servicos: s.servicos,
+          // O mesmo campo que a caixa "Emitido" do painel grava. Não há
+          // sincronização a fazer: é um dado só, lido nos dois lugares.
+          aereo_emitido: s.aereo_emitido ?? false,
           equipe: s.equipe,
           equipe_outro: s.equipe_outro,
           data_entrada: s.data_entrada,

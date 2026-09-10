@@ -44,6 +44,8 @@ type Resumo = {
   qtd_pax: number
   /** Nomes de quem viaja — só para a busca. */
   colaboradores?: string[]
+  /** Marcado no painel quando a passagem é emitida. */
+  aereo_emitido?: boolean
 }
 
 const CHAVE = 'f9:consulta'
@@ -245,6 +247,13 @@ export default function Consulta() {
                     <p className="mt-0.5 text-xs text-neutral-500">
                       Solicitado por {d.solicitante_nome} ·{' '}
                       {(d.servicos ?? []).map((s) => servicoLabel(s)).join(' · ')}
+                      {/* Emitido é o que quem consulta mais quer saber: a
+                          passagem já existe? Mesma pílula verde do painel. */}
+                      {d.aereo_emitido && (d.servicos ?? []).includes('AEREO') && (
+                        <span className="ml-2 whitespace-nowrap rounded bg-emerald-600 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-inset ring-emerald-700">
+                          AÉREO EMITIDO
+                        </span>
+                      )}
                     </p>
                   </div>
                   <span className="text-xs font-semibold text-neutral-600">
@@ -331,6 +340,18 @@ function DetalheConsulta({ dados }: { dados: any }) {
           uma passagem que ninguém pediu. */}
       {voos.some(temVoo) && (
         <Bloco titulo="Voos">
+          {s.aereo_emitido && (
+            <p className="mb-2">
+              <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-inset ring-emerald-700">
+                AÉREO EMITIDO
+              </span>
+              {s.aereo_emitido_em && (
+                <span className="ml-2 text-xs text-neutral-500">
+                  em {dataHoraBR(s.aereo_emitido_em)}
+                </span>
+              )}
+            </p>
+          )}
           {(s.colaboradores ?? []).map((c: any) => {
             const meus = voos.filter((v: any) => v.colaborador_id === c.id && temVoo(v))
             if (meus.length === 0) return null
