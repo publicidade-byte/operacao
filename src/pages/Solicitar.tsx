@@ -832,8 +832,9 @@ export default function Solicitar() {
           if (!c.retirada.trim())
             e[`carro.${i}.retirada`] = 'Informe o local de retirada.'
           if (!c.retirada_data) e[`carro.${i}.retirada_data`] = 'Informe a data de retirada.'
-          if (!c.retirada_hora) e[`carro.${i}.retirada_hora`] = 'Informe o horário.'
-          if (!c.devolucao_hora) e[`carro.${i}.devolucao_hora`] = 'Informe o horário.'
+          // Horário não é obrigatório: muita gente pede o carro antes de ter o
+          // voo fechado, e sem saber a que horas chega não tem o que responder.
+          // A operação completa quando reservar.
           if (!c.devolucao_data)
             e[`carro.${i}.devolucao_data`] = 'Informe a data de devolução.'
           else if (c.retirada_data && c.devolucao_data < c.retirada_data)
@@ -2234,8 +2235,9 @@ export default function Solicitar() {
                           </Campo>
                           <Campo
                             label="Horário de retirada"
+                            obrigatorio={false}
                             erro={erros[`carro.${i}.retirada_hora`]}
-                            dica="A locadora cobra a diária a partir deste horário."
+                            dica="Opcional. A locadora cobra a diária a partir deste horário."
                           >
                             <Input
                               type="time"
@@ -2265,8 +2267,9 @@ export default function Solicitar() {
                           </Campo>
                           <Campo
                             label="Horário de devolução"
+                            obrigatorio={false}
                             erro={erros[`carro.${i}.devolucao_hora`]}
-                            dica="Devolver depois deste horário costuma virar diária extra."
+                            dica="Opcional. Devolver depois deste horário costuma virar diária extra."
                           >
                             <Input
                               type="time"
