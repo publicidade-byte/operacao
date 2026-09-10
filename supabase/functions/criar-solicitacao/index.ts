@@ -295,6 +295,12 @@ Deno.serve(async (req) => {
         tipo_hospedagem: b.tipo_hospedagem,
         // Day use e um dia so, do pedido inteiro: quem passa o dia nao dorme la.
         day_use_data: servicos.includes('DAY_USE') ? b.day_use_data : null,
+        // Cada hospedagem com as suas datas. Um par só (a estadia) não descreve
+        // quem dorme fora antes da operação e no hotel dela depois.
+        hosp_op_entrada: servicos.includes('HOSPEDAGEM') ? b.hosp_op_entrada || null : null,
+        hosp_op_saida: servicos.includes('HOSPEDAGEM') ? b.hosp_op_saida || null : null,
+        hosp_fora_entrada: servicos.includes('HOSPEDAGEM_FORA') ? b.hosp_fora_entrada || null : null,
+        hosp_fora_saida: servicos.includes('HOSPEDAGEM_FORA') ? b.hosp_fora_saida || null : null,
         centro_custo: ehAvulsa ? String(b.centro_custo).trim() : null,
         servicos,
         // `precisa_transporte` e `modal` seguem preenchidos por compatibilidade

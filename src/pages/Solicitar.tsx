@@ -69,6 +69,11 @@ type Form = {
   tipo_hospedagem: string
   hosp_externa_operacao: string
   hosp_externa_obs: string
+  /** Datas de cada hospedagem — as duas podem ser estadias diferentes. */
+  hosp_op_entrada: string
+  hosp_op_saida: string
+  hosp_fora_entrada: string
+  hosp_fora_saida: string
   hosp_qtd_quartos: string
   hosp_tipo_quarto: string
   hosp_alimentacao: string
@@ -117,6 +122,10 @@ const VAZIO: Form = {
   tipo_hospedagem: '',
   hosp_externa_operacao: '',
   hosp_externa_obs: '',
+  hosp_op_entrada: '',
+  hosp_op_saida: '',
+  hosp_fora_entrada: '',
+  hosp_fora_saida: '',
   hosp_qtd_quartos: '',
   hosp_tipo_quarto: '',
   hosp_alimentacao: '',
@@ -235,6 +244,8 @@ export default function Solicitar() {
     van_saida?: string
     van_retorno?: string
     day_use?: string
+    hosp_op_entrada?: string
+    hosp_op_saida?: string
   }>({})
   const [form, setForm] = useState<Form>(() => {
     try {
@@ -551,6 +562,18 @@ export default function Solicitar() {
         day_use_data: umaOperacao
           ? manter(f.day_use_data, nosso.day_use, entrada)
           : f.day_use_data,
+        // O hotel da operação acompanha a operação — mas só quando há uma.
+        // Com várias, a pessoa pode ficar em só uma delas, e o envelope
+        // chutaria uma estadia que ela não pediu.
+        hosp_op_entrada: umaOperacao
+          ? manter(f.hosp_op_entrada, nosso.hosp_op_entrada, entrada)
+          : f.hosp_op_entrada,
+        hosp_op_saida: umaOperacao
+          ? manter(f.hosp_op_saida, nosso.hosp_op_saida, saida)
+          : f.hosp_op_saida,
+        // A hospedagem fora NUNCA é sugerida: por definição ela é fora do
+        // período e do hotel da operação — em geral a véspera ou o dia
+        // seguinte. Qualquer palpite a partir da operação estaria errado.
         carros: umaOperacao
           ? f.carros.map((c) => ({
               ...c,
@@ -567,6 +590,8 @@ export default function Solicitar() {
         van_saida: entrada,
         van_retorno: saida,
         day_use: entrada,
+        hosp_op_entrada: entrada,
+        hosp_op_saida: saida,
       }
       return novoForm
     })
@@ -700,6 +725,19 @@ export default function Solicitar() {
         e.data_saida = 'A saída não pode ser antes da entrada.'
       if (form.servicos.includes('DAY_USE') && !form.day_use_data)
         e.day_use_data = 'Informe o dia do day use.'
+      // Cada hospedagem pedida cobra as suas datas. Sem isso, quem pede as
+      // duas deixava uma delas descrita só na observação, e a operação tinha
+      // de catar a data no texto.
+      const cobrarPeriodo = (entrada: string, saida: string, prefixo: 'hosp_op' | 'hosp_fora') => {
+        if (!entrada) e[`${prefixo}_entrada`] = 'Informe o check-in.'
+        if (!saida) e[`${prefixo}_saida`] = 'Informe o check-out.'
+        if (entrada && saida && saida < entrada)
+          e[`${prefixo}_saida`] = 'O check-out não pode ser antes do check-in.'
+      }
+      if (form.servicos.includes('HOSPEDAGEM'))
+        cobrarPeriodo(form.hosp_op_entrada, form.hosp_op_saida, 'hosp_op')
+      if (form.servicos.includes('HOSPEDAGEM_FORA'))
+        cobrarPeriodo(form.hosp_fora_entrada, form.hosp_fora_saida, 'hosp_fora')
       // Só cobra os detalhes de quem pediu hospedagem FORA do hotel do pax.
       // A do hotel da operação não tem o que perguntar: o hotel é o da
       // operação e as datas são as da estadia.
@@ -904,6 +942,12 @@ export default function Solicitar() {
           solicitante_whatsapp: soDigitos(form.solicitante_whatsapp),
           data_entrada: form.data_entrada,
           day_use_data: form.servicos.includes('DAY_USE') ? form.day_use_data : null,
+          hosp_op_entrada: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_entrada : null,
+          hosp_op_saida: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_saida : null,
+          hosp_fora_entrada: form.servicos.includes('HOSPEDAGEM_FORA')
+            ? form.hosp_fora_entrada
+            : null,
+          hosp_fora_saida: form.servicos.includes('HOSPEDAGEM_FORA') ? form.hosp_fora_saida : null,
           data_saida: form.data_saida,
           // A coluna não aceita nulo. Quem não pediu hospedagem não respondeu
           // a pergunta — mandamos o padrão, que não é usado em lugar nenhum
@@ -1070,7 +1114,18 @@ export default function Solicitar() {
     Object.keys(erros)
       .filter((k) => erros[k])
       .map((k) =>
-        ['destino', 'edicao_ids', 'data_entrada', 'data_saida', 'tipo_hospedagem'].includes(
+        [
+          'destino',
+          'edicao_ids',
+          'data_entrada',
+          'data_saida',
+          'tipo_hospedagem',
+          'day_use_data',
+          'hosp_op_entrada',
+          'hosp_op_saida',
+          'hosp_fora_entrada',
+          'hosp_fora_saida',
+        ].includes(
           k,
         )
           ? 0
@@ -1395,6 +1450,40 @@ export default function Solicitar() {
                                   </Campo>
                                 </div>
 
+                                {/* Datas próprias do hotel da operação. A
+                                    estadia acima é o período da solicitação
+                                    inteira; quando alguém pede também uma
+                                    hospedagem fora, ela deixa de ser a data
+                                    de hotel — e a F9-2026-0197 mostrou o que
+                                    acontece: as datas de fora foram parar na
+                                    estadia, e o hotel da operação ficou sem. */}
+                                {form.servicos.includes('HOSPEDAGEM') && (
+                                  <div className="mt-4 rounded-lg bg-sky-50 p-3.5 ring-1 ring-inset ring-sky-200">
+                                    <p className="mb-2 text-sm font-semibold text-sky-900">
+                                      Hospedagem no hotel da operação
+                                      {d.hotel ? ` — ${d.hotel}` : ''}
+                                    </p>
+                                    <div className="grid gap-4 sm:grid-cols-2">
+                                      <Campo label="Check-in" erro={erros.hosp_op_entrada}>
+                                        <Input
+                                          type="date"
+                                          value={form.hosp_op_entrada}
+                                          erro={!!erros.hosp_op_entrada}
+                                          onChange={(ev) => set('hosp_op_entrada', ev.target.value)}
+                                        />
+                                      </Campo>
+                                      <Campo label="Check-out" erro={erros.hosp_op_saida}>
+                                        <Input
+                                          type="date"
+                                          value={form.hosp_op_saida}
+                                          erro={!!erros.hosp_op_saida}
+                                          onChange={(ev) => set('hosp_op_saida', ev.target.value)}
+                                        />
+                                      </Campo>
+                                    </div>
+                                  </div>
+                                )}
+
                                 {/* Day use é um dia só, e é aqui — junto do
                                     hotel — que a pessoa está pensando em datas.
                                     Perguntar noutro passo faria voltar. */}
@@ -1428,6 +1517,41 @@ export default function Solicitar() {
                                     faz o trabalho e quem paga. */}
                                 {form.servicos.includes('HOSPEDAGEM_FORA') && (
                                   <div className="mt-4">
+                                    {/* Datas próprias da hospedagem fora. Sem
+                                        palpite nenhum: ela é, por definição,
+                                        fora do período da operação — em geral a
+                                        véspera ou o dia seguinte. */}
+                                    <div className="mb-4 rounded-lg bg-fuchsia-50 p-3.5 ring-1 ring-inset ring-fuchsia-200">
+                                      <p className="text-sm font-semibold text-fuchsia-900">
+                                        Hospedagem fora do hotel do pax
+                                      </p>
+                                      <p className="mb-2 text-xs text-fuchsia-800">
+                                        Em geral a véspera ou o dia seguinte à operação, em outra
+                                        cidade ou outro hotel.
+                                      </p>
+                                      <div className="grid gap-4 sm:grid-cols-2">
+                                        <Campo label="Check-in" erro={erros.hosp_fora_entrada}>
+                                          <Input
+                                            type="date"
+                                            value={form.hosp_fora_entrada}
+                                            erro={!!erros.hosp_fora_entrada}
+                                            onChange={(ev) =>
+                                              set('hosp_fora_entrada', ev.target.value)
+                                            }
+                                          />
+                                        </Campo>
+                                        <Campo label="Check-out" erro={erros.hosp_fora_saida}>
+                                          <Input
+                                            type="date"
+                                            value={form.hosp_fora_saida}
+                                            erro={!!erros.hosp_fora_saida}
+                                            onChange={(ev) =>
+                                              set('hosp_fora_saida', ev.target.value)
+                                            }
+                                          />
+                                        </Campo>
+                                      </div>
+                                    </div>
                                     <Campo
                                       label="A operação precisa reservar essa hospedagem?"
                                       erro={erros.hosp_externa_operacao}
@@ -2502,12 +2626,18 @@ export default function Solicitar() {
                   {(form.servicos.includes('HOSPEDAGEM') ||
                     form.servicos.includes('HOSPEDAGEM_FORA')) && (
                   <Linha rotulo="Hospedagem" onEditar={() => setPasso(0)}>
-                    {[
-                      form.servicos.includes('HOSPEDAGEM') && 'Hotel da operação',
-                      form.servicos.includes('HOSPEDAGEM_FORA') && 'Fora do hotel do pax',
-                    ]
-                      .filter(Boolean)
-                      .join(' + ')}
+                    {form.servicos.includes('HOSPEDAGEM') && (
+                      <span className="block">
+                        Hotel da operação: {dataBR(form.hosp_op_entrada)} a{' '}
+                        {dataBR(form.hosp_op_saida)}
+                      </span>
+                    )}
+                    {form.servicos.includes('HOSPEDAGEM_FORA') && (
+                      <span className="block">
+                        Fora do hotel do pax: {dataBR(form.hosp_fora_entrada)} a{' '}
+                        {dataBR(form.hosp_fora_saida)}
+                      </span>
+                    )}
                     {reservaPorQuarto && (
                       <span className="block text-neutral-600">
                         {form.hosp_qtd_quartos} quarto

@@ -318,6 +318,15 @@ export default function Detalhe() {
       tiposPedidos.forEach((tipo) => {
         const chave = `${c.id}:${tipo}`
         const fora = tipo === 'FORA_HOTEL_PAX'
+        // Cada hospedagem com as datas que o solicitante deu PARA ELA. Só as
+        // solicitações anteriores à separação caem na estadia — e, como antes,
+        // só quando há uma operação, porque com várias a estadia é o envelope.
+        const pedido = fora
+          ? { entrada: sol.hosp_fora_entrada, saida: sol.hosp_fora_saida }
+          : {
+              entrada: sol.hosp_op_entrada ?? sugerir(sol.data_entrada),
+              saida: sol.hosp_op_saida ?? sugerir(sol.data_saida),
+            }
         if (!mh[chave])
           mh[chave] = {
             colaborador_id: c.id,
@@ -325,8 +334,8 @@ export default function Detalhe() {
             // O hotel da operação só serve de padrão para a estadia da
             // operação. Na de fora, quem escolhe o hotel é quem reserva.
             hotel: fora ? null : (sol.edicoes?.hotel ?? null),
-            check_in: sugerir(sol.data_entrada),
-            check_out: sugerir(sol.data_saida),
+            check_in: pedido.entrada,
+            check_out: pedido.saida,
             ...(fora
               ? {
                   tipo_quarto: sol.hosp_tipo_quarto,
@@ -334,6 +343,13 @@ export default function Detalhe() {
                 }
               : {}),
           }
+        // Linha que já existia com a data em branco (foi como ficou a ficha
+        // fora da 0197) recebe a data pedida. Só o vazio: o que a operação
+        // digitou fica.
+        if (!mh[chave].check_in && pedido.entrada)
+          mh[chave] = { ...mh[chave], check_in: pedido.entrada }
+        if (!mh[chave].check_out && pedido.saida)
+          mh[chave] = { ...mh[chave], check_out: pedido.saida }
         // O endereço vem do catálogo, mas só onde ainda está vazio: quem já
         // digitou alguma coisa aqui sabia o que estava fazendo, e sobrescrever
         // seria trocar o dado bom pelo genérico.
@@ -1167,6 +1183,20 @@ export default function Detalhe() {
                   ))}
                 </div>
               </L>
+              {/* As datas de cada hospedagem, lado a lado: é a primeira coisa
+                  que quem reserva precisa, e antes existia só a estadia. */}
+              {tem(s, 'HOSPEDAGEM') && (s.hosp_op_entrada || s.hosp_op_saida) && (
+                <L t="Hotel da operação">
+                  {dataBR(s.hosp_op_entrada ?? undefined)} a{' '}
+                  {dataBR(s.hosp_op_saida ?? undefined)}
+                </L>
+              )}
+              {tem(s, 'HOSPEDAGEM_FORA') && (s.hosp_fora_entrada || s.hosp_fora_saida) && (
+                <L t="Hospedagem fora">
+                  {dataBR(s.hosp_fora_entrada ?? undefined)} a{' '}
+                  {dataBR(s.hosp_fora_saida ?? undefined)}
+                </L>
+              )}
               <L t="Tipo de hospedagem">
                 {s.tipo_hospedagem === 'HOTEL_PAX' ? 'Hotel do pax' : 'Fora do hotel do pax'}
                 {s.tipo_hospedagem === 'FORA_HOTEL_PAX' && (

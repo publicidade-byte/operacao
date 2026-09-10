@@ -250,6 +250,11 @@ export type Solicitacao = {
   rooming_por: string | null
   /** Dia do day use. Um só: quem faz day use não dorme no destino. */
   day_use_data: string | null
+  /** Datas pedidas para cada hospedagem — podem ser estadias diferentes. */
+  hosp_op_entrada: string | null
+  hosp_op_saida: string | null
+  hosp_fora_entrada: string | null
+  hosp_fora_saida: string | null
   /** Controle da operação: a passagem aérea já foi emitida. */
   aereo_emitido: boolean
   aereo_emitido_em: string | null
