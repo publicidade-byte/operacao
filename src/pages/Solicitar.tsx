@@ -1356,7 +1356,7 @@ export default function Solicitar() {
                               <Campo
                                 label="Qual o centro de custo?"
                                 erro={erros.centro_custo}
-                                dica="Ex.: Colab, Universidade Forma, Porto Seguro."
+                                dica="Ex.: Colab, Universidade Forma, Porto Seguro, Visitas Técnicas."
                               >
                                 <Input
                                   value={form.centro_custo}
