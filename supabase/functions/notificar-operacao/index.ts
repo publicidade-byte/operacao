@@ -126,6 +126,15 @@ Deno.serve(async (req) => {
       (EQUIPE_LABEL[s.equipe] ?? s.equipe) +
       (s.equipe === 'OUTROS' && s.equipe_outro ? ` (${s.equipe_outro})` : '')
 
+    // `tipo_hospedagem` vem preenchido até em quem só pediu aéreo — a coluna
+    // não aceita nulo. Quem diz se houve hospedagem é `servicos`.
+    const hospedagem = [
+      servicos.includes('HOSPEDAGEM') && 'hotel do pax',
+      servicos.includes('HOSPEDAGEM_FORA') && 'fora do hotel do pax',
+    ]
+      .filter(Boolean)
+      .join(' + ')
+
     const texto = [
       `:inbox_tray: *Nova solicitação ${s.protocolo}*`,
       mencoes,
@@ -135,7 +144,7 @@ Deno.serve(async (req) => {
           ? ''
           : ` · ${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)}`),
       `*Equipe / Pax:* ${equipeTexto} · ${s.colaboradores.length} pax`,
-      `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} (${s.tipo_hospedagem === 'HOTEL_PAX' ? 'hotel do pax' : 'fora do hotel do pax'})`,
+      `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} ${hospedagem ? ` (${hospedagem})` : ''}`,
       `*Solicitado:* ${servicos.map((v) => ROTULO[v] ?? v).join(' · ')}`,
       `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
       '',

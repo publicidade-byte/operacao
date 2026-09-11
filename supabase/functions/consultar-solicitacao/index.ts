@@ -51,6 +51,8 @@ Deno.serve(async (req) => {
       equipe: s.equipe,
       equipe_outro: s.equipe_outro,
       tipo_hospedagem: s.tipo_hospedagem,
+      // Sem isto a tela mostrava "hotel do pax" para quem só pediu aéreo.
+      servicos: s.servicos ?? [],
       precisa_transporte: s.precisa_transporte,
       modal: s.modal,
       aeroporto_saida: s.aeroporto_saida,

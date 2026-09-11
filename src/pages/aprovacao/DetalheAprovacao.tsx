@@ -10,6 +10,7 @@ import {
   tipoQuartoLabel,
   veiculosTexto,
   alimentacaoLabel,
+  hospedagemPedida,
 } from '../../lib/constants'
 import { dataBR, dataHora, dataHoraBR, moeda } from '../../lib/format'
 import { Aviso, Botao, Card, Etiqueta, Textarea } from '../../components/ui'
@@ -408,10 +409,9 @@ export default function DetalheAprovacao() {
             <L t="Estadia">
               {dataBR(s.data_entrada)} a {dataBR(s.data_saida)}
             </L>
+            {hospedagemPedida(s) && (
             <L t="Hospedagem">
-              {s.tipo_hospedagem === 'HOTEL_PAX'
-                ? 'Hotel do pax'
-                : 'Fora do hotel do pax'}
+              {hospedagemPedida(s)}
               {/* Fora do hotel do pax, o que se reserva é quarto — e é isso
                   que o diretor está aprovando o custo. */}
               {s.hosp_qtd_quartos != null && (
@@ -427,6 +427,7 @@ export default function DetalheAprovacao() {
                 </span>
               )}
             </L>
+            )}
             <L t="Solicitado">
               {(s.servicos ?? []).map(servicoCurto).join(' · ') || '—'}
             </L>

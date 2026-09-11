@@ -133,6 +133,27 @@ export function etiquetaDoServico(sv: string, s: { aereo_emitido?: boolean }) {
 /** Os dois serviços de hospedagem, para quem precisa tratar os dois juntos. */
 export const SERVICOS_HOSPEDAGEM = ['HOSPEDAGEM', 'HOSPEDAGEM_FORA']
 
+/**
+ * Que hospedagem a solicitação pediu, em texto — ou nulo se não pediu nenhuma.
+ *
+ * `tipo_hospedagem` não serve para isso: a coluna não aceita nulo e o
+ * formulário grava "hotel do pax" até em quem só pediu aéreo. Quem manda é
+ * `servicos`. A coluna só vale para solicitações antigas, sem `servicos`.
+ */
+export function hospedagemPedida(s: {
+  servicos?: string[] | null
+  tipo_hospedagem?: string | null
+}): string | null {
+  const lista = s.servicos ?? []
+  const partes = [
+    lista.includes('HOSPEDAGEM') && 'Hotel do pax (da operação)',
+    lista.includes('HOSPEDAGEM_FORA') && 'Fora do hotel do pax',
+  ].filter((p): p is string => !!p)
+  if (partes.length) return partes.join(' + ')
+  if (lista.length) return null
+  return s.tipo_hospedagem === 'FORA_HOTEL_PAX' ? 'Fora do hotel do pax' : 'Hotel do pax'
+}
+
 export const corServico = (v: string) =>
   CORES_SERVICO[v] ?? 'bg-neutral-100 text-neutral-700 ring-neutral-300'
 

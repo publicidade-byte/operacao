@@ -31,6 +31,7 @@ import {
   veiculosTexto,
   equipeLabel,
   nomeDestino,
+  hospedagemPedida,
 } from '../../lib/constants'
 import {
   cpfMascarado,
@@ -1197,9 +1198,12 @@ export default function Detalhe() {
                   {dataBR(s.hosp_fora_saida ?? undefined)}
                 </L>
               )}
+              {/* Só aparece se pediu hospedagem. `tipo_hospedagem` vem
+                  preenchido até em quem pediu só aéreo — não dá para confiar. */}
+              {tiposHospedagem(s).length > 0 && (
               <L t="Tipo de hospedagem">
-                {s.tipo_hospedagem === 'HOTEL_PAX' ? 'Hotel do pax' : 'Fora do hotel do pax'}
-                {s.tipo_hospedagem === 'FORA_HOTEL_PAX' && (
+                {hospedagemPedida(s)}
+                {tiposHospedagem(s).includes('FORA_HOTEL_PAX') && (
                   <>
                     <br />
                     {s.hosp_externa_operacao
@@ -1220,6 +1224,7 @@ export default function Detalhe() {
                   </>
                 )}
               </L>
+              )}
               <L t="Equipe">{equipeLabel(s.equipe, s.equipe_outro)}</L>
               <L t="Transporte">
                 {[

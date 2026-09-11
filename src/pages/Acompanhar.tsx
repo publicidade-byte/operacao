@@ -2,7 +2,13 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { invocar } from '../lib/supabase'
 import { dataBR } from '../lib/format'
-import { STATUS_CLASS, STATUS_LABEL, STATUS_ORDEM, equipeLabel } from '../lib/constants'
+import {
+  STATUS_CLASS,
+  STATUS_LABEL,
+  STATUS_ORDEM,
+  equipeLabel,
+  hospedagemPedida,
+} from '../lib/constants'
 import { Aviso, Card, Etiqueta } from '../components/ui'
 
 /** Versão reduzida devolvida pela Edge Function: sem CPF, sem preços. */
@@ -18,6 +24,8 @@ type Publica = {
   equipe: string
   equipe_outro: string | null
   tipo_hospedagem: string
+  /** Ausente enquanto a Edge Function antiga estiver no ar. */
+  servicos?: string[]
   precisa_transporte: boolean
   modal: string | null
   aeroporto_saida: string | null
@@ -141,9 +149,7 @@ export default function Acompanhar() {
             {dataBR(dados.data_entrada)} a {dataBR(dados.data_saida)}
           </Item>
           <Item t="Equipe">{equipeLabel(dados.equipe, dados.equipe_outro)}</Item>
-          <Item t="Hospedagem">
-            {dados.tipo_hospedagem === 'HOTEL_PAX' ? 'Hotel do pax' : 'Fora do hotel do pax'}
-          </Item>
+          <Item t="Hospedagem">{hospedagemPedida(dados) ?? 'Não solicitada'}</Item>
           <Item t="Transporte">
             {!dados.precisa_transporte
               ? 'Não solicitado'

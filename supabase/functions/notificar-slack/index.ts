@@ -174,6 +174,21 @@ Deno.serve(async (req) => {
           ? `van/ônibus de ${s.van_local_saida} para ${s.van_destino} (${s.van_qtd_passageiros} pax)`
           : 'rodoviário'
 
+    // `tipo_hospedagem` vem preenchido até em quem só pediu aéreo — a coluna
+    // não aceita nulo. Quem diz se houve hospedagem é `servicos`; a coluna só
+    // vale para as solicitações antigas, sem `servicos`.
+    const sv: string[] = s.servicos ?? []
+    const hospedagem = sv.length
+      ? [
+          sv.includes('HOSPEDAGEM') && 'hotel do pax',
+          sv.includes('HOSPEDAGEM_FORA') && 'fora do hotel do pax',
+        ]
+          .filter(Boolean)
+          .join(' + ')
+      : s.tipo_hospedagem === 'FORA_HOTEL_PAX'
+        ? 'fora do hotel do pax'
+        : 'hotel do pax'
+
     const texto = [
       parcial
         ? `:airplane: *${s.protocolo} — aprovação parcial: ${escopoTexto}*`
@@ -191,7 +206,7 @@ Deno.serve(async (req) => {
           : ` (${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)})`),
       `*Equipe:* ${EQUIPE_LABEL[s.equipe] ?? s.equipe}  ·  *Pax:* ${s.colaboradores.length}`,
       `*Estadia:* ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)}`,
-      `*Hospedagem:* ${s.tipo_hospedagem === 'HOTEL_PAX' ? 'hotel do pax' : 'fora do hotel do pax'}`,
+      hospedagem ? `*Hospedagem:* ${hospedagem}` : null,
       `*Transporte:* ${transporte}  ·  *Locação de carro:* ${s.precisa_locacao_carro ? 'sim' : 'não'}`,
       `*Solicitante:* ${s.solicitante_nome} — ${s.solicitante_email}`,
       '',
