@@ -449,6 +449,56 @@ export default function Solicitar() {
     [destinos, form.destino],
   )
 
+  /**
+   * Período que os serviços pedidos cobrem: a menor e a maior data digitada
+   * em voo, hospedagem, day use, van e carro.
+   *
+   * A operação avulsa não tem calendário de onde tirar as datas, e pedir o
+   * período de novo é pedir duas vezes a mesma coisa: quem já disse quando
+   * voa e quando dorme já disse quando chega e quando sai.
+   */
+  const periodoDosServicos = useMemo(() => {
+    const pediu = (sv: string) => form.servicos.includes(sv)
+    const datas = [
+      pediu('AEREO') && form.voo_data_ida,
+      pediu('AEREO') && form.voo_data_volta,
+      pediu('HOSPEDAGEM') && form.hosp_op_entrada,
+      pediu('HOSPEDAGEM') && form.hosp_op_saida,
+      pediu('HOSPEDAGEM_FORA') && form.hosp_fora_entrada,
+      pediu('HOSPEDAGEM_FORA') && form.hosp_fora_saida,
+      pediu('DAY_USE') && form.day_use_data,
+      pediu('VAN') && form.van_data_saida,
+      pediu('VAN') && form.van_retorno_data,
+      ...(pediu('CARRO')
+        ? form.carros.flatMap((c) => [c.retirada_data, c.devolucao_data])
+        : []),
+    ]
+      .filter((d): d is string => !!d)
+      .sort()
+    if (!datas.length) return null
+    return { inicio: datas[0], fim: datas[datas.length - 1] }
+  }, [form])
+
+  /** O período que preenchemos sozinhos — o que a pessoa digitar fica. */
+  const autoPeriodo = useRef({ entrada: '', saida: '' })
+
+  useEffect(() => {
+    if (!destinoAvulso || !periodoDosServicos) return
+    const { inicio, fim } = periodoDosServicos
+    setForm((f) => {
+      const entrada =
+        !f.data_entrada || f.data_entrada === autoPeriodo.current.entrada
+          ? inicio
+          : f.data_entrada
+      const saida =
+        !f.data_saida || f.data_saida === autoPeriodo.current.saida ? fim : f.data_saida
+      return entrada === f.data_entrada && saida === f.data_saida
+        ? f
+        : { ...f, data_entrada: entrada, data_saida: saida }
+    })
+    autoPeriodo.current = { entrada: inicio, saida: fim }
+  }, [destinoAvulso, periodoDosServicos])
+
   const destinosFiltrados = useMemo(() => {
     const q = buscaDestino.trim().toLowerCase()
     if (!q) return destinos
@@ -717,8 +767,12 @@ export default function Solicitar() {
           e.centro_custo = 'Informe o centro de custo desta demanda.'
       } else if (form.edicao_ids.length === 0)
         e.edicao_ids = 'Selecione ao menos uma data da operação.'
-      if (!form.data_entrada) e.data_entrada = 'Informe a data de entrada.'
-      if (!form.data_saida) e.data_saida = 'Informe a data de saída.'
+      // Na avulsa o período é opcional: vem dos serviços pedidos. Só
+      // cobramos quando não há nenhuma data de serviço de onde tirá-lo.
+      if (!destinoAvulso || !periodoDosServicos) {
+        if (!form.data_entrada) e.data_entrada = 'Informe a data de entrada.'
+        if (!form.data_saida) e.data_saida = 'Informe a data de saída.'
+      }
       // Mesmo dia é válido: muita operação sai de manhã e volta à noite.
       // O que não pode é a saída ser ANTES da entrada.
       if (form.data_entrada && form.data_saida && form.data_saida < form.data_entrada)
@@ -941,7 +995,9 @@ export default function Solicitar() {
           solicitante_nome: form.solicitante_nome.trim(),
           solicitante_email: form.solicitante_email.trim().toLowerCase(),
           solicitante_whatsapp: soDigitos(form.solicitante_whatsapp),
-          data_entrada: form.data_entrada,
+          // A coluna não aceita nulo; na avulsa o período pode ter ficado
+          // em branco e quem responde são as datas dos serviços.
+          data_entrada: form.data_entrada || periodoDosServicos?.inicio || '',
           day_use_data: form.servicos.includes('DAY_USE') ? form.day_use_data : null,
           hosp_op_entrada: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_entrada : null,
           hosp_op_saida: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_saida : null,
@@ -949,7 +1005,7 @@ export default function Solicitar() {
             ? form.hosp_fora_entrada
             : null,
           hosp_fora_saida: form.servicos.includes('HOSPEDAGEM_FORA') ? form.hosp_fora_saida : null,
-          data_saida: form.data_saida,
+          data_saida: form.data_saida || periodoDosServicos?.fim || '',
           // A coluna não aceita nulo. Quem não pediu hospedagem não respondeu
           // a pergunta — mandamos o padrão, que não é usado em lugar nenhum
           // quando HOSPEDAGEM não está entre os serviços.
@@ -1419,7 +1475,9 @@ export default function Solicitar() {
                                 )}
                                 {d.avulsa && (
                                   <p className="mb-2 mt-3 text-xs text-neutral-600">
-                                    Informe o período desta demanda.
+                                    {periodoDosServicos
+                                      ? 'Preenchemos com as datas dos serviços que você pediu. Ajuste se precisar.'
+                                      : 'Opcional: se deixar em branco, usamos as datas dos serviços pedidos.'}
                                   </p>
                                 )}
 
@@ -1427,6 +1485,7 @@ export default function Solicitar() {
                                   <Campo
                                     label="Data de entrada"
                                     erro={erros.data_entrada}
+                                    obrigatorio={!d.avulsa}
                                   >
                                     <Input
                                       type="date"
@@ -1439,7 +1498,11 @@ export default function Solicitar() {
                                       }}
                                     />
                                   </Campo>
-                                  <Campo label="Data de saída" erro={erros.data_saida}>
+                                  <Campo
+                                    label="Data de saída"
+                                    erro={erros.data_saida}
+                                    obrigatorio={!d.avulsa}
+                                  >
                                     <Input
                                       type="date"
                                       value={form.data_saida}
