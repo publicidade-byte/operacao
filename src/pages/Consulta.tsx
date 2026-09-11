@@ -408,6 +408,11 @@ function DetalheConsulta({ dados }: { dados: any }) {
                     {' · '}
                     {dataBR(h.check_in)} a {dataBR(h.check_out)}
                     {h.codigo_reserva && ` · reserva ${h.codigo_reserva}`}
+                    {h.observacoes && (
+                      <span className="block whitespace-pre-wrap text-xs text-neutral-500">
+                        Obs.: {h.observacoes}
+                      </span>
+                    )}
                   </p>
                 ))}
               </div>

@@ -2384,6 +2384,23 @@ function BlocoHospedagem({
             className="font-mono"
           />
         </Campo>
+        {/* Para justificar a escolha do hotel ou deixar um recado para quem
+            vai hospedar — a coluna existia, só não tinha onde escrever. */}
+        <div className="sm:col-span-2 lg:col-span-4">
+          <Campo label="Observações" obrigatorio={false}>
+            <Textarea
+              rows={2}
+              disabled={!editavel}
+              value={valor.observacoes ?? ''}
+              onChange={(e) => up('observacoes', e.target.value)}
+              placeholder={
+                fora
+                  ? 'Ex.: por que este hotel, horário de check-in combinado, ponto de referência'
+                  : 'Informações para quem vai se hospedar'
+              }
+            />
+          </Campo>
+        </div>
       </div>
     </fieldset>
   )
