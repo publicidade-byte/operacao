@@ -180,6 +180,15 @@ export default function Detalhe() {
   const [periodos, setPeriodos] = useState<
     Map<string, { entrada: string; saida: string; edicao: Edicao }>
   >(new Map())
+  /**
+   * Rooming e rodoviário de cada data.
+   *
+   * Numa solicitação de 17 datas, o marcador da solicitação inteira não
+   * responde nada: quem resolveu a de 01/10 não tinha como dizer só isso.
+   */
+  const [controlesOp, setControlesOp] = useState<
+    Record<string, { rooming_ok: boolean; rodoviario_ok: boolean }>
+  >({})
   const [equipe, setEquipe] = useState<{ id: string; nome: string; role: string }[]>([])
   const [responsaveis, setResponsaveis] = useState<string[]>([])
   const [cpfsVisiveis, setCpfsVisiveis] = useState<Set<string>>(new Set())
@@ -240,12 +249,16 @@ export default function Detalhe() {
     // Operações cobertas por esta solicitação (pode ser mais de uma).
     const { data: ops } = await supabase
       .from('solicitacao_edicoes')
-      .select('edicao_id, data_entrada, data_saida, edicoes(*)')
+      .select(
+        'edicao_id, data_entrada, data_saida, rooming_ok, rodoviario_ok, edicoes(*)',
+      )
       .eq('solicitacao_id', id)
     type LinhaOperacao = {
       edicao_id: string
       data_entrada: string | null
       data_saida: string | null
+      rooming_ok: boolean
+      rodoviario_ok: boolean
       edicoes: Edicao
     }
     const linhasOps = ((ops ?? []) as unknown as LinhaOperacao[])
@@ -265,6 +278,14 @@ export default function Detalhe() {
       ]),
     )
     setPeriodos(periodoDaOperacao)
+    setControlesOp(
+      Object.fromEntries(
+        linhasOps.map((o) => [
+          o.edicao_id,
+          { rooming_ok: !!o.rooming_ok, rodoviario_ok: !!o.rodoviario_ok },
+        ]),
+      ),
+    )
     /**
      * Sugerir data só quando a solicitação cobre UMA operação.
      *
@@ -561,6 +582,55 @@ export default function Detalhe() {
       .eq('id', id)
     if (error) return setMsg({ tom: 'erro', texto: error.message })
     carregar()
+  }
+
+  /**
+   * Marca rooming ou rodoviário de UMA data.
+   *
+   * O marcador da solicitação inteira passa a ser consequência: vale quando
+   * todas as datas estão marcadas. É ele que pinta o card na lista, então
+   * ele só fica verde quando não sobrou data por resolver.
+   *
+   * Quem marcou e quando é o banco que carimba.
+   */
+  async function alternarControleDaOperacao(
+    edicaoId: string,
+    campo: 'rooming_ok' | 'rodoviario_ok',
+  ) {
+    if (!s) return
+    const novo = !controlesOp[edicaoId]?.[campo]
+    // A tela responde na hora: marcar data é clique em série, e esperar a
+    // rede a cada um trava o trabalho. Se o banco recusar, volta atrás.
+    setControlesOp((c) => ({
+      ...c,
+      [edicaoId]: { ...c[edicaoId], [campo]: novo } as {
+        rooming_ok: boolean
+        rodoviario_ok: boolean
+      },
+    }))
+    const { error } = await supabase
+      .from('solicitacao_edicoes')
+      .update({ [campo]: novo })
+      .eq('solicitacao_id', s.id)
+      .eq('edicao_id', edicaoId)
+    if (error) {
+      setControlesOp((c) => ({
+        ...c,
+        [edicaoId]: { ...c[edicaoId], [campo]: !novo } as {
+          rooming_ok: boolean
+          rodoviario_ok: boolean
+        },
+      }))
+      return setMsg({ tom: 'erro', texto: error.message })
+    }
+
+    const todas = operacoes.every((o) =>
+      o.id === edicaoId ? novo : !!controlesOp[o.id]?.[campo],
+    )
+    if (todas !== s[campo]) {
+      await supabase.from('solicitacoes').update({ [campo]: todas }).eq('id', s.id)
+      setS((x) => (x ? { ...x, [campo]: todas } : x))
+    }
   }
 
   /**
@@ -1225,6 +1295,39 @@ export default function Detalhe() {
                             )
                           })()}
                         </span>
+                        {/* Uma data por vez: marcar aqui diz que ESTA data
+                            já foi resolvida. A solicitação só fica marcada
+                            quando não sobrar nenhuma. */}
+                        {podeEditar && (
+                          <span className="flex items-center gap-2">
+                            {(
+                              [
+                                ['rooming_ok', 'Rooming'],
+                                ['rodoviario_ok', 'Rodoviário'],
+                              ] as const
+                            ).map(([campo, rotulo]) => (
+                              <label
+                                key={campo}
+                                className={
+                                  'flex cursor-pointer items-center gap-1 rounded px-1.5 py-0.5 text-xs font-semibold ring-1 ring-inset ' +
+                                  (controlesOp[o.id]?.[campo]
+                                    ? campo === 'rooming_ok'
+                                      ? 'bg-emerald-50 text-emerald-700 ring-emerald-300'
+                                      : 'bg-red-50 text-red-700 ring-red-300'
+                                    : 'text-neutral-500 ring-neutral-300 hover:bg-neutral-50')
+                                }
+                              >
+                                <input
+                                  type="checkbox"
+                                  className="h-3 w-3"
+                                  checked={!!controlesOp[o.id]?.[campo]}
+                                  onChange={() => alternarControleDaOperacao(o.id, campo)}
+                                />
+                                {rotulo}
+                              </label>
+                            ))}
+                          </span>
+                        )}
                         {/* Só com mais de uma: tirar a última deixaria a
                             solicitação sem destino nem período. Para encerrar
                             existe o Cancelar, que preserva o histórico. */}

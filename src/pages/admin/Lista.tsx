@@ -24,6 +24,17 @@ type Linha = Solicitacao & {
   responsaveis?: string[]
   /** Quantas operações (edições) esta solicitação cobre. */
   qtd_operacoes?: number
+  /** Quais operações ela cobre — é por aqui que o filtro de data acha. */
+  operacao_ids?: string[]
+}
+
+/** Uma data de operação, para o filtro. */
+type OperacaoFiltro = {
+  id: string
+  codigo: string
+  destino: string
+  data_inicio: string
+  data_fim: string
 }
 
 /**
@@ -64,6 +75,8 @@ export default function Lista() {
   const [fDiretor, setFDiretor] = useState('')
   const [fServico, setFServico] = useState('')
   const [fResponsavel, setFResponsavel] = useState('')
+  const [fOperacao, setFOperacao] = useState('')
+  const [operacoesFiltro, setOperacoesFiltro] = useState<OperacaoFiltro[]>([])
   const [verLixeira, setVerLixeira] = useState(false)
 
   useEffect(() => {
@@ -84,10 +97,27 @@ export default function Lista() {
       // nenhum da lista.
       const { data: vinculos } = await supabase
         .from('solicitacao_edicoes')
-        .select('solicitacao_id')
+        .select('solicitacao_id, edicao_id, edicoes(id, codigo, destino, data_inicio, data_fim)')
+      type Vinculo = {
+        solicitacao_id: string
+        edicao_id: string
+        edicoes: OperacaoFiltro | null
+      }
       const operacoesPor = new Map<string, number>()
-      for (const v of vinculos ?? [])
+      const idsPor = new Map<string, string[]>()
+      // O catálogo de datas que alimenta o filtro: só as que aparecem em
+      // alguma solicitação, senão o filtro ofereceria o calendário inteiro.
+      const catalogo = new Map<string, OperacaoFiltro>()
+      for (const v of (vinculos ?? []) as unknown as Vinculo[]) {
         operacoesPor.set(v.solicitacao_id, (operacoesPor.get(v.solicitacao_id) ?? 0) + 1)
+        idsPor.set(v.solicitacao_id, [...(idsPor.get(v.solicitacao_id) ?? []), v.edicao_id])
+        if (v.edicoes) catalogo.set(v.edicao_id, v.edicoes)
+      }
+      setOperacoesFiltro(
+        [...catalogo.values()].sort((a, b) =>
+          a.data_inicio.localeCompare(b.data_inicio),
+        ),
+      )
 
       // Nomes dos responsáveis, para mostrar ao lado do status.
       const { data: equipe } = await supabase.from('v_equipe').select('id, nome')
@@ -104,6 +134,7 @@ export default function Lista() {
           ...d,
           responsaveis: porSolicitacao.get(d.id) ?? [],
           qtd_operacoes: operacoesPor.get(d.id) ?? 0,
+          operacao_ids: idsPor.get(d.id) ?? [],
         })),
       )
       setCarregando(false)
@@ -133,6 +164,14 @@ export default function Lista() {
       if (fDiretor && d.diretor_id !== fDiretor) return false
       if (fServico && !(d.servicos ?? []).includes(fServico)) return false
       if (fResponsavel && !(d.responsaveis ?? []).includes(fResponsavel)) return false
+      // Uma solicitação de 17 datas aparece em cada uma delas: quem filtra
+      // por 01/10 quer ver tudo que toca aquele dia, não só o que começa nele.
+      if (
+        fOperacao &&
+        !(d.operacao_ids ?? []).includes(fOperacao) &&
+        d.edicao_id !== fOperacao
+      )
+        return false
       if (!q) return true
       return (
         d.protocolo.toLowerCase().includes(q) ||
@@ -145,7 +184,18 @@ export default function Lista() {
         )
       )
     })
-  }, [dados, busca, fStatus, fEquipe, fDestino, fDiretor, fServico, fResponsavel, verLixeira])
+  }, [
+    dados,
+    busca,
+    fStatus,
+    fEquipe,
+    fDestino,
+    fDiretor,
+    fServico,
+    fResponsavel,
+    fOperacao,
+    verLixeira,
+  ])
 
   /** Todos os responsaveis que aparecem em alguma solicitacao. */
   const responsaveisDisponiveis = useMemo(
@@ -276,7 +326,15 @@ export default function Lista() {
     if (error) {
       setDados((ds) => ds.map((x) => (x.id === d.id ? { ...x, [campo]: !novo } : x)))
       alert(`Não foi possível marcar: ${error.message}`)
+      return
     }
+    // A marca aqui vale para a solicitação inteira, e as datas dela
+    // acompanham: senão o detalhe mostraria 17 datas por resolver numa
+    // solicitação que a lista dá como resolvida.
+    await supabase
+      .from('solicitacao_edicoes')
+      .update({ [campo]: novo })
+      .eq('solicitacao_id', d.id)
   }
 
   /** Devolve para a lista. */
@@ -343,6 +401,19 @@ export default function Lista() {
                 {d}
               </option>
             ))}
+          </Select>
+          {/* Data da operação. Quando um destino está escolhido, só as
+              datas dele: a CAMP SP sozinha tem dezenas. */}
+          <Select value={fOperacao} onChange={(e) => setFOperacao(e.target.value)}>
+            <option value="">Todas as datas</option>
+            {operacoesFiltro
+              .filter((o) => !fDestino || o.destino === fDestino)
+              .map((o) => (
+                <option key={o.id} value={o.id}>
+                  {dataBR(o.data_inicio)} a {dataBR(o.data_fim)} · {o.codigo}
+                  {fDestino ? '' : ` — ${o.destino}`}
+                </option>
+              ))}
           </Select>
           <Select value={fEquipe} onChange={(e) => setFEquipe(e.target.value)}>
             <option value="">Todas as equipes</option>
