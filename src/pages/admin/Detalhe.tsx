@@ -170,6 +170,16 @@ export default function Detalhe() {
   const [eventos, setEventos] = useState<Evento[]>([])
   const [aprovacoes, setAprovacoes] = useState<Aprovacao[]>([])
   const [operacoes, setOperacoes] = useState<Edicao[]>([])
+  /**
+   * O período pedido para cada operação, por id.
+   *
+   * Operações espalhadas no calendário são estadias separadas: quem vai às
+   * quatro datas da MED LAKE dorme quatro vezes. Em branco, vale o
+   * calendário da própria operação.
+   */
+  const [periodos, setPeriodos] = useState<
+    Map<string, { entrada: string; saida: string; edicao: Edicao }>
+  >(new Map())
   const [equipe, setEquipe] = useState<{ id: string; nome: string; role: string }[]>([])
   const [responsaveis, setResponsaveis] = useState<string[]>([])
   const [cpfsVisiveis, setCpfsVisiveis] = useState<Set<string>>(new Set())
@@ -230,14 +240,31 @@ export default function Detalhe() {
     // Operações cobertas por esta solicitação (pode ser mais de uma).
     const { data: ops } = await supabase
       .from('solicitacao_edicoes')
-      .select('edicoes(*)')
+      .select('edicao_id, data_entrada, data_saida, edicoes(*)')
       .eq('solicitacao_id', id)
-    setOperacoes(
-      ((ops ?? []) as unknown as { edicoes: Edicao }[])
-        .map((o) => o.edicoes)
-        .filter(Boolean)
-        .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)),
+    type LinhaOperacao = {
+      edicao_id: string
+      data_entrada: string | null
+      data_saida: string | null
+      edicoes: Edicao
+    }
+    const linhasOps = ((ops ?? []) as unknown as LinhaOperacao[])
+      .filter((o) => o.edicoes)
+      .sort((a, b) => a.edicoes.data_inicio.localeCompare(b.edicoes.data_inicio))
+    setOperacoes(linhasOps.map((o) => o.edicoes))
+    // O que o solicitante pediu para cada operação. Sem isso, a estadia de
+    // uma operação era chutada com o envelope da temporada inteira.
+    const periodoDaOperacao = new Map(
+      linhasOps.map((o) => [
+        o.edicao_id,
+        {
+          entrada: o.data_entrada ?? o.edicoes.data_inicio,
+          saida: o.data_saida ?? o.edicoes.data_fim,
+          edicao: o.edicoes,
+        },
+      ]),
     )
+    setPeriodos(periodoDaOperacao)
     /**
      * Sugerir data só quando a solicitação cobre UMA operação.
      *
@@ -304,37 +331,58 @@ export default function Detalhe() {
         mr[c.id] = { ...mr[c.id], local_embarque_ida: embarquePedido }
     })
     setRodo(mr)
-    // A chave passa a ser pessoa + tipo: quem pede as duas hospedagens tem
-    // duas estadias, com hotéis, datas e reservas diferentes.
+    // A chave é pessoa + tipo + operação: quem pede as duas hospedagens tem
+    // duas estadias, e quem vai a várias operações tem uma em cada.
+    // Linhas antigas, sem operação gravada, respondem pela operação
+    // principal da solicitação — é a ela que se referem.
     const mh: Record<string, Partial<HospedagemDetalhe>> = {}
     ;(h.data ?? []).forEach(
-      (x: HospedagemDetalhe) => (mh[`${x.colaborador_id}:${x.tipo ?? 'HOTEL_PAX'}`] = x),
+      (x: HospedagemDetalhe) =>
+        (mh[
+          `${x.colaborador_id}:${x.tipo ?? 'HOTEL_PAX'}:${x.edicao_id ?? sol.edicao_id}`
+        ] = x),
     )
     // Colaborador ainda sem hospedagem cadastrada já vem com as datas que o
     // solicitante pediu — a operação só confirma ou ajusta, não redigita.
     // Fora do hotel do pax, o tipo de quarto e a alimentação também vêm do
     // pedido — a operação confirma, não redigita.
     const tiposPedidos = tiposHospedagem(sol)
+    // Uma estadia por operação. Solicitação antiga, sem operações
+    // registradas, responde pela principal — que é o que ela sempre foi.
+    const opsDaHospedagem = linhasOps.length
+      ? linhasOps.map((o) => o.edicao_id)
+      : [sol.edicao_id]
     sol.colaboradores.forEach((c) => {
+      opsDaHospedagem.forEach((opId) => {
+      const op = periodoDaOperacao.get(opId)
+      const principal = opId === sol.edicao_id
       tiposPedidos.forEach((tipo) => {
-        const chave = `${c.id}:${tipo}`
+        const chave = `${c.id}:${tipo}:${opId}`
         const fora = tipo === 'FORA_HOTEL_PAX'
-        // Cada hospedagem com as datas que o solicitante deu PARA ELA. Só as
-        // solicitações anteriores à separação caem na estadia — e, como antes,
-        // só quando há uma operação, porque com várias a estadia é o envelope.
+        // Cada hospedagem com as datas que o solicitante deu PARA ELA.
+        // No hotel da operação, com várias operações, quem manda são as
+        // datas daquela operação; com uma só, o par de datas do pedido.
+        // A hospedagem fora é pedida uma vez e fica na operação principal:
+        // ela é, por definição, fora do período da operação.
         const pedido = fora
-          ? { entrada: sol.hosp_fora_entrada, saida: sol.hosp_fora_saida }
-          : {
-              entrada: sol.hosp_op_entrada ?? sugerir(sol.data_entrada),
-              saida: sol.hosp_op_saida ?? sugerir(sol.data_saida),
+          ? {
+              entrada: principal ? sol.hosp_fora_entrada : null,
+              saida: principal ? sol.hosp_fora_saida : null,
             }
+          : umaOperacao
+            ? {
+                entrada: sol.hosp_op_entrada ?? sugerir(sol.data_entrada),
+                saida: sol.hosp_op_saida ?? sugerir(sol.data_saida),
+              }
+            : { entrada: op?.entrada ?? null, saida: op?.saida ?? null }
         if (!mh[chave])
           mh[chave] = {
             colaborador_id: c.id,
             tipo,
+            edicao_id: opId,
             // O hotel da operação só serve de padrão para a estadia da
             // operação. Na de fora, quem escolhe o hotel é quem reserva.
-            hotel: fora ? null : (sol.edicoes?.hotel ?? null),
+            hotel: fora ? null : (op?.edicao.hotel ?? sol.edicoes?.hotel ?? null),
             check_in: pedido.entrada,
             check_out: pedido.saida,
             ...(fora
@@ -360,6 +408,7 @@ export default function Detalhe() {
           const achado = nome ? enderecos.get(chaveHotel(nome)) : undefined
           if (achado) linha.endereco = achado
         }
+      })
       })
     })
     setHosp(mh)
@@ -629,15 +678,15 @@ export default function Detalhe() {
       const upHosp = Object.entries(hosp)
         .filter(([, v]) => v && Object.keys(v).length > 0)
         .map(([chave, v]) => {
-          const [colaborador_id, tipo] = chave.split(':')
+          const [colaborador_id, tipo, edicao_id] = chave.split(':')
           const { id: _i, ...resto } = v as HospedagemDetalhe
-          return { ...limpar(resto), colaborador_id, tipo }
+          return { ...limpar(resto), colaborador_id, tipo, edicao_id }
         })
       if (upHosp.length)
         await erro(
           supabase
             .from('hospedagem_detalhe')
-            .upsert(upHosp, { onConflict: 'colaborador_id,tipo' }),
+            .upsert(upHosp, { onConflict: 'colaborador_id,tipo,edicao_id' }),
         )
 
       const upDayUse = Object.entries(dayUse)
@@ -738,6 +787,15 @@ export default function Detalhe() {
     return <p className="py-16 text-center text-sm text-neutral-500">Carregando…</p>
 
   /**
+   * As operações que pedem uma estadia cada.
+   *
+   * Solicitação antiga, de antes das múltiplas operações, não tem nada em
+   * `solicitacao_edicoes` — para ela vale a operação principal, que é o que
+   * ela sempre foi.
+   */
+  const operacoesDaHospedagem: Edicao[] = operacoes.length ? operacoes : [s.edicoes]
+
+  /**
    * O que a operação pode editar.
    *
    * Aprovada e concluída deixaram de ser trancas: passagem tem prazo de
@@ -777,7 +835,7 @@ export default function Detalhe() {
   const somaHosp = (tipo: string) =>
     soma(
       Object.entries(hosp)
-        .filter(([chave]) => chave.endsWith(`:${tipo}`))
+        .filter(([chave]) => chave.split(':')[1] === tipo)
         .map(([, h]) => h.valor_total),
     )
 
@@ -1476,34 +1534,50 @@ export default function Detalhe() {
                   />
                 )}
 
-                {/* Um bloco por hospedagem pedida. Quem marcou as duas tem
-                    duas estadias de verdade — hotéis, datas e reservas
-                    diferentes — e por isso são dois blocos, não um. */}
+                {/* Um bloco por hospedagem pedida E por operação. Quem
+                    marcou as duas hospedagens tem duas estadias de verdade;
+                    quem vai a quatro operações dorme quatro vezes, em datas
+                    que nem sempre são seguidas. Um bloco só escondia isso e
+                    mostrava apenas a primeira data. */}
                 {tiposHospedagem(s).map((tipo) => {
                   const fora = tipo === 'FORA_HOTEL_PAX'
                   const servico = fora ? 'HOSPEDAGEM_FORA' : 'HOSPEDAGEM'
-                  return (
-                    <BlocoHospedagem
-                      key={tipo}
-                      titulo={ROTULO_HOSPEDAGEM[tipo]}
-                      valor={hosp[`${c.id}:${tipo}`] ?? {}}
-                      editavel={podeEditarServico(servico)}
-                      padraoHotel={fora ? '' : s.edicoes.hotel}
-                      enderecoDe={(nome) => hoteis.get(chaveHotel(nome))}
-                      padraoIn={s.data_entrada}
-                      padraoOut={s.data_saida}
-                      fora={fora}
-                      pedido={{
-                        qtd: s.hosp_qtd_quartos,
-                        tipo: s.hosp_tipo_quarto,
-                        alimentacao: s.hosp_alimentacao,
-                        obs: s.hosp_externa_obs,
-                      }}
-                      onChange={(v) =>
-                        setHosp((p) => ({ ...p, [`${c.id}:${tipo}`]: v }))
-                      }
-                    />
-                  )
+                  // A hospedagem fora é uma só, pedida uma vez: ela não se
+                  // divide por operação. A do hotel da operação, sim.
+                  const ops = fora ? [s.edicoes] : operacoesDaHospedagem
+                  return ops.map((op) => {
+                    const periodo = periodos.get(op.id)
+                    const varias = ops.length > 1
+                    return (
+                      <BlocoHospedagem
+                        key={`${tipo}:${op.id}`}
+                        titulo={
+                          varias
+                            ? `${ROTULO_HOSPEDAGEM[tipo]} — ${op.codigo} · ${dataBR(op.data_inicio)} a ${dataBR(op.data_fim)}`
+                            : ROTULO_HOSPEDAGEM[tipo]
+                        }
+                        valor={hosp[`${c.id}:${tipo}:${op.id}`] ?? {}}
+                        editavel={podeEditarServico(servico)}
+                        padraoHotel={fora ? '' : op.hotel}
+                        enderecoDe={(nome) => hoteis.get(chaveHotel(nome))}
+                        padraoIn={periodo?.entrada ?? s.data_entrada}
+                        padraoOut={periodo?.saida ?? s.data_saida}
+                        fora={fora}
+                        pedido={{
+                          qtd: s.hosp_qtd_quartos,
+                          tipo: s.hosp_tipo_quarto,
+                          alimentacao: s.hosp_alimentacao,
+                          obs: s.hosp_externa_obs,
+                        }}
+                        onChange={(v) =>
+                          setHosp((p) => ({
+                            ...p,
+                            [`${c.id}:${tipo}:${op.id}`]: { ...v, edicao_id: op.id },
+                          }))
+                        }
+                      />
+                    )
+                  })
                 })}
               </div>
             </Card>
@@ -1736,17 +1810,26 @@ export default function Detalhe() {
       // Replica cada tipo de hospedagem no seu par: a estadia no hotel da
       // operação não deve vazar para a de fora, nem o contrário.
       for (const tipo of tiposHospedagem(s)) {
-        const base = p[`${origemId}:${tipo}`]
-        if (!base) continue
-        alvos.forEach((c) => {
-          const {
-            id: _i,
-            codigo_reserva: _r,
-            dividindo_com: _d,
-            ...resto
-          } = base as HospedagemDetalhe
-          n[`${c.id}:${tipo}`] = { ...resto, colaborador_id: c.id, tipo }
-        })
+        // Uma estadia por operação: copiar só a primeira deixaria as outras
+        // operações em branco justamente em quem foi copiado.
+        for (const op of operacoesDaHospedagem) {
+          const base = p[`${origemId}:${tipo}:${op.id}`]
+          if (!base) continue
+          alvos.forEach((c) => {
+            const {
+              id: _i,
+              codigo_reserva: _r,
+              dividindo_com: _d,
+              ...resto
+            } = base as HospedagemDetalhe
+            n[`${c.id}:${tipo}:${op.id}`] = {
+              ...resto,
+              colaborador_id: c.id,
+              tipo,
+              edicao_id: op.id,
+            }
+          })
+        }
       }
       return n
     })

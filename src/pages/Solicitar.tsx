@@ -62,6 +62,14 @@ type Form = {
   destino: string // destino escolhido; abre o toggle com as datas
   centro_custo: string // só na operação avulsa: Colab, Universidade Forma…
   edicao_ids: string[] // uma solicitação pode cobrir várias operações
+  /**
+   * Entrada e saída de CADA operação marcada, por id.
+   *
+   * Operações nem sempre são seguidas: a MED LAKE tem quatro datas
+   * espalhadas. Quem vai às quatro chega e sai quatro vezes, e uma estadia
+   * não diz nada sobre a outra — por isso cada uma responde a sua.
+   */
+  operacoes_datas: Record<string, { entrada: string; saida: string }>
   data_entrada: string
   /** Dia do day use. Um só: quem faz day use não dorme no destino. */
   day_use_data: string
@@ -116,6 +124,7 @@ const VAZIO: Form = {
   destino: '',
   centro_custo: '',
   edicao_ids: [],
+  operacoes_datas: {},
   data_entrada: '',
   data_saida: '',
   day_use_data: '',
@@ -525,6 +534,47 @@ export default function Solicitar() {
         .sort((a, b) => a.data_inicio.localeCompare(b.data_inicio)),
     [edicoes, form.edicao_ids],
   )
+  /**
+   * O período da solicitação inteira, com várias operações: da primeira
+   * chegada à última saída. É só um resumo — quem manda são as datas de
+   * cada operação, e é por elas que a hospedagem é reservada.
+   */
+  const envelopeDasOperacoes = useMemo(() => {
+    if (selecionadas.length < 2) return null
+    const entradas = selecionadas
+      .map((e) => form.operacoes_datas[e.id]?.entrada)
+      .filter((d): d is string => !!d)
+      .sort()
+    const saidas = selecionadas
+      .map((e) => form.operacoes_datas[e.id]?.saida)
+      .filter((d): d is string => !!d)
+      .sort()
+    if (!entradas.length || !saidas.length) return null
+    return { inicio: entradas[0], fim: saidas[saidas.length - 1] }
+  }, [selecionadas, form.operacoes_datas])
+
+  useEffect(() => {
+    if (!envelopeDasOperacoes) return
+    const { inicio, fim } = envelopeDasOperacoes
+    setForm((f) =>
+      f.data_entrada === inicio && f.data_saida === fim
+        ? f
+        : { ...f, data_entrada: inicio, data_saida: fim },
+    )
+  }, [envelopeDasOperacoes])
+
+  /** Muda a entrada ou a saída de uma operação. */
+  function mudarDataDaOperacao(id: string, campo: 'entrada' | 'saida', valor: string) {
+    setForm((f) => ({
+      ...f,
+      operacoes_datas: {
+        ...f.operacoes_datas,
+        [id]: { ...(f.operacoes_datas[id] ?? { entrada: '', saida: '' }), [campo]: valor },
+      },
+    }))
+    setErros((e) => ({ ...e, operacoes_datas: '' }))
+  }
+
   const edicao = selecionadas[0]
   const diretor = diretores.find((d) => d.id === form.diretor_id)
 
@@ -575,6 +625,16 @@ export default function Solicitar() {
       const manter = (atual: string, anterior: string | undefined, novo: string) =>
         !atual || atual === anterior ? novo : atual
 
+      // Cada operação entra com as datas dela e guarda o que a pessoa
+      // ajustar. Desmarcar tira as datas junto: elas eram daquela operação.
+      const porOperacao: Record<string, { entrada: string; saida: string }> = {}
+      sel.forEach((e) => {
+        porOperacao[e.id] = f.operacoes_datas[e.id] ?? {
+          entrada: e.data_inicio,
+          saida: e.data_fim,
+        }
+      })
+
       /**
        * Só sugerimos data de serviço quando a solicitação cobre UMA operação.
        *
@@ -593,6 +653,7 @@ export default function Solicitar() {
       const novoForm = {
         ...f,
         edicao_ids: ids,
+        operacoes_datas: porOperacao,
         data_entrada: entrada,
         data_saida: saida,
         voo_data_ida: umaOperacao
@@ -750,6 +811,12 @@ export default function Solicitar() {
     setForm((f) => ({
       ...f,
       edicao_ids: ids,
+      operacoes_datas: Object.fromEntries(
+        datasDoDestino.map((e) => [
+          e.id,
+          f.operacoes_datas[e.id] ?? { entrada: e.data_inicio, saida: e.data_fim },
+        ]),
+      ),
       data_entrada: datasDoDestino[0]?.data_inicio ?? '',
       data_saida: datasDoDestino[datasDoDestino.length - 1]?.data_fim ?? '',
     }))
@@ -777,6 +844,16 @@ export default function Solicitar() {
       // O que não pode é a saída ser ANTES da entrada.
       if (form.data_entrada && form.data_saida && form.data_saida < form.data_entrada)
         e.data_saida = 'A saída não pode ser antes da entrada.'
+      // Com várias operações, cada uma responde as suas datas.
+      if (selecionadas.length > 1) {
+        const problema = selecionadas.find((op) => {
+          const d = form.operacoes_datas[op.id]
+          return !d?.entrada || !d?.saida || d.saida < d.entrada
+        })
+        if (problema)
+          e.operacoes_datas =
+            'Confira a entrada e a saída de cada operação: a saída não pode ser antes da entrada.'
+      }
       if (form.servicos.includes('DAY_USE') && !form.day_use_data)
         e.day_use_data = 'Informe o dia do day use.'
       // Cada hospedagem pedida cobra as suas datas. Sem isso, quem pede as
@@ -989,6 +1066,13 @@ export default function Solicitar() {
         {
           website: honeypot,
           edicao_ids: form.edicao_ids,
+          // Uma linha por operação, com as datas pedidas para ela. É delas
+          // que sai cada bloco de hospedagem no painel operacional.
+          operacoes: form.edicao_ids.map((id) => ({
+            edicao_id: id,
+            data_entrada: form.operacoes_datas[id]?.entrada || null,
+            data_saida: form.operacoes_datas[id]?.saida || null,
+          })),
           equipe: form.equipe,
           equipe_outro: form.equipe === 'OUTROS' ? form.equipe_outro.trim() : null,
           diretor_id: form.diretor_id,
@@ -1176,6 +1260,7 @@ export default function Solicitar() {
           'edicao_ids',
           'data_entrada',
           'data_saida',
+          'operacoes_datas',
           'tipo_hospedagem',
           'day_use_data',
           'hosp_op_entrada',
@@ -1458,18 +1543,79 @@ export default function Solicitar() {
                                           ? 'operação marcada'
                                           : 'operações marcadas'}
                                       </span>
-                                      <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
-                                        {selecionadas.map((e) => (
-                                          <li key={e.id}>
-                                            {dataBR(e.data_inicio)} a{' '}
-                                            {dataBR(e.data_fim)}
-                                          </li>
-                                        ))}
-                                      </ul>
+                                      {/* Com uma operação, a data é uma só e o
+                                          período abaixo responde por ela. Com
+                                          várias, cada uma pede as suas: elas
+                                          podem estar espalhadas no calendário,
+                                          e cada uma é uma estadia de verdade. */}
+                                      {selecionadas.length === 1 ? (
+                                        <ul className="mt-1 space-y-0.5 text-xs text-neutral-600">
+                                          {selecionadas.map((e) => (
+                                            <li key={e.id}>
+                                              {dataBR(e.data_inicio)} a{' '}
+                                              {dataBR(e.data_fim)}
+                                            </li>
+                                          ))}
+                                        </ul>
+                                      ) : (
+                                        <div className="mt-2 space-y-2">
+                                          {selecionadas.map((e) => (
+                                            <div
+                                              key={e.id}
+                                              className="rounded-lg bg-marca-50 p-2.5 ring-1 ring-inset ring-marca-200"
+                                            >
+                                              <p className="mb-1.5 text-xs font-semibold text-neutral-700">
+                                                {e.codigo} · {dataBR(e.data_inicio)} a{' '}
+                                                {dataBR(e.data_fim)}
+                                              </p>
+                                              <div className="grid gap-2 sm:grid-cols-2">
+                                                <Campo label="Entrada" obrigatorio={false}>
+                                                  <Input
+                                                    type="date"
+                                                    value={
+                                                      form.operacoes_datas[e.id]?.entrada ?? ''
+                                                    }
+                                                    erro={!!erros.operacoes_datas}
+                                                    onChange={(ev) =>
+                                                      mudarDataDaOperacao(
+                                                        e.id,
+                                                        'entrada',
+                                                        ev.target.value,
+                                                      )
+                                                    }
+                                                  />
+                                                </Campo>
+                                                <Campo label="Saída" obrigatorio={false}>
+                                                  <Input
+                                                    type="date"
+                                                    value={
+                                                      form.operacoes_datas[e.id]?.saida ?? ''
+                                                    }
+                                                    erro={!!erros.operacoes_datas}
+                                                    onChange={(ev) =>
+                                                      mudarDataDaOperacao(
+                                                        e.id,
+                                                        'saida',
+                                                        ev.target.value,
+                                                      )
+                                                    }
+                                                  />
+                                                </Campo>
+                                              </div>
+                                            </div>
+                                          ))}
+                                          {erros.operacoes_datas && (
+                                            <p className="text-xs font-medium text-red-600">
+                                              {erros.operacoes_datas}
+                                            </p>
+                                          )}
+                                        </div>
+                                      )}
                                     </div>
                                     <p className="mb-2 text-xs text-neutral-600">
-                                      Preenchemos com as datas da operação. Ajuste se
-                                      você chega antes ou sai depois.
+                                      {selecionadas.length > 1
+                                        ? 'Cada operação tem a sua entrada e a sua saída. Ajuste acima se em alguma delas você chega antes ou sai depois.'
+                                        : 'Preenchemos com as datas da operação. Ajuste se você chega antes ou sai depois.'}
                                     </p>
                                   </>
                                 )}
@@ -1481,6 +1627,22 @@ export default function Solicitar() {
                                   </p>
                                 )}
 
+                                {/* Com várias operações o período da
+                                    solicitação deixa de ser digitado: ele é a
+                                    primeira chegada e a última saída das datas
+                                    acima. Digitado, virava o envelope da
+                                    temporada e escondia as estadias reais. */}
+                                {selecionadas.length > 1 ? (
+                                  <p className="rounded-lg bg-white px-3.5 py-2.5 text-sm ring-1 ring-neutral-200">
+                                    <span className="text-neutral-600">Período total: </span>
+                                    <span className="font-semibold text-neutral-900">
+                                      {dataBR(form.data_entrada)} a {dataBR(form.data_saida)}
+                                    </span>
+                                    <span className="mt-0.5 block text-xs text-neutral-500">
+                                      Da primeira chegada à última saída.
+                                    </span>
+                                  </p>
+                                ) : (
                                 <div className="grid gap-4 sm:grid-cols-2">
                                   <Campo
                                     label="Data de entrada"
@@ -1513,6 +1675,7 @@ export default function Solicitar() {
                                     />
                                   </Campo>
                                 </div>
+                                )}
 
                                 {/* Datas próprias do hotel da operação. A
                                     estadia acima é o período da solicitação
@@ -1521,7 +1684,12 @@ export default function Solicitar() {
                                     de hotel — e a F9-2026-0197 mostrou o que
                                     acontece: as datas de fora foram parar na
                                     estadia, e o hotel da operação ficou sem. */}
-                                {form.servicos.includes('HOSPEDAGEM') && (
+                                {/* Com várias operações, as datas de cada uma
+                                    já são as estadias no hotel da operação —
+                                    perguntar de novo aqui seria pedir uma
+                                    estadia só para quem vai dormir em várias. */}
+                                {form.servicos.includes('HOSPEDAGEM') &&
+                                  selecionadas.length < 2 && (
                                   <div className="mt-4 rounded-lg bg-sky-50 p-3.5 ring-1 ring-inset ring-sky-200">
                                     <p className="mb-2 text-sm font-semibold text-sky-900">
                                       Hospedagem no hotel da operação

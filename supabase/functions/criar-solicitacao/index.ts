@@ -368,9 +368,35 @@ Deno.serve(async (req) => {
       .single()
     if (e1) throw new Error(e1.message)
 
-    const { error: e0 } = await sb
-      .from('solicitacao_edicoes')
-      .insert(edicoes.map((e) => ({ solicitacao_id: sol.id, edicao_id: e.id })))
+    // Datas pedidas para CADA operação. Operações espalhadas no calendário
+    // são estadias separadas: quem vai a quatro chega e sai quatro vezes.
+    // Em branco, valem as datas da própria operação.
+    const datasDaOperacao = new Map<string, { entrada: string | null; saida: string | null }>(
+      (Array.isArray(b.operacoes) ? b.operacoes : []).map(
+        (o: { edicao_id?: unknown; data_entrada?: unknown; data_saida?: unknown }) => [
+          String(o.edicao_id ?? ''),
+          {
+            entrada: o.data_entrada ? String(o.data_entrada) : null,
+            saida: o.data_saida ? String(o.data_saida) : null,
+          },
+        ],
+      ),
+    )
+    for (const [, d] of datasDaOperacao)
+      if (d.entrada && d.saida && d.saida < d.entrada)
+        return erro('Em alguma operação a saída ficou antes da entrada.')
+
+    const { error: e0 } = await sb.from('solicitacao_edicoes').insert(
+      edicoes.map((e) => {
+        const d = datasDaOperacao.get(e.id)
+        return {
+          solicitacao_id: sol.id,
+          edicao_id: e.id,
+          data_entrada: d?.entrada ?? null,
+          data_saida: d?.saida ?? null,
+        }
+      }),
+    )
     if (e0) {
       await sb.from('solicitacoes').delete().eq('id', sol.id)
       throw new Error(e0.message)

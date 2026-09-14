@@ -301,6 +301,11 @@ function DetalheConsulta({ dados }: { dados: any }) {
   const voos = dados.voos ?? []
   const hosp = dados.hospedagem ?? []
   const rodo = dados.rodoviario ?? []
+  // Quem vai a várias operações dorme em várias: sem dizer qual é qual,
+  // a consulta vira uma lista de datas soltas.
+  const operacoes = s.operacoes ?? []
+  const codigoDaOperacao = (id: string) =>
+    operacoes.find((o: any) => o.id === id)?.codigo ?? ''
 
   return (
     <div className="space-y-5 text-sm">
@@ -401,6 +406,11 @@ function DetalheConsulta({ dados }: { dados: any }) {
                     {minhas.length > 1 && (
                       <span className="font-semibold">
                         {h.tipo === 'FORA_HOTEL_PAX' ? 'FORA ' : 'OPERAÇÃO '}
+                      </span>
+                    )}
+                    {operacoes.length > 1 && h.edicao_id && codigoDaOperacao(h.edicao_id) && (
+                      <span className="font-semibold text-neutral-500">
+                        {codigoDaOperacao(h.edicao_id)}{' '}
                       </span>
                     )}
                     {h.hotel_hospedagem || h.hotel}

@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
       sb.from('solicitacao_carros').select('*').eq('solicitacao_id', s.id).order('ordem'),
       sb
         .from('solicitacao_edicoes')
-        .select('edicoes(codigo, data_inicio, data_fim)')
+        .select('edicoes(id, codigo, data_inicio, data_fim)')
         .eq('solicitacao_id', s.id),
     ])
 

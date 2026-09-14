@@ -133,6 +133,8 @@ export type Rodoviario = {
 export type HospedagemDetalhe = {
   id?: string
   colaborador_id: string
+  /** A operação desta estadia: quem vai a várias dorme em várias. */
+  edicao_id?: string
   /**
    * Qual das duas hospedagens esta linha responde. A mesma pessoa pode ter as
    * duas: o hotel da operação e um hotel fora, para chegar antes ou sair depois.
