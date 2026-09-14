@@ -1305,7 +1305,17 @@ export default function Detalhe() {
                                 ['rooming_ok', 'Rooming'],
                                 ['rodoviario_ok', 'Rodoviário'],
                               ] as const
-                            ).map(([campo, rotulo]) => (
+                            )
+                              // Cada caixa só aparece se o serviço foi pedido:
+                              // rooming é da hospedagem, e rodoviário é da
+                              // passagem de ônibus. Quem pediu só hospedagem
+                              // não tem rodoviário para resolver.
+                              .filter(([campo]) =>
+                                campo === 'rooming_ok'
+                                  ? tem(s, 'HOSPEDAGEM') || tem(s, 'HOSPEDAGEM_FORA')
+                                  : tem(s, 'RODOVIARIO'),
+                              )
+                              .map(([campo, rotulo]) => (
                               <label
                                 key={campo}
                                 className={
@@ -1323,9 +1333,9 @@ export default function Detalhe() {
                                   checked={!!controlesOp[o.id]?.[campo]}
                                   onChange={() => alternarControleDaOperacao(o.id, campo)}
                                 />
-                                {rotulo}
-                              </label>
-                            ))}
+                                  {rotulo}
+                                </label>
+                              ))}
                           </span>
                         )}
                         {/* Só com mais de uma: tirar a última deixaria a
