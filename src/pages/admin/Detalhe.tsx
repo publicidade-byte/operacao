@@ -1206,6 +1206,24 @@ export default function Detalhe() {
                           <span className="ml-1.5 text-xs text-neutral-500">
                             {o.codigo}
                           </span>
+                          {/* O que o solicitante pediu PARA ESTA operação,
+                              quando é diferente do calendário dela: chega na
+                              véspera, fica mais um dia. É por esta data que a
+                              estadia é reservada. */}
+                          {(() => {
+                            const pedido = periodos.get(o.id)
+                            if (
+                              !pedido ||
+                              (pedido.entrada === o.data_inicio &&
+                                pedido.saida === o.data_fim)
+                            )
+                              return null
+                            return (
+                              <span className="ml-1.5 text-xs font-medium text-marca-700">
+                                pediu {dataBR(pedido.entrada)} a {dataBR(pedido.saida)}
+                              </span>
+                            )
+                          })()}
                         </span>
                         {/* Só com mais de uma: tirar a última deixaria a
                             solicitação sem destino nem período. Para encerrar
