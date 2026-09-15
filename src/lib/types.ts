@@ -250,8 +250,10 @@ export type Solicitacao = {
   rooming_ok: boolean
   rooming_em: string | null
   rooming_por: string | null
-  /** Dia do day use. Um só: quem faz day use não dorme no destino. */
+  /** Primeiro dia de day use. Mantida para leitura antiga. */
   day_use_data: string | null
+  /** Todos os dias pedidos: a mesma pessoa faz vários na mesma operação. */
+  day_use_datas: string[]
   /** Datas pedidas para cada hospedagem — podem ser estadias diferentes. */
   hosp_op_entrada: string | null
   hosp_op_saida: string | null

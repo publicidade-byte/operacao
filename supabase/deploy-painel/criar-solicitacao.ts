@@ -340,7 +340,18 @@ Deno.serve(async (req) => {
     }
 
     // Day use sem dia é um pedido que ninguém consegue reservar.
-    if (servicos.includes('DAY_USE') && !b.day_use_data)
+    // Vários dias: a mesma pessoa faz day use mais de uma vez na mesma
+    // operação. Dias repetidos viram um só — a linha de custo é por dia.
+    const diasDayUse = servicos.includes('DAY_USE')
+      ? [
+          ...new Set(
+            (Array.isArray(b.day_use_datas) ? b.day_use_datas : [b.day_use_data])
+              .filter(Boolean)
+              .map(String),
+          ),
+        ].sort()
+      : []
+    if (servicos.includes('DAY_USE') && !diasDayUse.length)
       return erro('Informe o dia do day use.')
 
     if (servicos.includes('RODOVIARIO')) {
@@ -469,7 +480,10 @@ Deno.serve(async (req) => {
         data_saida: b.data_saida,
         tipo_hospedagem: b.tipo_hospedagem,
         // Day use e um dia so, do pedido inteiro: quem passa o dia nao dorme la.
-        day_use_data: servicos.includes('DAY_USE') ? b.day_use_data : null,
+        // A coluna antiga guarda o primeiro dia: é o que as telas e
+        // mensagens anteriores leem, e deixá-la vazia as quebraria.
+        day_use_data: diasDayUse[0] ?? null,
+        day_use_datas: diasDayUse,
         // Cada hospedagem com as suas datas. Um par só (a estadia) não descreve
         // quem dorme fora antes da operação e no hotel dela depois.
         hosp_op_entrada: servicos.includes('HOSPEDAGEM') ? b.hosp_op_entrada || null : null,

@@ -434,18 +434,25 @@ export default function Detalhe() {
     })
     setHosp(mh)
 
-    // Day use: o dia vem do pedido, o hotel vem da operação. A pessoa só
-    // confirma e lança o valor, que o hotel cobra por cabeça.
+    // Day use: os dias vêm do pedido, o hotel vem da operação. A pessoa só
+    // confirma e lança o valor, que o hotel cobra por cabeça — e por dia.
+    // A chave é pessoa + dia: quem vai ao destino três vezes sem dormir tem
+    // três day use, com reserva e valor de cada um.
     const md: Record<string, Partial<DayUseDetalhe>> = {}
-    ;(du.data ?? []).forEach((x: DayUseDetalhe) => (md[x.colaborador_id] = x))
+    ;(du.data ?? []).forEach(
+      (x: DayUseDetalhe) => (md[`${x.colaborador_id}:${x.data ?? ''}`] = x),
+    )
     if ((sol.servicos ?? []).includes('DAY_USE'))
       sol.colaboradores.forEach((c) => {
-        if (!md[c.id])
-          md[c.id] = {
-            colaborador_id: c.id,
-            hotel: sol.edicoes?.hotel ?? null,
-            data: sol.day_use_data,
-          }
+        diasDeDayUse(sol).forEach((dia) => {
+          const chave = `${c.id}:${dia}`
+          if (!md[chave])
+            md[chave] = {
+              colaborador_id: c.id,
+              hotel: sol.edicoes?.hotel ?? null,
+              data: dia,
+            }
+        })
       })
     setDayUse(md)
 
@@ -761,15 +768,16 @@ export default function Detalhe() {
 
       const upDayUse = Object.entries(dayUse)
         .filter(([, v]) => v && Object.keys(v).length > 0)
-        .map(([colaborador_id, v]) => {
+        .map(([chave, v]) => {
+          const [colaborador_id, dia] = chave.split(':')
           const { id: _i, ...resto } = v as DayUseDetalhe
-          return { ...limpar(resto), colaborador_id }
+          return { ...limpar(resto), colaborador_id, data: resto.data || dia }
         })
       if (tem(s, 'DAY_USE') && upDayUse.length)
         await erro(
           supabase
             .from('day_use_detalhe')
-            .upsert(upDayUse, { onConflict: 'colaborador_id' }),
+            .upsert(upDayUse, { onConflict: 'colaborador_id,data' }),
         )
 
       const upCarros = Object.entries(carros)
@@ -1657,13 +1665,27 @@ export default function Detalhe() {
                   />
                 )}
 
-                {tem(s, 'DAY_USE') && (
-                  <BlocoDayUse
-                    valor={dayUse[c.id] ?? {}}
-                    editavel={podeEditarServico('DAY_USE')}
-                    onChange={(v) => setDayUse((p) => ({ ...p, [c.id]: v }))}
-                  />
-                )}
+                {/* Um bloco por dia de day use: cada dia é uma reserva
+                    própria, com o seu código e o seu valor. */}
+                {tem(s, 'DAY_USE') &&
+                  diasDeDayUse(s).map((dia) => (
+                    <BlocoDayUse
+                      key={dia}
+                      titulo={
+                        diasDeDayUse(s).length > 1
+                          ? `Day use — ${dataBR(dia)}`
+                          : 'Day use'
+                      }
+                      valor={dayUse[`${c.id}:${dia}`] ?? {}}
+                      editavel={podeEditarServico('DAY_USE')}
+                      onChange={(v) =>
+                        setDayUse((p) => ({
+                          ...p,
+                          [`${c.id}:${dia}`]: { ...v, data: v.data || dia },
+                        }))
+                      }
+                    />
+                  ))}
 
                 {/* Um bloco por hospedagem pedida E por operação. Quem
                     marcou as duas hospedagens tem duas estadias de verdade;
@@ -1965,13 +1987,17 @@ export default function Detalhe() {
       return n
     })
     setDayUse((p) => {
-      const base = p[origemId]
-      if (!base) return p
       const n = { ...p }
-      alvos.forEach((c) => {
-        const { id: _i, codigo_reserva: _r, ...resto } = base as DayUseDetalhe
-        n[c.id] = { ...resto, colaborador_id: c.id }
-      })
+      // Cada dia é uma reserva: copiar só o primeiro deixaria os outros dias
+      // em branco justamente em quem foi copiado.
+      for (const dia of diasDeDayUse(s)) {
+        const base = p[`${origemId}:${dia}`]
+        if (!base) continue
+        alvos.forEach((c) => {
+          const { id: _i, codigo_reserva: _r, ...resto } = base as DayUseDetalhe
+          n[`${c.id}:${dia}`] = { ...resto, colaborador_id: c.id, data: dia }
+        })
+      }
       return n
     })
     setMsg({
@@ -2347,12 +2373,30 @@ function BlocoCarro({
   )
 }
 
-/** Day use de uma pessoa: o dia é do pedido, o valor é por cabeça. */
+/**
+ * Os dias de day use pedidos, em ordem.
+ *
+ * `day_use_data` (um dia só) é de antes de o pedido aceitar vários; ela
+ * continua preenchida com o primeiro e responde pelas solicitações antigas.
+ */
+function diasDeDayUse(sol: {
+  day_use_datas?: string[] | null
+  day_use_data?: string | null
+}): string[] {
+  const lista = (sol.day_use_datas ?? []).filter(Boolean)
+  if (lista.length) return [...lista].sort()
+  return sol.day_use_data ? [sol.day_use_data] : []
+}
+
+/** Day use de uma pessoa num dia: o valor é por cabeça. */
 function BlocoDayUse({
+  titulo,
   valor,
   editavel,
   onChange,
 }: {
+  /** Diz de qual dia é este bloco quando há mais de um. */
+  titulo: string
   valor: Partial<DayUseDetalhe>
   editavel: boolean
   onChange: (v: Partial<DayUseDetalhe>) => void
@@ -2361,7 +2405,7 @@ function BlocoDayUse({
   return (
     <fieldset className="rounded-lg border border-teal-200 bg-teal-50/40 p-3.5">
       <legend className="px-1.5 text-xs font-semibold uppercase tracking-wide text-teal-700">
-        Day use
+        {titulo}
       </legend>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="lg:col-span-2">

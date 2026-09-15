@@ -72,7 +72,13 @@ type Form = {
   operacoes_datas: Record<string, { entrada: string; saida: string }>
   data_entrada: string
   /** Dia do day use. Um só: quem faz day use não dorme no destino. */
-  day_use_data: string
+  /**
+   * Os dias de day use.
+   *
+   * A mesma pessoa vai ao destino mais de uma vez sem dormir lá: era um dia
+   * só, e os outros não tinham onde ser pedidos.
+   */
+  day_use_datas: string[]
   data_saida: string
   tipo_hospedagem: string
   hosp_externa_operacao: string
@@ -127,7 +133,7 @@ const VAZIO: Form = {
   operacoes_datas: {},
   data_entrada: '',
   data_saida: '',
-  day_use_data: '',
+  day_use_datas: [],
   tipo_hospedagem: '',
   hosp_externa_operacao: '',
   hosp_externa_obs: '',
@@ -475,7 +481,7 @@ export default function Solicitar() {
       pediu('HOSPEDAGEM') && form.hosp_op_saida,
       pediu('HOSPEDAGEM_FORA') && form.hosp_fora_entrada,
       pediu('HOSPEDAGEM_FORA') && form.hosp_fora_saida,
-      pediu('DAY_USE') && form.day_use_data,
+      ...(pediu('DAY_USE') ? form.day_use_datas : []),
       pediu('VAN') && form.van_data_saida,
       pediu('VAN') && form.van_retorno_data,
       ...(pediu('CARRO')
@@ -670,9 +676,9 @@ export default function Solicitar() {
           : f.van_retorno_data,
         // Day use é um dia só: com várias operações não há como adivinhar
         // qual delas, e sugerir a primeira seria chutar por quem sabe.
-        day_use_data: umaOperacao
-          ? manter(f.day_use_data, nosso.day_use, entrada)
-          : f.day_use_data,
+        day_use_datas: umaOperacao
+          ? [manter(f.day_use_datas[0] ?? '', nosso.day_use, entrada), ...f.day_use_datas.slice(1)]
+          : f.day_use_datas,
         // O hotel da operação acompanha a operação — mas só quando há uma.
         // Com várias, a pessoa pode ficar em só uma delas, e o envelope
         // chutaria uma estadia que ela não pediu.
@@ -854,8 +860,14 @@ export default function Solicitar() {
           e.operacoes_datas =
             'Confira a entrada e a saída de cada operação: a saída não pode ser antes da entrada.'
       }
-      if (form.servicos.includes('DAY_USE') && !form.day_use_data)
-        e.day_use_data = 'Informe o dia do day use.'
+      if (form.servicos.includes('DAY_USE')) {
+        const dias = form.day_use_datas.filter(Boolean)
+        if (!dias.length) e.day_use_datas = 'Informe ao menos um dia de day use.'
+        else if (dias.length !== form.day_use_datas.length)
+          e.day_use_datas = 'Preencha ou remova os dias em branco.'
+        else if (new Set(dias).size !== dias.length)
+          e.day_use_datas = 'Há dias repetidos.'
+      }
       // Cada hospedagem pedida cobra as suas datas. Sem isso, quem pede as
       // duas deixava uma delas descrita só na observação, e a operação tinha
       // de catar a data no texto.
@@ -1082,7 +1094,7 @@ export default function Solicitar() {
           // A coluna não aceita nulo; na avulsa o período pode ter ficado
           // em branco e quem responde são as datas dos serviços.
           data_entrada: form.data_entrada || periodoDosServicos?.inicio || '',
-          day_use_data: form.servicos.includes('DAY_USE') ? form.day_use_data : null,
+          day_use_datas: form.servicos.includes('DAY_USE') ? form.day_use_datas : [],
           hosp_op_entrada: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_entrada : null,
           hosp_op_saida: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_saida : null,
           hosp_fora_entrada: form.servicos.includes('HOSPEDAGEM_FORA')
@@ -1262,7 +1274,7 @@ export default function Solicitar() {
           'data_saida',
           'operacoes_datas',
           'tipo_hospedagem',
-          'day_use_data',
+          'day_use_datas',
           'hosp_op_entrada',
           'hosp_op_saida',
           'hosp_fora_entrada',
@@ -1716,25 +1728,68 @@ export default function Solicitar() {
                                   </div>
                                 )}
 
-                                {/* Day use é um dia só, e é aqui — junto do
-                                    hotel — que a pessoa está pensando em datas.
-                                    Perguntar noutro passo faria voltar. */}
+                                {/* Day use é aqui — junto do hotel — que a
+                                    pessoa está pensando em datas. São vários
+                                    dias: quem não dorme no destino vai e volta
+                                    quantas vezes a operação pedir. */}
                                 {form.servicos.includes('DAY_USE') && (
                                   <div className="mt-4 rounded-lg bg-teal-50 p-3.5 ring-1 ring-inset ring-teal-200">
                                     <Campo
-                                      label="Qual o dia do day use?"
-                                      erro={erros.day_use_data}
-                                      dica={`Um dia só — quem faz day use não dorme em ${d.hotel || 'no destino'}.`}
+                                      label="Em quais dias será o day use?"
+                                      erro={erros.day_use_datas}
+                                      dica={`Quem faz day use não dorme em ${d.hotel || 'no destino'}. Um campo por dia.`}
                                     >
-                                      <Input
-                                        type="date"
-                                        className="max-w-xs"
-                                        value={form.day_use_data}
-                                        erro={!!erros.day_use_data}
-                                        onChange={(ev) =>
-                                          set('day_use_data', ev.target.value)
+                                      <div className="space-y-2">
+                                        {(form.day_use_datas.length
+                                          ? form.day_use_datas
+                                          : ['']
+                                        ).map((dia, i) => (
+                                          <div key={i} className="flex items-center gap-2">
+                                            <Input
+                                              type="date"
+                                              className="max-w-xs"
+                                              value={dia}
+                                              erro={!!erros.day_use_datas}
+                                              onChange={(ev) => {
+                                                const dias = [...form.day_use_datas]
+                                                if (!dias.length) dias.push('')
+                                                dias[i] = ev.target.value
+                                                set('day_use_datas', dias)
+                                              }}
+                                            />
+                                            {form.day_use_datas.length > 1 && (
+                                              <button
+                                                type="button"
+                                                onClick={() =>
+                                                  set(
+                                                    'day_use_datas',
+                                                    form.day_use_datas.filter(
+                                                      (_, x) => x !== i,
+                                                    ),
+                                                  )
+                                                }
+                                                className="rounded px-2 py-1 text-xs font-semibold text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                                              >
+                                                remover
+                                              </button>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          set('day_use_datas', [
+                                            ...(form.day_use_datas.length
+                                              ? form.day_use_datas
+                                              : ['']),
+                                            '',
+                                          ])
                                         }
-                                      />
+                                        className="mt-2 rounded-lg px-2 py-1 text-xs font-semibold text-teal-800 ring-1 ring-inset ring-teal-300 hover:bg-teal-100"
+                                      >
+                                        + Adicionar outro dia
+                                      </button>
                                     </Campo>
                                   </div>
                                 )}
@@ -2852,7 +2907,7 @@ export default function Solicitar() {
                   </Linha>
                   {form.servicos.includes('DAY_USE') && (
                     <Linha rotulo="Day use" onEditar={() => setPasso(1)}>
-                      {dataBR(form.day_use_data)}
+                      {form.day_use_datas.filter(Boolean).map(dataBR).join(' · ')}
                     </Linha>
                   )}
                   {/* Sem hospedagem pedida não há o que mostrar. Com as duas,
