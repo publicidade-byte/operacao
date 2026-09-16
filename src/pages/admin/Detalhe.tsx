@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import { supabase, invocar } from '../../lib/supabase'
 import { useAdmin } from './AdminLayout'
@@ -166,6 +166,16 @@ export default function Detalhe() {
   const [dayUse, setDayUse] = useState<Record<string, Partial<DayUseDetalhe>>>({})
   const [carros, setCarros] = useState<Record<string, Partial<LocacaoCarro>>>({})
   const [van, setVan] = useState<Partial<LocacaoVan>>({})
+  /**
+   * O que está gravado no banco, do jeito que chegou na tela.
+   *
+   * Comparar com o que está na tela é o que diz se há edição por salvar. Sem
+   * isso, concluir ou reenviar para aprovação recarregava a solicitação e
+   * jogava fora, sem aviso, o que a pessoa tinha acabado de digitar — foi
+   * assim que a troca de categoria e valor do carro da F9-2026-0130 sumiu.
+   */
+  const salvoRef = useRef<RetratoOperacional | null>(null)
+  const [salvoJson, setSalvoJson] = useState('')
   const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
   const [eventos, setEventos] = useState<Evento[]>([])
   const [aprovacoes, setAprovacoes] = useState<Aprovacao[]>([])
@@ -481,17 +491,27 @@ export default function Detalhe() {
     setCarros(mc)
     // A van chega com a data e a hora que o solicitante informou — antes só
     // vinha o dia da estadia, e a hora ficava zerada para alguém perguntar.
-    setVan(
-      (vn.data as LocacaoVan) ?? {
-        saida_data: sol.van_data_saida ?? sol.data_entrada,
-        saida_hora: sol.van_hora_saida,
-        chegada_data: sol.van_retorno_data ?? sol.data_saida,
-        chegada_hora: sol.van_retorno_hora,
-        local_saida: sol.van_local_saida,
-        local_chegada: sol.van_destino,
-        qtd_passageiros: sol.van_qtd_passageiros,
-      },
-    )
+    const vanInicial: Partial<LocacaoVan> = (vn.data as LocacaoVan) ?? {
+      saida_data: sol.van_data_saida ?? sol.data_entrada,
+      saida_hora: sol.van_hora_saida,
+      chegada_data: sol.van_retorno_data ?? sol.data_saida,
+      chegada_hora: sol.van_retorno_hora,
+      local_saida: sol.van_local_saida,
+      local_chegada: sol.van_destino,
+      qtd_passageiros: sol.van_qtd_passageiros,
+    }
+    setVan(vanInicial)
+
+    const retrato: RetratoOperacional = {
+      voos: mv,
+      rodo: mr,
+      hosp: mh,
+      dayUse: md,
+      carros: mc,
+      van: vanInicial,
+    }
+    salvoRef.current = retrato
+    setSalvoJson(JSON.stringify(retrato))
 
     const [eq, rp] = await Promise.all([
       supabase.from('v_equipe').select('id, nome, role'),
@@ -506,6 +526,38 @@ export default function Detalhe() {
   useEffect(() => {
     carregar()
   }, [carregar])
+
+  /** Há edição na tela que ainda não foi para o banco. */
+  const haPendencia = () =>
+    salvoJson !== '' &&
+    JSON.stringify({ voos, rodo, hosp, dayUse, carros, van }) !== salvoJson
+
+  // Fechar a aba ou sair da página com edição por salvar perdia a edição
+  // em silêncio. O navegador pergunta antes.
+  useEffect(() => {
+    const avisar = (e: BeforeUnloadEvent) => {
+      if (!haPendencia()) return
+      e.preventDefault()
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', avisar)
+    return () => window.removeEventListener('beforeunload', avisar)
+  })
+
+  /**
+   * Grava o que está na tela antes de uma ação que recarrega a solicitação.
+   *
+   * Concluir, reenviar, marcar emitido, remover operação: todas recarregam os
+   * dados do banco. Sem gravar antes, a edição que a pessoa acabou de fazer
+   * desaparecia — e ela só percebia depois, vendo o valor antigo de volta.
+   *
+   * `ok: false` quando não deu para gravar: a ação não segue, porque seguir
+   * apagaria justamente o que não foi salvo.
+   */
+  async function garantirSalvo(reenviarSeMudouValor = true) {
+    if (!haPendencia()) return { ok: true, reenviado: [] as string[] }
+    return salvarOperacional({ reenviarSeMudouValor, recarregar: false })
+  }
 
   async function registrarEvento(tipo: string, descricao: string, payload?: unknown) {
     await supabase.from('eventos_solicitacao').insert({
@@ -531,6 +583,10 @@ export default function Detalhe() {
    */
   async function enviarAprovacao(escopo?: string[]) {
     if (!s) return
+    // Grava antes de mandar: o diretor tem de decidir sobre o valor que está
+    // na tela, não sobre o que estava no banco. Sem reenvio automático aqui —
+    // o envio é este.
+    if (!(await garantirSalvo(false)).ok) return
     setSalvando(true)
     setMsg(null)
     try {
@@ -583,6 +639,7 @@ export default function Detalhe() {
    * feitas em série, e um formulário inteiro para um booleano só atrapalha.
    */
   async function alternarControle(campo: 'aereo_emitido' | 'rodoviario_ok', valor: boolean) {
+    if (!(await garantirSalvo()).ok) return
     const { error } = await supabase
       .from('solicitacoes')
       .update({ [campo]: valor })
@@ -649,6 +706,7 @@ export default function Detalhe() {
    */
   async function removerOperacao(o: Edicao) {
     if (!s) return
+    if (!(await garantirSalvo()).ok) return
     const periodo = `${dataBR(o.data_inicio)} a ${dataBR(o.data_fim)}`
     const restantes = operacoes.filter((x) => x.id !== o.id)
     const novaEstadia = restantes.length
@@ -678,6 +736,11 @@ export default function Detalhe() {
   }
 
   async function mudarStatus(novo: Status, descricao: string) {
+    const salvo = await garantirSalvo(novo !== 'CANCELADA')
+    if (!salvo.ok) return
+    // Gravar mudou valor e mandou para o diretor: mudar o status agora
+    // passaria por cima da aprovação que acabou de ser pedida.
+    if (salvo.reenviado.length) return carregar()
     const { error } = await supabase
       .from('solicitacoes')
       .update({ status: novo, responsavel_id: admin?.id ?? null })
@@ -707,8 +770,19 @@ export default function Detalhe() {
     carregar()
   }
 
-  async function salvarOperacional() {
-    if (!s) return
+  /**
+   * Grava os dados operacionais.
+   *
+   * A regra: mudou VALOR numa solicitação já decidida, ela volta para o
+   * diretor — só os serviços cujo valor mudou. Categoria, data, código de
+   * reserva e o resto são gravados sem pedir nova aprovação: o diretor
+   * aprova custo, e custo é o que muda a decisão dele.
+   */
+  async function salvarOperacional(
+    opcoes: { reenviarSeMudouValor?: boolean; recarregar?: boolean } = {},
+  ): Promise<{ ok: boolean; reenviado: string[] }> {
+    const { reenviarSeMudouValor = true, recarregar = true } = opcoes
+    if (!s) return { ok: false, reenviado: [] }
     setSalvando(true)
     setMsg(null)
     try {
@@ -820,10 +894,51 @@ export default function Detalhe() {
           .update({ status: 'EM_PREENCHIMENTO', responsavel_id: admin?.id ?? null })
           .eq('id', s.id)
 
-      setMsg({ tom: 'sucesso', texto: 'Dados salvos.' })
-      carregar()
+      const antes = totaisPorServico(salvoRef.current)
+      const agora = totaisPorServico({ voos, rodo, hosp, dayUse, carros, van })
+      const mudaram = (s.servicos ?? []).filter(
+        (sv) => Math.abs((antes[sv] ?? 0) - (agora[sv] ?? 0)) >= 0.01,
+      )
+      const decididaAntes = ['APROVADA', 'CONCLUIDA'].includes(s.status)
+
+      if (reenviarSeMudouValor && decididaAntes && mudaram.length) {
+        const { error: eEnvio } = await supabase.rpc('enviar_para_aprovacao', {
+          p_solicitacao: s.id,
+          p_escopo: mudaram,
+        })
+        if (eEnvio)
+          throw new Error(
+            `Dados salvos, mas não consegui mandar para nova aprovação: ${eEnvio.message}. ` +
+              'Use o botão de reenviar.',
+          )
+        const oque = mudaram
+          .map((sv) => `${servicoCurto(sv)} (${moeda(antes[sv])} → ${moeda(agora[sv])})`)
+          .join(', ')
+        let aviso = 'e avisado no Slack'
+        try {
+          await invocar('notificar-slack', { solicitacao_id: s.id })
+        } catch (e) {
+          aviso = `mas o aviso no Slack não saiu (${e instanceof Error ? e.message : 'falha'}) — avise por outro canal`
+        }
+        setMsg({
+          tom: 'sucesso',
+          texto: `Dados salvos. O valor mudou em ${oque}, então voltou para ${s.diretores.nome} aprovar — ${aviso}.`,
+        })
+      } else {
+        setMsg({ tom: 'sucesso', texto: 'Dados salvos.' })
+      }
+
+      if (recarregar) carregar()
+      else {
+        // Quem chamou vai agir e recarregar em seguida; o retrato já é o
+        // novo, para não salvar de novo o que acabou de ir.
+        salvoRef.current = { voos, rodo, hosp, dayUse, carros, van }
+        setSalvoJson(JSON.stringify(salvoRef.current))
+      }
+      return { ok: true, reenviado: reenviarSeMudouValor && decididaAntes ? mudaram : [] }
     } catch (e) {
       setMsg({ tom: 'erro', texto: e instanceof Error ? e.message : 'Erro ao salvar.' })
+      return { ok: false, reenviado: [] }
     } finally {
       setSalvando(false)
     }
@@ -906,27 +1021,7 @@ export default function Detalhe() {
    * diretor. Um serviço em R$ 0,00 quase sempre significa "ainda não cotado" —
    * que é exatamente o que não se deve mandar aprovar.
    */
-  const soma = (ns: (number | null | undefined)[]) =>
-    ns.reduce<number>((t, n) => t + Number(n ?? 0), 0)
-
-  /** Soma só as hospedagens de um tipo — as duas são serviços separados. */
-  const somaHosp = (tipo: string) =>
-    soma(
-      Object.entries(hosp)
-        .filter(([chave]) => chave.split(':')[1] === tipo)
-        .map(([, h]) => h.valor_total),
-    )
-
-  const totalPorServico: Record<string, number> = {
-    AEREO: soma(Object.values(voos).map((v) => v.preco)),
-    RODOVIARIO: soma(Object.values(rodo).map((r) => r.preco)),
-    HOSPEDAGEM: somaHosp('HOTEL_PAX'),
-    HOSPEDAGEM_FORA: somaHosp('FORA_HOTEL_PAX'),
-    DAY_USE: soma(Object.values(dayUse).map((d) => d.valor)),
-    // Uma locação por condutor: somar só a primeira esconderia as outras.
-    CARRO: soma(Object.values(carros).map((c) => c.preco)),
-    VAN: Number(van.preco ?? 0),
-  }
+  const totalPorServico = totaisPorServico({ voos, rodo, hosp, dayUse, carros, van })
 
   const aprovados = s.servicos_aprovados ?? []
   const aguardando = s.status === 'AGUARDANDO_APROVACAO'
@@ -1564,10 +1659,9 @@ export default function Detalhe() {
           {editandoTravada && (
             <Aviso tom="destaque">
               Esta solicitação está <strong>{STATUS_LABEL[s.status].toLowerCase()}</strong>.
-              Você pode editar — é assim que se refaz uma reserva que caiu por prazo
-              de emissão — mas <strong>o que mudar aqui não está aprovado</strong>:{' '}
-              {s.diretores.nome} decidiu sobre os valores anteriores. Depois de salvar,
-              reenvie para aprovação.
+              Você pode editar tudo. <strong>Se mudar algum valor</strong>, ao salvar ela
+              volta sozinha para {s.diretores.nome} aprovar — só o serviço cujo valor
+              mudou. Categoria, datas, códigos e o resto são salvos sem nova aprovação.
             </Aviso>
           )}
           {/* A marca vem do banco, posta por trigger em qualquer tabela que a
@@ -1575,9 +1669,10 @@ export default function Detalhe() {
               o diretor — enquanto estiver aqui, há alteração sem martelo. */}
           {s.alterada_apos_aprovacao && (
             <Aviso tom="erro">
-              <strong>Alterada depois de aprovada.</strong> Os dados desta solicitação
-              mudaram depois da decisão de {s.diretores.nome}. Reenvie para aprovação —
-              total ou só do serviço que você mexeu — para o novo valor valer.
+              <strong>Valor alterado depois de aprovada.</strong> Um valor desta
+              solicitação mudou depois da decisão de {s.diretores.nome} e ainda não
+              voltou para ele. Reenvie para aprovação — total ou só do serviço que
+              mudou — para o novo valor valer.
             </Aviso>
           )}
           {/* Reserva por quarto: a solicitação pode ter chegado sem ninguém
@@ -1903,8 +1998,17 @@ export default function Detalhe() {
           <div className="sticky bottom-4 flex items-center justify-between gap-3 rounded-xl border border-neutral-200 bg-white/95 px-4 py-3 shadow-lg backdrop-blur">
             <span className="text-sm text-neutral-600">
               Custo calculado: <strong>{moeda(s.custo_total)}</strong>
+              {haPendencia() && (
+                <span className="ml-3 rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">
+                  Alterações não salvas
+                </span>
+              )}
             </span>
-            <Botao onClick={salvarOperacional} carregando={salvando} disabled={!podeEditar}>
+            <Botao
+              onClick={() => salvarOperacional()}
+              carregando={salvando}
+              disabled={!podeEditar}
+            >
               Salvar dados operacionais
             </Botao>
           </div>
@@ -2058,6 +2162,46 @@ function tem(s: Solicitacao, servico: string) {
   return s.precisa_transporte && s.modal === servico
 }
 
+
+/** Tudo o que a aba operacional grava, do jeito que fica na tela. */
+type RetratoOperacional = {
+  voos: Record<string, Partial<Voo>>
+  rodo: Record<string, Partial<Rodoviario>>
+  hosp: Record<string, Partial<HospedagemDetalhe>>
+  dayUse: Record<string, Partial<DayUseDetalhe>>
+  carros: Record<string, Partial<LocacaoCarro>>
+  van: Partial<LocacaoVan>
+}
+
+/**
+ * Quanto está lançado em cada serviço.
+ *
+ * Serve para duas coisas: o botão de aprovação parcial dizer o que manda ao
+ * diretor, e o salvar descobrir se algum valor mudou — que é o que pede nova
+ * aprovação.
+ */
+function totaisPorServico(r: RetratoOperacional | null): Record<string, number> {
+  if (!r) return {}
+  const soma = (ns: (number | null | undefined)[]) =>
+    ns.reduce<number>((t, n) => t + Number(n ?? 0), 0)
+  // As duas hospedagens são serviços separados; a chave é pessoa:tipo:operação.
+  const somaHosp = (tipo: string) =>
+    soma(
+      Object.entries(r.hosp)
+        .filter(([chave]) => chave.split(':')[1] === tipo)
+        .map(([, h]) => h.valor_total),
+    )
+  return {
+    AEREO: soma(Object.values(r.voos).map((v) => v.preco)),
+    RODOVIARIO: soma(Object.values(r.rodo).map((x) => x.preco)),
+    HOSPEDAGEM: somaHosp('HOTEL_PAX'),
+    HOSPEDAGEM_FORA: somaHosp('FORA_HOTEL_PAX'),
+    DAY_USE: soma(Object.values(r.dayUse).map((d) => d.valor)),
+    // Uma locação por condutor: somar só a primeira esconderia as outras.
+    CARRO: soma(Object.values(r.carros).map((c) => c.preco)),
+    VAN: Number(r.van.preco ?? 0),
+  }
+}
 
 function limpar<T extends Record<string, unknown>>(o: T) {
   const r: Record<string, unknown> = {}
