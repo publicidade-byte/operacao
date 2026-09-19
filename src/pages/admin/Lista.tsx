@@ -64,20 +64,110 @@ const STATUS_FILTROS = [
   'CANCELADA',
 ]
 
+/**
+ * Onde os filtros ficam guardados.
+ *
+ * Abrir uma solicitação e voltar desmontava a lista, e os filtros voltavam
+ * em branco — quem estava conferindo as 17 datas da CAMP SP tinha de
+ * refiltrar a cada solicitação. Na sessão da aba, eles sobrevivem ao ir e
+ * voltar (e ao recarregar), e somem ao fechar a aba: cada aba começa limpa.
+ */
+const CHAVE_FILTROS = 'cypher:lista:filtros'
+const CHAVE_ROLAGEM = 'cypher:lista:rolagem'
+
+type Filtros = {
+  busca: string
+  fStatus: string[]
+  fEquipe: string
+  fDestino: string
+  fDiretor: string
+  fServico: string
+  fResponsavel: string
+  fOperacao: string
+  verLixeira: boolean
+}
+
+function filtrosGuardados(): Partial<Filtros> {
+  try {
+    return JSON.parse(sessionStorage.getItem(CHAVE_FILTROS) ?? '{}')
+  } catch {
+    // Sessão bloqueada ou valor corrompido: começa sem filtro, como antes.
+    return {}
+  }
+}
+
 export default function Lista() {
   const admin = useAdmin()
   const [dados, setDados] = useState<Linha[]>([])
   const [carregando, setCarregando] = useState(true)
-  const [busca, setBusca] = useState('')
-  const [fStatus, setFStatus] = useState<string[]>([])
-  const [fEquipe, setFEquipe] = useState('')
-  const [fDestino, setFDestino] = useState('')
-  const [fDiretor, setFDiretor] = useState('')
-  const [fServico, setFServico] = useState('')
-  const [fResponsavel, setFResponsavel] = useState('')
-  const [fOperacao, setFOperacao] = useState('')
+  const [guardados] = useState(filtrosGuardados)
+  const [busca, setBusca] = useState(guardados.busca ?? '')
+  const [fStatus, setFStatus] = useState<string[]>(guardados.fStatus ?? [])
+  const [fEquipe, setFEquipe] = useState(guardados.fEquipe ?? '')
+  const [fDestino, setFDestino] = useState(guardados.fDestino ?? '')
+  const [fDiretor, setFDiretor] = useState(guardados.fDiretor ?? '')
+  const [fServico, setFServico] = useState(guardados.fServico ?? '')
+  const [fResponsavel, setFResponsavel] = useState(guardados.fResponsavel ?? '')
+  const [fOperacao, setFOperacao] = useState(guardados.fOperacao ?? '')
   const [operacoesFiltro, setOperacoesFiltro] = useState<OperacaoFiltro[]>([])
-  const [verLixeira, setVerLixeira] = useState(false)
+  const [verLixeira, setVerLixeira] = useState(guardados.verLixeira ?? false)
+
+  // Guarda a cada mudança: é daqui que a lista se refaz na volta.
+  useEffect(() => {
+    const f: Filtros = {
+      busca,
+      fStatus,
+      fEquipe,
+      fDestino,
+      fDiretor,
+      fServico,
+      fResponsavel,
+      fOperacao,
+      verLixeira,
+    }
+    try {
+      sessionStorage.setItem(CHAVE_FILTROS, JSON.stringify(f))
+    } catch {
+      // Sem sessão disponível a lista funciona igual; só não lembra.
+    }
+  }, [busca, fStatus, fEquipe, fDestino, fDiretor, fServico, fResponsavel, fOperacao, verLixeira])
+
+  const algumFiltro =
+    !!busca.trim() ||
+    fStatus.length > 0 ||
+    !!(fEquipe || fDestino || fDiretor || fServico || fResponsavel || fOperacao)
+
+  function limparFiltros() {
+    setBusca('')
+    setFStatus([])
+    setFEquipe('')
+    setFDestino('')
+    setFDiretor('')
+    setFServico('')
+    setFResponsavel('')
+    setFOperacao('')
+  }
+
+  // Volta para o ponto da lista onde a pessoa estava. Com o filtro mantido,
+  // cair de novo no topo ainda obrigava a procurar o card de onde saiu.
+  useEffect(() => {
+    if (carregando) return
+    try {
+      const y = Number(sessionStorage.getItem(CHAVE_ROLAGEM) ?? 0)
+      if (y > 0) requestAnimationFrame(() => window.scrollTo(0, y))
+    } catch {
+      /* sem sessão: fica no topo */
+    }
+    const guardar = () => {
+      try {
+        sessionStorage.setItem(CHAVE_ROLAGEM, String(window.scrollY))
+      } catch {
+        /* idem */
+      }
+    }
+    window.addEventListener('scroll', guardar, { passive: true })
+    return () => window.removeEventListener('scroll', guardar)
+  }, [carregando])
 
   useEffect(() => {
     ;(async () => {
@@ -453,6 +543,17 @@ export default function Lista() {
               </option>
             ))}
           </Select>
+          {/* Filtro que persiste precisa de um jeito óbvio de sair dele:
+              senão a lista parece "faltando solicitação" sem motivo. */}
+          {algumFiltro && (
+            <button
+              type="button"
+              onClick={limparFiltros}
+              className="self-center justify-self-start rounded-lg px-3 py-2 text-sm font-semibold text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
       </Card>
 
