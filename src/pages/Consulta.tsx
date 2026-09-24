@@ -301,6 +301,19 @@ function DetalheConsulta({ dados }: { dados: any }) {
   const voos = dados.voos ?? []
   const hosp = dados.hospedagem ?? []
   const rodo = dados.rodoviario ?? []
+  const dayUse = dados.day_use ?? []
+  /**
+   * Os dias pedidos, mesmo antes de a operação reservar.
+   *
+   * Numa solicitação só de day use é a única data que existe: sem ela a
+   * consulta não mostrava nada sobre o pedido.
+   */
+  const diasDayUse: string[] = ((s.day_use_datas ?? []) as string[]).filter(Boolean)
+    .length
+    ? [...((s.day_use_datas ?? []) as string[])].filter(Boolean).sort()
+    : s.day_use_data
+      ? [s.day_use_data as string]
+      : []
   // Quem vai a várias operações dorme em várias: sem dizer qual é qual,
   // a consulta vira uma lista de datas soltas.
   const operacoes = s.operacoes ?? []
@@ -428,6 +441,39 @@ function DetalheConsulta({ dados }: { dados: any }) {
               </div>
             )
           })}
+        </Bloco>
+      )}
+
+      {(s.servicos ?? []).includes('DAY_USE') && (
+        <Bloco titulo="Day use">
+          {dayUse.length > 0 ? (
+            (s.colaboradores ?? []).map((c: any) => {
+              const meus = dayUse
+                .filter((x: any) => x.colaborador_id === c.id)
+                .sort((a: any, b: any) => String(a.data).localeCompare(String(b.data)))
+              if (!meus.length) return null
+              return (
+                <div key={c.id} className="mb-2 text-neutral-700">
+                  <p className="font-medium text-neutral-900">{c.nome_completo}</p>
+                  {meus.map((d: any, i: number) => (
+                    <p key={i}>
+                      {dataBR(d.data)}
+                      {d.hotel && ` · ${d.hotel}`}
+                      {d.codigo_reserva && ` · reserva ${d.codigo_reserva}`}
+                    </p>
+                  ))}
+                </div>
+              )
+            })
+          ) : (
+            // Ainda não reservado: vale o que o solicitante pediu.
+            <p className="text-neutral-700">
+              {diasDayUse.map(dataBR).join(' · ') || '—'}
+              <span className="ml-2 text-xs text-neutral-500">
+                aguardando a reserva da operação
+              </span>
+            </p>
+          )}
         </Bloco>
       )}
 

@@ -80,10 +80,13 @@ Deno.serve(async (req) => {
     )
     const ids = colabs.map((c: { id: string }) => c.id)
 
-    const [voos, rodo, hosp, carro, van, carrosPedidos, ops] = await Promise.all([
+    const [voos, rodo, hosp, dayUse, carro, van, carrosPedidos, ops] = await Promise.all([
       sb.from('voos').select('*').in('colaborador_id', ids),
       sb.from('transporte_rodoviario').select('*').in('colaborador_id', ids),
       sb.from('hospedagem_detalhe').select('*').in('colaborador_id', ids),
+      // Day use não aparecia na consulta: quem passa o dia no destino sem
+      // dormir não tinha onde ver a data nem a reserva.
+      sb.from('day_use_detalhe').select('*').in('colaborador_id', ids),
       sb.from('locacao_carro').select('*').eq('solicitacao_id', s.id).maybeSingle(),
       sb.from('locacao_van').select('*').eq('solicitacao_id', s.id).maybeSingle(),
       sb.from('solicitacao_carros').select('*').eq('solicitacao_id', s.id).order('ordem'),
@@ -107,6 +110,7 @@ Deno.serve(async (req) => {
       voos: voos.data ?? [],
       rodoviario: rodo.data ?? [],
       hospedagem: hosp.data ?? [],
+      day_use: dayUse.data ?? [],
       carro: carro.data ?? null,
       van: van.data ?? null,
       carros_pedidos: carrosPedidos.data ?? [],

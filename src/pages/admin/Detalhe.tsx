@@ -30,6 +30,7 @@ import {
   tipoQuartoLabel,
   veiculosTexto,
   equipeLabel,
+  EQUIPES,
   nomeDestino,
   hospedagemPedida,
 } from '../../lib/constants'
@@ -174,6 +175,14 @@ export default function Detalhe() {
    * jogava fora, sem aviso, o que a pessoa tinha acabado de digitar — foi
    * assim que a troca de categoria e valor do carro da F9-2026-0130 sumiu.
    */
+  /** Diretores ativos, para poder trocar o aprovador da solicitação. */
+  const [diretoresAtivos, setDiretoresAtivos] = useState<Diretor[]>([])
+  const [editandoPedido, setEditandoPedido] = useState(false)
+  const [pedido, setPedido] = useState<PedidoEditavel | null>(null)
+  /** Outras datas do mesmo destino — é para onde a solicitação pode ir. */
+  const [datasDoDestino, setDatasDoDestino] = useState<Edicao[]>([])
+  const [editandoPessoas, setEditandoPessoas] = useState(false)
+  const [pessoas, setPessoas] = useState<PessoaEditavel[]>([])
   const salvoRef = useRef<RetratoOperacional | null>(null)
   const [salvoJson, setSalvoJson] = useState('')
   const [carrosPedidos, setCarrosPedidos] = useState<CarroPedido[]>([])
@@ -513,10 +522,24 @@ export default function Detalhe() {
     salvoRef.current = retrato
     setSalvoJson(JSON.stringify(retrato))
 
-    const [eq, rp] = await Promise.all([
+    const [eq, rp, dir] = await Promise.all([
       supabase.from('v_equipe').select('id, nome, role'),
       supabase.from('solicitacao_responsaveis').select('admin_id').eq('solicitacao_id', id),
+      supabase.from('diretores').select('*').eq('ativo', true).order('ordem'),
     ])
+    setDiretoresAtivos((dir.data ?? []) as Diretor[])
+
+    // Só o mesmo destino: a solicitação inteira é de um destino só, e é o
+    // que o formulário também exige de quem pede.
+    if (sol.edicoes?.destino && !sol.edicoes.avulsa) {
+      const { data: outras } = await supabase
+        .from('edicoes')
+        .select('*')
+        .eq('ativa', true)
+        .eq('destino', sol.edicoes.destino)
+        .order('data_inicio')
+      setDatasDoDestino((outras ?? []) as Edicao[])
+    }
     setEquipe((eq.data ?? []) as { id: string; nome: string; role: string }[])
     setResponsaveis(((rp.data ?? []) as { admin_id: string }[]).map((r) => r.admin_id))
     setEventos((ev.data ?? []) as Evento[])
@@ -568,6 +591,200 @@ export default function Detalhe() {
       descricao,
       payload: payload ?? null,
     })
+  }
+
+  /**
+   * Abre a edição do pedido com o que está gravado hoje.
+   *
+   * O solicitante erra o departamento, a equipe muda de nome, a estadia
+   * muda: antes só dava para corrigir isso refazendo a solicitação, o que
+   * perdia protocolo, histórico e aprovação.
+   */
+  function abrirEdicaoDoPedido() {
+    if (!s) return
+    setPedido({
+      equipe: s.equipe,
+      equipe_outro: s.equipe_outro ?? '',
+      diretor_id: s.diretor_id,
+      data_entrada: s.data_entrada ?? '',
+      data_saida: s.data_saida ?? '',
+      day_use_datas: diasDeDayUse(s),
+      centro_custo: s.centro_custo ?? '',
+    })
+    setEditandoPedido(true)
+    setMsg(null)
+  }
+
+  /**
+   * Grava o pedido e escreve no histórico o que mudou.
+   *
+   * O histórico guarda campo, valor antigo, valor novo, quem mexeu e quando:
+   * quem recebe a operação depois precisa saber que a equipe mudou — e por
+   * ordem de quem.
+   */
+  async function salvarPedido() {
+    if (!s || !pedido) return
+    const dias = pedido.day_use_datas.filter(Boolean)
+    if (tem(s, 'DAY_USE') && !dias.length)
+      return setMsg({ tom: 'erro', texto: 'Informe ao menos um dia de day use.' })
+    if (new Set(dias).size !== dias.length)
+      return setMsg({ tom: 'erro', texto: 'Há dias de day use repetidos.' })
+    if (pedido.equipe === 'OUTROS' && !pedido.equipe_outro.trim())
+      return setMsg({ tom: 'erro', texto: 'Diga qual é a área quando a equipe é "Outros".' })
+    if (pedido.data_entrada && pedido.data_saida && pedido.data_saida < pedido.data_entrada)
+      return setMsg({ tom: 'erro', texto: 'A saída não pode ser antes da entrada.' })
+
+    const equipeAntes = equipeLabel(s.equipe, s.equipe_outro)
+    const equipeDepois = equipeLabel(pedido.equipe, pedido.equipe_outro || null)
+    const mudancas: string[] = []
+    if (equipeAntes !== equipeDepois) mudancas.push(`Equipe: ${equipeAntes} → ${equipeDepois}`)
+    if (pedido.diretor_id !== s.diretor_id)
+      mudancas.push(
+        `Diretor aprovador: ${s.diretores.nome} → ${
+          diretoresAtivos.find((d) => d.id === pedido.diretor_id)?.nome ?? '?'
+        }`,
+      )
+    if (pedido.data_entrada !== (s.data_entrada ?? '') || pedido.data_saida !== (s.data_saida ?? ''))
+      mudancas.push(
+        `Estadia: ${dataBR(s.data_entrada)} a ${dataBR(s.data_saida)} → ${dataBR(
+          pedido.data_entrada,
+        )} a ${dataBR(pedido.data_saida)}`,
+      )
+    const diasAntes = diasDeDayUse(s)
+    if (dias.join(',') !== diasAntes.join(','))
+      mudancas.push(
+        `Day use: ${diasAntes.map(dataBR).join(' · ') || '—'} → ${
+          dias.map(dataBR).join(' · ') || '—'
+        }`,
+      )
+    if ((pedido.centro_custo ?? '') !== (s.centro_custo ?? ''))
+      mudancas.push(`Centro de custo: ${s.centro_custo || '—'} → ${pedido.centro_custo || '—'}`)
+
+    if (!mudancas.length) {
+      setEditandoPedido(false)
+      return setMsg({ tom: 'sucesso', texto: 'Nada mudou no pedido.' })
+    }
+
+    setSalvando(true)
+    try {
+      const { error } = await supabase
+        .from('solicitacoes')
+        .update({
+          equipe: pedido.equipe,
+          equipe_outro: pedido.equipe === 'OUTROS' ? pedido.equipe_outro.trim() : null,
+          diretor_id: pedido.diretor_id,
+          data_entrada: pedido.data_entrada || null,
+          data_saida: pedido.data_saida || null,
+          day_use_datas: dias,
+          day_use_data: dias[0] ?? null,
+          centro_custo: s.edicoes.avulsa ? pedido.centro_custo.trim() || null : s.centro_custo,
+        })
+        .eq('id', s.id)
+      if (error) throw new Error(error.message)
+      await registrarEvento('EDICAO_PEDIDO', mudancas.join(' · '), { mudancas })
+      setEditandoPedido(false)
+      setMsg({ tom: 'sucesso', texto: `Pedido atualizado: ${mudancas.join(' · ')}` })
+      carregar()
+    } catch (e) {
+      setMsg({ tom: 'erro', texto: e instanceof Error ? e.message : 'Falha ao salvar o pedido.' })
+    } finally {
+      setSalvando(false)
+    }
+  }
+
+  function abrirEdicaoDasPessoas() {
+    if (!s) return
+    setPessoas(
+      s.colaboradores.map((c) => ({
+        id: c.id,
+        nome_completo: c.nome_completo,
+        cpf: c.cpf,
+        data_nascimento: c.data_nascimento,
+        removida: false,
+      })),
+    )
+    setEditandoPessoas(true)
+    setMsg(null)
+  }
+
+  /** Grava nomes, CPFs e nascimentos, e registra quem mexeu no quê. */
+  async function salvarPessoas() {
+    if (!s) return
+    const vivas = pessoas.filter((x) => !x.removida)
+    for (const x of vivas) {
+      if (x.nome_completo.trim().split(/\s+/).length < 2)
+        return setMsg({ tom: 'erro', texto: `Informe nome e sobrenome de "${x.nome_completo}".` })
+      if (!cpfValido(x.cpf))
+        return setMsg({ tom: 'erro', texto: `CPF inválido em "${x.nome_completo}".` })
+      if (!x.data_nascimento)
+        return setMsg({ tom: 'erro', texto: `Informe a data de nascimento de "${x.nome_completo}".` })
+    }
+    const digitos = vivas.map((x) => soDigitos(x.cpf))
+    if (new Set(digitos).size !== digitos.length)
+      return setMsg({ tom: 'erro', texto: 'Há CPF repetido nesta solicitação.' })
+
+    const mudancas: string[] = []
+    const antes = new Map(s.colaboradores.map((c) => [c.id, c]))
+    setSalvando(true)
+    try {
+      for (const x of pessoas) {
+        const original = x.id ? antes.get(x.id) : undefined
+        if (x.removida && x.id) {
+          // Remove a pessoa e, junto, voo, hospedagem e day use dela: são
+          // dados de quem não vai mais.
+          const { error } = await supabase.from('colaboradores').delete().eq('id', x.id)
+          if (error) throw new Error(error.message)
+          mudancas.push(`Removida: ${original?.nome_completo ?? '?'}`)
+          continue
+        }
+        if (!x.id) {
+          const ordem = Math.max(0, ...s.colaboradores.map((c) => c.ordem)) + 1
+          const { error } = await supabase.from('colaboradores').insert({
+            solicitacao_id: s.id,
+            nome_completo: x.nome_completo.trim(),
+            cpf: soDigitos(x.cpf),
+            data_nascimento: x.data_nascimento,
+            ordem,
+          })
+          if (error) throw new Error(error.message)
+          mudancas.push(`Incluída: ${x.nome_completo.trim()}`)
+          continue
+        }
+        if (!original) continue
+        const campos: string[] = []
+        if (x.nome_completo.trim() !== original.nome_completo)
+          campos.push(`nome: ${original.nome_completo} → ${x.nome_completo.trim()}`)
+        if (soDigitos(x.cpf) !== original.cpf) campos.push('CPF corrigido')
+        if (x.data_nascimento !== original.data_nascimento)
+          campos.push(
+            `nascimento: ${dataBR(original.data_nascimento)} → ${dataBR(x.data_nascimento)}`,
+          )
+        if (!campos.length) continue
+        const { error } = await supabase
+          .from('colaboradores')
+          .update({
+            nome_completo: x.nome_completo.trim(),
+            cpf: soDigitos(x.cpf),
+            data_nascimento: x.data_nascimento,
+          })
+          .eq('id', x.id)
+        if (error) throw new Error(error.message)
+        mudancas.push(`${original.nome_completo} — ${campos.join(', ')}`)
+      }
+
+      if (!mudancas.length) {
+        setEditandoPessoas(false)
+        return setMsg({ tom: 'sucesso', texto: 'Nada mudou nas pessoas.' })
+      }
+      await registrarEvento('EDICAO_PESSOAS', mudancas.join(' · '), { mudancas })
+      setEditandoPessoas(false)
+      setMsg({ tom: 'sucesso', texto: `Pessoas atualizadas: ${mudancas.join(' · ')}` })
+      carregar()
+    } catch (e) {
+      setMsg({ tom: 'erro', texto: e instanceof Error ? e.message : 'Falha ao salvar as pessoas.' })
+    } finally {
+      setSalvando(false)
+    }
   }
 
   /**
@@ -694,6 +911,38 @@ export default function Detalhe() {
     if (todas !== s[campo]) {
       await supabase.from('solicitacoes').update({ [campo]: todas }).eq('id', s.id)
       setS((x) => (x ? { ...x, [campo]: todas } : x))
+    }
+  }
+
+  /**
+   * Põe mais uma data do mesmo destino na solicitação.
+   *
+   * Com o remover, é isto que faz uma transferência de operação: entra a
+   * data nova, sai a antiga, e a solicitação continua a mesma — protocolo,
+   * histórico, aprovação e tudo o que a operação já preencheu.
+   */
+  async function adicionarOperacao(edicaoId: string) {
+    if (!s || !edicaoId) return
+    if (!(await garantirSalvo()).ok) return
+    const nova = datasDoDestino.find((e) => e.id === edicaoId)
+    setSalvando(true)
+    try {
+      const { error } = await supabase.rpc('adicionar_operacao', {
+        p_solicitacao: s.id,
+        p_edicao: edicaoId,
+      })
+      if (error) throw new Error(error.message)
+      setMsg({
+        tom: 'sucesso',
+        texto: `Operação ${nova?.codigo ?? ''} (${dataBR(nova?.data_inicio)} a ${dataBR(
+          nova?.data_fim,
+        )}) incluída. Se foi troca de data, remova a antiga na lista de operações.`,
+      })
+      carregar()
+    } catch (e) {
+      setMsg({ tom: 'erro', texto: e instanceof Error ? e.message : 'Falha ao incluir.' })
+    } finally {
+      setSalvando(false)
     }
   }
 
@@ -1348,7 +1597,141 @@ export default function Detalhe() {
       {/* ---------- ABA SOLICITAÇÃO ---------- */}
       {aba === 'Solicitação' && (
         <div className="grid gap-4 lg:grid-cols-2">
-          <Card titulo="Pedido">
+          <Card
+            titulo="Pedido"
+            acao={
+              podeEditar && !editandoPedido ? (
+                <button onClick={abrirEdicaoDoPedido} className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50">
+                  Editar pedido
+                </button>
+              ) : null
+            }
+          >
+            {editandoPedido && pedido ? (
+              <div className="space-y-3 text-sm">
+                <Campo label="Equipe">
+                  <Select
+                    value={pedido.equipe}
+                    onChange={(e) => setPedido({ ...pedido, equipe: e.target.value })}
+                  >
+                    {EQUIPES.map((e) => (
+                      <option key={e.value} value={e.value}>
+                        {e.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Campo>
+                {pedido.equipe === 'OUTROS' && (
+                  <Campo label="Qual área?">
+                    <Input
+                      value={pedido.equipe_outro}
+                      maxLength={120}
+                      onChange={(e) => setPedido({ ...pedido, equipe_outro: e.target.value })}
+                    />
+                  </Campo>
+                )}
+                {s.edicoes.avulsa && (
+                  <Campo label="Centro de custo" obrigatorio={false}>
+                    <Input
+                      value={pedido.centro_custo}
+                      maxLength={120}
+                      onChange={(e) => setPedido({ ...pedido, centro_custo: e.target.value })}
+                    />
+                  </Campo>
+                )}
+                <Campo label="Diretor aprovador">
+                  <Select
+                    value={pedido.diretor_id}
+                    onChange={(e) => setPedido({ ...pedido, diretor_id: e.target.value })}
+                  >
+                    {diretoresAtivos.map((d) => (
+                      <option key={d.id} value={d.id}>
+                        {d.nome}
+                      </option>
+                    ))}
+                  </Select>
+                </Campo>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Campo label="Estadia — entrada" obrigatorio={false}>
+                    <Input
+                      type="date"
+                      value={pedido.data_entrada}
+                      onChange={(e) => setPedido({ ...pedido, data_entrada: e.target.value })}
+                    />
+                  </Campo>
+                  <Campo label="Estadia — saída" obrigatorio={false}>
+                    <Input
+                      type="date"
+                      value={pedido.data_saida}
+                      onChange={(e) => setPedido({ ...pedido, data_saida: e.target.value })}
+                    />
+                  </Campo>
+                </div>
+                {tem(s, 'DAY_USE') && (
+                  <Campo label="Dias de day use">
+                    <div className="space-y-2">
+                      {(pedido.day_use_datas.length ? pedido.day_use_datas : ['']).map(
+                        (dia, i) => (
+                          <div key={i} className="flex items-center gap-2">
+                            <Input
+                              type="date"
+                              className="max-w-xs"
+                              value={dia}
+                              onChange={(e) => {
+                                const dias = [...pedido.day_use_datas]
+                                if (!dias.length) dias.push('')
+                                dias[i] = e.target.value
+                                setPedido({ ...pedido, day_use_datas: dias })
+                              }}
+                            />
+                            {pedido.day_use_datas.length > 1 && (
+                              <button
+                                onClick={() =>
+                                  setPedido({
+                                    ...pedido,
+                                    day_use_datas: pedido.day_use_datas.filter(
+                                      (_, x) => x !== i,
+                                    ),
+                                  })
+                                }
+                                className="rounded px-2 py-1 text-xs font-semibold text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                              >
+                                remover
+                              </button>
+                            )}
+                          </div>
+                        ),
+                      )}
+                    </div>
+                    <button
+                      onClick={() =>
+                        setPedido({
+                          ...pedido,
+                          day_use_datas: [
+                            ...(pedido.day_use_datas.length ? pedido.day_use_datas : ['']),
+                            '',
+                          ],
+                        })
+                      }
+                      className="mt-2 rounded-lg px-2 py-1 text-xs font-semibold text-teal-800 ring-1 ring-inset ring-teal-300 hover:bg-teal-100"
+                    >
+                      + Adicionar outro dia
+                    </button>
+                  </Campo>
+                )}
+                <div className="flex flex-wrap gap-2 pt-1">
+                  <Botao onClick={salvarPedido} carregando={salvando}>
+                    Salvar pedido
+                  </Botao>
+                  <Botao variante="secundario" onClick={() => setEditandoPedido(false)}>
+                    Cancelar
+                  </Botao>
+                </div>
+                <p className="text-xs text-neutral-500">
+                  Quem alterou, o que mudou e quando fica registrado no histórico.
+                </p>
+              </div>
+            ) : (
             <dl className="divide-y divide-neutral-100 text-sm">
               <L t="Destino">
                 {s.edicoes.avulsa ? (
@@ -1460,10 +1843,42 @@ export default function Detalhe() {
                 ) : (
                   `${dataBR(s.edicoes.data_inicio)} a ${dataBR(s.edicoes.data_fim)}`
                 )}
+                {/* Transferir de data é incluir a nova e remover a antiga.
+                    Antes, trocar a data obrigava a cancelar e refazer. */}
+                {podeEditar && !s.edicoes.avulsa && datasDoDestino.length > 0 && (
+                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                    <Select
+                      value=""
+                      disabled={salvando}
+                      onChange={(e) => adicionarOperacao(e.target.value)}
+                      className="max-w-xs text-xs"
+                    >
+                      <option value="">+ Incluir outra data desta operação…</option>
+                      {datasDoDestino
+                        .filter((e) => !operacoes.some((o) => o.id === e.id))
+                        .map((e) => (
+                          <option key={e.id} value={e.id}>
+                            {dataBR(e.data_inicio)} a {dataBR(e.data_fim)} · {e.codigo}
+                          </option>
+                        ))}
+                    </Select>
+                  </div>
+                )}
               </L>
-              <L t="Estadia solicitada">
-                {dataBR(s.data_entrada)} a {dataBR(s.data_saida)}
-              </L>
+              {/* Day use é a data que importa em quem não dorme no destino:
+                  numa solicitação só de day use, a estadia é o periodo da
+                  operação e não responde nada — a data pedida ficava
+                  escondida na aba Operacional. */}
+              {tem(s, 'DAY_USE') && (
+                <L t="Day use solicitado">
+                  {diasDeDayUse(s).map(dataBR).join(' · ') || '—'}
+                </L>
+              )}
+              {!(tem(s, 'DAY_USE') && (s.servicos ?? []).length === 1) && (
+                <L t="Estadia solicitada">
+                  {dataBR(s.data_entrada)} a {dataBR(s.data_saida)}
+                </L>
+              )}
               <L t="Serviços pedidos">
                 <div className="flex flex-wrap gap-1">
                   {(s.servicos ?? []).map((sv) => (
@@ -1595,6 +2010,7 @@ export default function Detalhe() {
                 )}
               </L>
             </dl>
+            )}
           </Card>
 
           <div className="space-y-4">
@@ -1621,7 +2037,119 @@ export default function Detalhe() {
               </dl>
             </Card>
 
-            <Card titulo={`Colaboradores (${s.colaboradores.length})`}>
+            <Card
+              titulo={`Colaboradores (${s.colaboradores.length})`}
+              acao={
+                podeEditar && !editandoPessoas ? (
+                  <button onClick={abrirEdicaoDasPessoas} className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50">
+                    Editar pessoas
+                  </button>
+                ) : null
+              }
+            >
+              {editandoPessoas ? (
+                <div className="space-y-3 text-sm">
+                  {pessoas.map((x, i) => (
+                    <div
+                      key={x.id ?? `nova-${i}`}
+                      className={
+                        'rounded-lg p-3 ring-1 ring-inset ' +
+                        (x.removida
+                          ? 'bg-red-50 ring-red-200'
+                          : 'bg-neutral-50 ring-neutral-200')
+                      }
+                    >
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                          {x.removida ? 'Será removida ao salvar' : `Pessoa ${i + 1}`}
+                        </span>
+                        <button
+                          onClick={() =>
+                            setPessoas((ps) =>
+                              x.id
+                                ? ps.map((y, j) =>
+                                    j === i ? { ...y, removida: !y.removida } : y,
+                                  )
+                                : ps.filter((_, j) => j !== i),
+                            )
+                          }
+                          className="rounded px-2 py-0.5 text-xs font-semibold text-neutral-500 hover:bg-red-50 hover:text-red-600"
+                        >
+                          {x.removida ? 'manter' : 'remover'}
+                        </button>
+                      </div>
+                      {!x.removida && (
+                        <div className="space-y-2">
+                          <Campo label="Nome completo">
+                            <Input
+                              value={x.nome_completo}
+                              onChange={(e) =>
+                                setPessoas((ps) =>
+                                  ps.map((y, j) =>
+                                    j === i ? { ...y, nome_completo: e.target.value } : y,
+                                  ),
+                                )
+                              }
+                            />
+                          </Campo>
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            <Campo label="CPF">
+                              <Input
+                                value={mascaraCpf(x.cpf)}
+                                className="font-mono"
+                                onChange={(e) =>
+                                  setPessoas((ps) =>
+                                    ps.map((y, j) =>
+                                      j === i ? { ...y, cpf: e.target.value } : y,
+                                    ),
+                                  )
+                                }
+                              />
+                            </Campo>
+                            <Campo label="Nascimento">
+                              <Input
+                                type="date"
+                                value={x.data_nascimento ?? ''}
+                                onChange={(e) =>
+                                  setPessoas((ps) =>
+                                    ps.map((y, j) =>
+                                      j === i ? { ...y, data_nascimento: e.target.value } : y,
+                                    ),
+                                  )
+                                }
+                              />
+                            </Campo>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() =>
+                      setPessoas((ps) => [
+                        ...ps,
+                        { nome_completo: '', cpf: '', data_nascimento: '' },
+                      ])
+                    }
+                    className="rounded-lg px-2 py-1 text-xs font-semibold text-neutral-700 ring-1 ring-inset ring-neutral-300 hover:bg-neutral-50"
+                  >
+                    + Incluir pessoa
+                  </button>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <Botao onClick={salvarPessoas} carregando={salvando}>
+                      Salvar pessoas
+                    </Botao>
+                    <Botao variante="secundario" onClick={() => setEditandoPessoas(false)}>
+                      Cancelar
+                    </Botao>
+                  </div>
+                  <p className="text-xs text-neutral-500">
+                    Remover alguém apaga também o voo, a hospedagem e o day use dessa
+                    pessoa. Tudo fica registrado no histórico.
+                  </p>
+                </div>
+              ) : (
+              <>
               <ul className="divide-y divide-neutral-100 text-sm">
                 {s.colaboradores.map((c) => (
                   <li key={c.id} className="flex items-center justify-between gap-3 py-2.5">
@@ -1648,6 +2176,8 @@ export default function Detalhe() {
               <p className="mt-3 text-xs text-neutral-400">
                 Toda visualização de CPF fica registrada no histórico.
               </p>
+              </>
+              )}
             </Card>
           </div>
         </div>
@@ -2162,6 +2692,39 @@ function tem(s: Solicitacao, servico: string) {
   return s.precisa_transporte && s.modal === servico
 }
 
+
+/** O que dá para corrigir no pedido depois que ele chegou. */
+type PedidoEditavel = {
+  equipe: string
+  equipe_outro: string
+  diretor_id: string
+  data_entrada: string
+  data_saida: string
+  day_use_datas: string[]
+  centro_custo: string
+}
+
+type PessoaEditavel = {
+  id?: string
+  nome_completo: string
+  cpf: string
+  data_nascimento: string
+  removida?: boolean
+}
+
+const soDigitos = (v: string) => (v ?? '').replace(/\D/g, '')
+
+/** Mesma checagem do formulário público: CPF errado trava a emissão. */
+function cpfValido(valor: string) {
+  const cpf = soDigitos(valor)
+  if (!/^\d{11}$/.test(cpf) || /^(\d)\1{10}$/.test(cpf)) return false
+  for (let t = 9; t < 11; t++) {
+    let soma = 0
+    for (let i = 0; i < t; i++) soma += parseInt(cpf[i]) * (t + 1 - i)
+    if (((soma * 10) % 11) % 10 !== parseInt(cpf[t])) return false
+  }
+  return true
+}
 
 /** Tudo o que a aba operacional grava, do jeito que fica na tela. */
 type RetratoOperacional = {
