@@ -146,45 +146,70 @@ Deno.serve(async (req) => {
     const idsColab = linhas.flatMap((s) => (s.colaboradores ?? []).map((c) => c.id))
 
     // ---- dados relacionados ---------------------------------------------
+    /**
+     * Busca em lotes.
+     *
+     * `in(campo, [...])` vira query string, e com centenas de ids a URL passa
+     * do tamanho aceito: a consulta falha e volta vazia. Foi exatamente isso
+     * que deixou voo e rodoviário vazios em TODAS as pessoas — a lista inteira
+     * de colaboradores ia de uma vez. Em lotes, cada URL é curta.
+     *
+     * E o erro agora sobe: falha silenciosa que vira lista vazia é pior do que
+     * falha, porque a integração acha que a pessoa não tem voo.
+     */
+    const LOTE = 100
+    async function emLotes<T>(tabela: string, colunas: string, campo: string, ids: string[]) {
+      const unicos = [...new Set(ids)]
+      const saida: T[] = []
+      for (let i = 0; i < unicos.length; i += LOTE) {
+        const { data, error } = await sb
+          .from(tabela)
+          .select(colunas)
+          .in(campo, unicos.slice(i, i + LOTE))
+        if (error) throw new Error(`${tabela}: ${error.message}`)
+        saida.push(...((data ?? []) as T[]))
+      }
+      return saida
+    }
+
     const [voos, rodo, van, carro, pedidos] = await Promise.all([
-      sb
-        .from('voos')
-        .select(
-          'colaborador_id, trecho, companhia, numero_voo, aeroporto_origem, aeroporto_destino, ' +
-            'partida_data, partida_hora, chegada_data, chegada_hora, localizador, updated_at',
-        )
-        .in('colaborador_id', idsColab),
-      sb
-        .from('transporte_rodoviario')
-        .select(
-          'colaborador_id, empresa, numero_onibus, apresentacao_data, apresentacao_hora, ' +
-            'ida_data, ida_hora, local_embarque_ida, volta_data, volta_hora, ' +
-            'local_embarque_volta, observacoes, updated_at',
-        )
-        .in('colaborador_id', idsColab),
-      sb
-        .from('locacao_van')
-        .select(
-          'solicitacao_id, empresa, motorista, local_saida, saida_data, saida_hora, ' +
-            'local_chegada, chegada_data, chegada_hora, qtd_passageiros, updated_at',
-        )
-        .in('solicitacao_id', idsSol),
-      sb
-        .from('locacao_carro')
-        .select(
-          'solicitacao_id, condutor_colaborador_id, locadora, categoria, retirada_local, ' +
-            'retirada_data, retirada_hora, devolucao_local, devolucao_data, devolucao_hora, ' +
-            'codigo_reserva, observacoes, updated_at',
-        )
-        .in('solicitacao_id', idsSol),
-      sb
-        .from('solicitacao_carros')
-        .select(
-          'solicitacao_id, condutor_nome, tipo_carro, transmissao, local_retirada, ' +
-            'retirada_data, retirada_hora, devolucao_data, devolucao_hora, ordem',
-        )
-        .in('solicitacao_id', idsSol)
-        .order('ordem'),
+      emLotes<{ colaborador_id: string }>(
+        'voos',
+        'colaborador_id, trecho, companhia, numero_voo, aeroporto_origem, aeroporto_destino, ' +
+          'partida_data, partida_hora, chegada_data, chegada_hora, localizador, updated_at',
+        'colaborador_id',
+        idsColab,
+      ),
+      emLotes<{ colaborador_id: string }>(
+        'transporte_rodoviario',
+        'colaborador_id, empresa, numero_onibus, apresentacao_data, apresentacao_hora, ' +
+          'ida_data, ida_hora, local_embarque_ida, volta_data, volta_hora, ' +
+          'local_embarque_volta, observacoes, updated_at',
+        'colaborador_id',
+        idsColab,
+      ),
+      emLotes<{ solicitacao_id: string }>(
+        'locacao_van',
+        'solicitacao_id, empresa, motorista, local_saida, saida_data, saida_hora, ' +
+          'local_chegada, chegada_data, chegada_hora, qtd_passageiros, updated_at',
+        'solicitacao_id',
+        idsSol,
+      ),
+      emLotes<{ solicitacao_id: string }>(
+        'locacao_carro',
+        'solicitacao_id, condutor_colaborador_id, locadora, categoria, retirada_local, ' +
+          'retirada_data, retirada_hora, devolucao_local, devolucao_data, devolucao_hora, ' +
+          'codigo_reserva, observacoes, updated_at',
+        'solicitacao_id',
+        idsSol,
+      ),
+      emLotes<{ solicitacao_id: string }>(
+        'solicitacao_carros',
+        'solicitacao_id, condutor_nome, tipo_carro, transmissao, local_retirada, ' +
+          'retirada_data, retirada_hora, devolucao_data, devolucao_hora, ordem',
+        'solicitacao_id',
+        idsSol,
+      ),
     ])
 
     const porColaborador = <T extends { colaborador_id: string }>(dados: T[] | null) => {
@@ -198,11 +223,17 @@ Deno.serve(async (req) => {
       return m
     }
 
-    const voosDe = porColaborador(voos.data as { colaborador_id: string }[] | null)
-    const rodoDe = porColaborador(rodo.data as { colaborador_id: string }[] | null)
-    const vanDe = porSolicitacao(van.data as { solicitacao_id: string }[] | null)
-    const carroDe = porSolicitacao(carro.data as { solicitacao_id: string }[] | null)
-    const pedidosDe = porSolicitacao(pedidos.data as { solicitacao_id: string }[] | null)
+    const voosDe = porColaborador(voos)
+    const rodoDe = porColaborador(rodo)
+    const vanDe = porSolicitacao(van)
+    const carroDe = porSolicitacao(carro)
+    const pedidosDe = porSolicitacao(pedidos)
+
+    // Quem dirige: a locação guarda o id do colaborador, e a integração
+    // precisa do nome — é por ele que a escala identifica o condutor.
+    const nomeDoColaborador = new Map(
+      linhas.flatMap((x) => (x.colaboradores ?? []).map((c) => [c.id, c.nome_completo])),
+    )
 
     const semChaves = <T extends Record<string, unknown>>(x: T, fora: string[]) => {
       const r: Record<string, unknown> = {}
@@ -226,6 +257,17 @@ Deno.serve(async (req) => {
         (minhaVan as { updated_at?: string } | null)?.updated_at,
         ...meusCarros.map((c) => (c as { updated_at?: string }).updated_at),
       )
+
+      // Nome do condutor no lugar do id: o id não diz nada para quem lê a
+      // escala, e o CPF do condutor não sai daqui.
+      const carrosLimpos = meusCarros.map((c) => {
+        const bruto = c as Record<string, unknown>
+        return {
+          condutor_nome:
+            nomeDoColaborador.get(String(bruto.condutor_colaborador_id ?? '')) ?? null,
+          ...semChaves(bruto, ['solicitacao_id', 'condutor_colaborador_id', 'updated_at']),
+        }
+      })
 
       return {
         protocolo: s.protocolo,
@@ -257,20 +299,8 @@ Deno.serve(async (req) => {
           : null,
         // `carro` é a primeira locação, como a integração espera; `carros`
         // traz todas, porque hoje há uma locação por condutor.
-        carro: meusCarros.length
-          ? semChaves(meusCarros[0] as Record<string, unknown>, [
-              'solicitacao_id',
-              'condutor_colaborador_id',
-              'updated_at',
-            ])
-          : null,
-        carros: meusCarros.map((c) =>
-          semChaves(c as Record<string, unknown>, [
-            'solicitacao_id',
-            'condutor_colaborador_id',
-            'updated_at',
-          ]),
-        ),
+        carro: carrosLimpos[0] ?? null,
+        carros: carrosLimpos,
         carros_pedidos: (pedidosDe.get(s.id) ?? []).map((p) =>
           semChaves(p as Record<string, unknown>, ['solicitacao_id', 'ordem']),
         ),
