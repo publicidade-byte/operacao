@@ -1,14 +1,14 @@
 /* ---------------------------------------------------------------------------
    MODO ESCURO DO PAINEL OPERACIONAL
 
-   O tema claro é a referência: aqui só trocamos o valor das cores, nunca o
-   significado. Cinza e branco viram uma escala escura (variáveis abaixo), e
-   cada cor de sinal — verde aprovado, vermelho erro, âmbar aguardando —
-   vira a mesma cor sobre fundo escuro, com o texto clareado para continuar
-   legível.
+   Sobriedade é a régua. No escuro, cor saturada sobre preto puro brilha e o
+   painel fica com cara de brinquedo — então o fundo é cinza levemente
+   azulado, as etiquetas são manchas discretas e o texto colorido é
+   dessaturado. A cor continua servindo para separar (verde aprovado,
+   vermelho erro, âmbar aguardando), nunca para decorar.
 
    Este arquivo é GERADO por scripts/tema-escuro.mjs a partir das classes que
-   o código realmente usa. Classe nova de cor: rode o script de novo.
+   o código realmente usa. Classe de cor nova: rode o script de novo.
 
    A classe .escuro entra no <html> só enquanto o painel operacional está
    aberto — o formulário público e a consulta continuam claros.
@@ -19,127 +19,151 @@
      escuros. Sem isto, o calendário do campo de data abre branco. */
   color-scheme: dark;
 
-  /* Superfícies: branco vira a cor do cartão; a escala de cinza inverte. */
-  --color-white: #121214;
-  --color-neutral-50: #0b0b0d;
-  --color-neutral-100: #1a1a1e;
-  --color-neutral-200: #26262c;
-  --color-neutral-300: #3a3a42;
-  /* Textos secundários ficam mais claros do que a inversão pura daria:
-     no escuro, cinza médio sobre preto é o primeiro a sumir. */
-  --color-neutral-400: #8f8f9a;
-  --color-neutral-500: #a3a3ad;
-  --color-neutral-600: #bdbdc6;
-  --color-neutral-700: #d6d6dd;
-  --color-neutral-800: #e8e8ed;
-  --color-neutral-900: #f6f6f8;
+  /* Superfícies: cinza azulado, nunca preto. Preto puro endurece o contraste
+     e faz qualquer cor em cima dele vibrar. */
+  --color-white: #161a21;
+  --color-neutral-50: #0f1218;
+  --color-neutral-100: #1b1f27;
+  --color-neutral-200: #252a34;
+  --color-neutral-300: #333945;
+  /* Textos: mais claros do que a inversão pura daria. No escuro, cinza médio
+     sobre fundo escuro é a primeira coisa a sumir. */
+  --color-neutral-400: #8e96a5;
+  --color-neutral-500: #9ea6b5;
+  --color-neutral-600: #b7bfcc;
+  --color-neutral-700: #ced5e0;
+  --color-neutral-800: #e0e5ee;
+  --color-neutral-900: #eff2f7;
 
-  /* Amarelo da marca continua amarelo: é a identidade e o foco do teclado.
-     Só as manchas claras (fundo de etiqueta) escurecem. */
-  --color-marca-50: #221d00;
-  --color-marca-100: #2c2500;
-  --color-marca-200: #3b3200;
-  --color-marca-700: #ffe14d;
+  /* Amarelo da marca continua amarelo — é a identidade e o foco do teclado —
+     mas um tom abaixo, porque no escuro o amarelo claro estoura. */
+  --color-marca-50: #21200f;
+  --color-marca-100: #2a2812;
+  --color-marca-200: #3a3618;
+  --color-marca-300: #e8c53f;
+  --color-marca-400: #dbb62f;
+  --color-marca-500: #c9a521;
+  --color-marca-600: #ab8b16;
+  --color-marca-700: #f0d46a;
 }
 
 /* Texto propositalmente apagado (rodapés, "—"): fica apagado, não invisível. */
 .escuro .text-neutral-300 {
-  color: #7e7e89;
+  color: #7e8697;
 }
 
-/* Botão amarelo e etiquetas amarelas cheias: o texto nelas é preto no claro
-   e precisa continuar preto no escuro — o cinza-900 virou quase branco. */
+/* Botão e etiqueta amarelos cheios: o texto neles é preto no tema claro e
+   precisa continuar preto — o cinza-900 virou quase branco. */
 .escuro :is(.bg-marca-300, .bg-marca-400, .bg-marca-500, .bg-marca-600) {
   color: #14130a;
 }
 
-/* A sombra some no escuro; um contorno fino devolve o relevo dos cartões. */
+/* Fundo de cor cheia: o texto branco do tema claro viraria tinta escura,
+   porque o branco virou superfície. Aqui ele volta a ser claro. */
+.escuro :is(.bg-emerald-600, .bg-red-600) {
+  color: #e7ebf2;
+}
+
+/* Cinza-900 e cinza-800 como FUNDO (a etiqueta "Concluída", o hover do botão)
+   viravam um bloco branco no meio do painel: a coisa mais clara da tela para
+   dizer a mais banal. Vira ardósia, com o texto claro por cima. */
+.escuro :is(.bg-neutral-900, .bg-neutral-800, .hover\:bg-neutral-900:hover) {
+  background-color: #2c333f;
+  color: #e7ebf2;
+}
+.escuro .ring-neutral-900 {
+  --tw-ring-color: #3c4453;
+}
+
+/* Sombra não aparece no escuro; o relevo do cartão vira um fio de luz. */
 .escuro :is(.shadow-sm, .shadow-lg) {
-  box-shadow: 0 1px 0 0 rgb(255 255 255 / 0.06), 0 8px 24px rgb(0 0 0 / 0.45);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.04),
+    0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 /* ---- Cores de sinal, geradas das classes em uso ---- */
 .escuro .accent-emerald-600 { accent-color: var(--color-emerald-500); }
 .escuro .accent-red-600 { accent-color: var(--color-red-500); }
-.escuro .bg-amber-100 { background-color: color-mix(in oklab, var(--color-amber-500) 20%, #121214); }
-.escuro .bg-amber-50 { background-color: color-mix(in oklab, var(--color-amber-500) 20%, #121214); }
-.escuro .bg-blue-100 { background-color: color-mix(in oklab, var(--color-blue-500) 20%, #121214); }
-.escuro .bg-cyan-100 { background-color: color-mix(in oklab, var(--color-cyan-500) 20%, #121214); }
-.escuro .bg-emerald-100 { background-color: color-mix(in oklab, var(--color-emerald-500) 20%, #121214); }
-.escuro .bg-emerald-50 { background-color: color-mix(in oklab, var(--color-emerald-500) 20%, #121214); }
-.escuro .bg-emerald-50\/70 { background-color: color-mix(in oklab, var(--color-emerald-500) 20%, #121214); }
-.escuro .bg-emerald-600 { background-color: var(--color-emerald-500); }
-.escuro .bg-fuchsia-100 { background-color: color-mix(in oklab, var(--color-fuchsia-500) 20%, #121214); }
-.escuro .bg-fuchsia-50 { background-color: color-mix(in oklab, var(--color-fuchsia-500) 20%, #121214); }
-.escuro .bg-lime-100 { background-color: color-mix(in oklab, var(--color-lime-500) 20%, #121214); }
-.escuro .bg-orange-100 { background-color: color-mix(in oklab, var(--color-orange-500) 20%, #121214); }
-.escuro .bg-purple-100 { background-color: color-mix(in oklab, var(--color-purple-500) 20%, #121214); }
-.escuro .bg-red-100 { background-color: color-mix(in oklab, var(--color-red-500) 20%, #121214); }
-.escuro .bg-red-50 { background-color: color-mix(in oklab, var(--color-red-500) 20%, #121214); }
-.escuro .bg-red-50\/70 { background-color: color-mix(in oklab, var(--color-red-500) 20%, #121214); }
-.escuro .bg-red-600 { background-color: var(--color-red-500); }
-.escuro .bg-rose-100 { background-color: color-mix(in oklab, var(--color-rose-500) 20%, #121214); }
-.escuro .bg-sky-100 { background-color: color-mix(in oklab, var(--color-sky-500) 20%, #121214); }
-.escuro .bg-sky-50 { background-color: color-mix(in oklab, var(--color-sky-500) 20%, #121214); }
-.escuro .bg-teal-100 { background-color: color-mix(in oklab, var(--color-teal-500) 20%, #121214); }
-.escuro .bg-teal-50 { background-color: color-mix(in oklab, var(--color-teal-500) 20%, #121214); }
-.escuro .bg-teal-50\/40 { background-color: color-mix(in oklab, var(--color-teal-500) 20%, #121214); }
-.escuro .bg-violet-100 { background-color: color-mix(in oklab, var(--color-violet-500) 20%, #121214); }
-.escuro .border-red-400 { border-color: color-mix(in oklab, var(--color-red-400) 45%, transparent); }
-.escuro .border-teal-200 { border-color: color-mix(in oklab, var(--color-teal-400) 45%, transparent); }
-.escuro .focus\:border-red-500:focus { border-color: var(--color-red-500); }
-.escuro .focus\:ring-red-500\/20:focus { --tw-ring-color: var(--color-red-500); }
-.escuro .hover\:bg-amber-100\/70:hover { background-color: color-mix(in oklab, var(--color-amber-500) 20%, #121214); }
-.escuro .hover\:bg-emerald-50:hover { background-color: color-mix(in oklab, var(--color-emerald-500) 20%, #121214); }
-.escuro .hover\:bg-emerald-700:hover { background-color: var(--color-emerald-500); }
-.escuro .hover\:bg-red-50:hover { background-color: color-mix(in oklab, var(--color-red-500) 20%, #121214); }
-.escuro .hover\:bg-red-700:hover { background-color: var(--color-red-500); }
-.escuro .hover\:bg-teal-100:hover { background-color: color-mix(in oklab, var(--color-teal-500) 20%, #121214); }
-.escuro .hover\:text-red-600:hover { color: var(--color-red-300); }
-.escuro .ring-amber-300 { --tw-ring-color: color-mix(in oklab, var(--color-amber-400) 45%, transparent); }
-.escuro .ring-amber-400 { --tw-ring-color: color-mix(in oklab, var(--color-amber-400) 45%, transparent); }
-.escuro .ring-blue-300 { --tw-ring-color: color-mix(in oklab, var(--color-blue-400) 45%, transparent); }
-.escuro .ring-cyan-300 { --tw-ring-color: color-mix(in oklab, var(--color-cyan-400) 45%, transparent); }
-.escuro .ring-emerald-200 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-400) 45%, transparent); }
-.escuro .ring-emerald-300 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-400) 45%, transparent); }
-.escuro .ring-emerald-400 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-400) 45%, transparent); }
-.escuro .ring-emerald-700 { --tw-ring-color: var(--color-emerald-500); }
-.escuro .ring-fuchsia-200 { --tw-ring-color: color-mix(in oklab, var(--color-fuchsia-400) 45%, transparent); }
-.escuro .ring-fuchsia-300 { --tw-ring-color: color-mix(in oklab, var(--color-fuchsia-400) 45%, transparent); }
-.escuro .ring-lime-300 { --tw-ring-color: color-mix(in oklab, var(--color-lime-400) 45%, transparent); }
-.escuro .ring-orange-300 { --tw-ring-color: color-mix(in oklab, var(--color-orange-400) 45%, transparent); }
-.escuro .ring-purple-300 { --tw-ring-color: color-mix(in oklab, var(--color-purple-400) 45%, transparent); }
-.escuro .ring-red-200 { --tw-ring-color: color-mix(in oklab, var(--color-red-400) 45%, transparent); }
-.escuro .ring-red-300 { --tw-ring-color: color-mix(in oklab, var(--color-red-400) 45%, transparent); }
-.escuro .ring-red-400 { --tw-ring-color: color-mix(in oklab, var(--color-red-400) 45%, transparent); }
-.escuro .ring-red-700 { --tw-ring-color: var(--color-red-500); }
-.escuro .ring-rose-300 { --tw-ring-color: color-mix(in oklab, var(--color-rose-400) 45%, transparent); }
-.escuro .ring-sky-200 { --tw-ring-color: color-mix(in oklab, var(--color-sky-400) 45%, transparent); }
-.escuro .ring-sky-300 { --tw-ring-color: color-mix(in oklab, var(--color-sky-400) 45%, transparent); }
-.escuro .ring-teal-200 { --tw-ring-color: color-mix(in oklab, var(--color-teal-400) 45%, transparent); }
-.escuro .ring-teal-300 { --tw-ring-color: color-mix(in oklab, var(--color-teal-400) 45%, transparent); }
-.escuro .ring-violet-300 { --tw-ring-color: color-mix(in oklab, var(--color-violet-400) 45%, transparent); }
-.escuro .text-amber-700 { color: var(--color-amber-300); }
-.escuro .text-amber-800 { color: var(--color-amber-300); }
-.escuro .text-amber-900 { color: var(--color-amber-300); }
-.escuro .text-blue-800 { color: var(--color-blue-300); }
-.escuro .text-cyan-900 { color: var(--color-cyan-300); }
-.escuro .text-emerald-600 { color: var(--color-emerald-300); }
-.escuro .text-emerald-700 { color: var(--color-emerald-300); }
-.escuro .text-emerald-800 { color: var(--color-emerald-300); }
-.escuro .text-emerald-900 { color: var(--color-emerald-300); }
-.escuro .text-fuchsia-800 { color: var(--color-fuchsia-300); }
-.escuro .text-fuchsia-900 { color: var(--color-fuchsia-300); }
-.escuro .text-lime-900 { color: var(--color-lime-300); }
-.escuro .text-orange-900 { color: var(--color-orange-300); }
-.escuro .text-purple-800 { color: var(--color-purple-300); }
-.escuro .text-red-600 { color: var(--color-red-300); }
-.escuro .text-red-700 { color: var(--color-red-300); }
-.escuro .text-red-800 { color: var(--color-red-300); }
-.escuro .text-red-900 { color: var(--color-red-300); }
-.escuro .text-rose-900 { color: var(--color-rose-300); }
-.escuro .text-sky-900 { color: var(--color-sky-300); }
-.escuro .text-teal-700 { color: var(--color-teal-300); }
-.escuro .text-teal-800 { color: var(--color-teal-300); }
-.escuro .text-teal-900 { color: var(--color-teal-300); }
-.escuro .text-violet-900 { color: var(--color-violet-300); }
+.escuro .bg-amber-100 { background-color: color-mix(in oklab, var(--color-amber-500) 12%, #161a21); }
+.escuro .bg-amber-50 { background-color: color-mix(in oklab, var(--color-amber-500) 12%, #161a21); }
+.escuro .bg-blue-100 { background-color: color-mix(in oklab, var(--color-blue-500) 12%, #161a21); }
+.escuro .bg-cyan-100 { background-color: color-mix(in oklab, var(--color-cyan-500) 12%, #161a21); }
+.escuro .bg-emerald-100 { background-color: color-mix(in oklab, var(--color-emerald-500) 12%, #161a21); }
+.escuro .bg-emerald-50 { background-color: color-mix(in oklab, var(--color-emerald-500) 12%, #161a21); }
+.escuro .bg-emerald-50\/70 { background-color: color-mix(in oklab, var(--color-emerald-500) 12%, #161a21); }
+.escuro .bg-emerald-600 { background-color: color-mix(in oklab, var(--color-emerald-700) 82%, #000); }
+.escuro .bg-fuchsia-100 { background-color: color-mix(in oklab, var(--color-fuchsia-500) 12%, #161a21); }
+.escuro .bg-fuchsia-50 { background-color: color-mix(in oklab, var(--color-fuchsia-500) 12%, #161a21); }
+.escuro .bg-lime-100 { background-color: color-mix(in oklab, var(--color-lime-500) 12%, #161a21); }
+.escuro .bg-orange-100 { background-color: color-mix(in oklab, var(--color-orange-500) 12%, #161a21); }
+.escuro .bg-purple-100 { background-color: color-mix(in oklab, var(--color-purple-500) 12%, #161a21); }
+.escuro .bg-red-100 { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }
+.escuro .bg-red-50 { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }
+.escuro .bg-red-50\/70 { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }
+.escuro .bg-red-600 { background-color: color-mix(in oklab, var(--color-red-700) 82%, #000); }
+.escuro .bg-rose-100 { background-color: color-mix(in oklab, var(--color-rose-500) 12%, #161a21); }
+.escuro .bg-sky-100 { background-color: color-mix(in oklab, var(--color-sky-500) 12%, #161a21); }
+.escuro .bg-sky-50 { background-color: color-mix(in oklab, var(--color-sky-500) 12%, #161a21); }
+.escuro .bg-teal-100 { background-color: color-mix(in oklab, var(--color-teal-500) 12%, #161a21); }
+.escuro .bg-teal-50 { background-color: color-mix(in oklab, var(--color-teal-500) 12%, #161a21); }
+.escuro .bg-teal-50\/40 { background-color: color-mix(in oklab, var(--color-teal-500) 12%, #161a21); }
+.escuro .bg-violet-100 { background-color: color-mix(in oklab, var(--color-violet-500) 12%, #161a21); }
+.escuro .border-red-400 { border-color: color-mix(in oklab, var(--color-red-400) 26%, transparent); }
+.escuro .border-teal-200 { border-color: color-mix(in oklab, var(--color-teal-400) 26%, transparent); }
+.escuro .focus\:border-red-500:focus { border-color: color-mix(in oklab, var(--color-red-500) 55%, transparent); }
+.escuro .focus\:ring-red-500\/20:focus { --tw-ring-color: color-mix(in oklab, var(--color-red-500) 55%, transparent); }
+.escuro .hover\:bg-amber-100\/70:hover { background-color: color-mix(in oklab, var(--color-amber-500) 12%, #161a21); }
+.escuro .hover\:bg-emerald-50:hover { background-color: color-mix(in oklab, var(--color-emerald-500) 12%, #161a21); }
+.escuro .hover\:bg-emerald-700:hover { background-color: color-mix(in oklab, var(--color-emerald-700) 82%, #000); }
+.escuro .hover\:bg-red-50:hover { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }
+.escuro .hover\:bg-red-700:hover { background-color: color-mix(in oklab, var(--color-red-700) 82%, #000); }
+.escuro .hover\:bg-teal-100:hover { background-color: color-mix(in oklab, var(--color-teal-500) 12%, #161a21); }
+.escuro .hover\:text-red-600:hover { color: color-mix(in oklab, var(--color-red-300) 45%, #e7ebf2); }
+.escuro .ring-amber-300 { --tw-ring-color: color-mix(in oklab, var(--color-amber-400) 26%, transparent); }
+.escuro .ring-amber-400 { --tw-ring-color: color-mix(in oklab, var(--color-amber-400) 26%, transparent); }
+.escuro .ring-blue-300 { --tw-ring-color: color-mix(in oklab, var(--color-blue-400) 26%, transparent); }
+.escuro .ring-cyan-300 { --tw-ring-color: color-mix(in oklab, var(--color-cyan-400) 26%, transparent); }
+.escuro .ring-emerald-200 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-400) 26%, transparent); }
+.escuro .ring-emerald-300 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-400) 26%, transparent); }
+.escuro .ring-emerald-400 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-400) 26%, transparent); }
+.escuro .ring-emerald-700 { --tw-ring-color: color-mix(in oklab, var(--color-emerald-500) 55%, transparent); }
+.escuro .ring-fuchsia-200 { --tw-ring-color: color-mix(in oklab, var(--color-fuchsia-400) 26%, transparent); }
+.escuro .ring-fuchsia-300 { --tw-ring-color: color-mix(in oklab, var(--color-fuchsia-400) 26%, transparent); }
+.escuro .ring-lime-300 { --tw-ring-color: color-mix(in oklab, var(--color-lime-400) 26%, transparent); }
+.escuro .ring-orange-300 { --tw-ring-color: color-mix(in oklab, var(--color-orange-400) 26%, transparent); }
+.escuro .ring-purple-300 { --tw-ring-color: color-mix(in oklab, var(--color-purple-400) 26%, transparent); }
+.escuro .ring-red-200 { --tw-ring-color: color-mix(in oklab, var(--color-red-400) 26%, transparent); }
+.escuro .ring-red-300 { --tw-ring-color: color-mix(in oklab, var(--color-red-400) 26%, transparent); }
+.escuro .ring-red-400 { --tw-ring-color: color-mix(in oklab, var(--color-red-400) 26%, transparent); }
+.escuro .ring-red-700 { --tw-ring-color: color-mix(in oklab, var(--color-red-500) 55%, transparent); }
+.escuro .ring-rose-300 { --tw-ring-color: color-mix(in oklab, var(--color-rose-400) 26%, transparent); }
+.escuro .ring-sky-200 { --tw-ring-color: color-mix(in oklab, var(--color-sky-400) 26%, transparent); }
+.escuro .ring-sky-300 { --tw-ring-color: color-mix(in oklab, var(--color-sky-400) 26%, transparent); }
+.escuro .ring-teal-200 { --tw-ring-color: color-mix(in oklab, var(--color-teal-400) 26%, transparent); }
+.escuro .ring-teal-300 { --tw-ring-color: color-mix(in oklab, var(--color-teal-400) 26%, transparent); }
+.escuro .ring-violet-300 { --tw-ring-color: color-mix(in oklab, var(--color-violet-400) 26%, transparent); }
+.escuro .text-amber-700 { color: color-mix(in oklab, var(--color-amber-300) 45%, #e7ebf2); }
+.escuro .text-amber-800 { color: color-mix(in oklab, var(--color-amber-300) 45%, #e7ebf2); }
+.escuro .text-amber-900 { color: color-mix(in oklab, var(--color-amber-300) 45%, #e7ebf2); }
+.escuro .text-blue-800 { color: color-mix(in oklab, var(--color-blue-300) 45%, #e7ebf2); }
+.escuro .text-cyan-900 { color: color-mix(in oklab, var(--color-cyan-300) 45%, #e7ebf2); }
+.escuro .text-emerald-600 { color: color-mix(in oklab, var(--color-emerald-300) 45%, #e7ebf2); }
+.escuro .text-emerald-700 { color: color-mix(in oklab, var(--color-emerald-300) 45%, #e7ebf2); }
+.escuro .text-emerald-800 { color: color-mix(in oklab, var(--color-emerald-300) 45%, #e7ebf2); }
+.escuro .text-emerald-900 { color: color-mix(in oklab, var(--color-emerald-300) 45%, #e7ebf2); }
+.escuro .text-fuchsia-800 { color: color-mix(in oklab, var(--color-fuchsia-300) 45%, #e7ebf2); }
+.escuro .text-fuchsia-900 { color: color-mix(in oklab, var(--color-fuchsia-300) 45%, #e7ebf2); }
+.escuro .text-lime-900 { color: color-mix(in oklab, var(--color-lime-300) 45%, #e7ebf2); }
+.escuro .text-orange-900 { color: color-mix(in oklab, var(--color-orange-300) 45%, #e7ebf2); }
+.escuro .text-purple-800 { color: color-mix(in oklab, var(--color-purple-300) 45%, #e7ebf2); }
+.escuro .text-red-600 { color: color-mix(in oklab, var(--color-red-300) 45%, #e7ebf2); }
+.escuro .text-red-700 { color: color-mix(in oklab, var(--color-red-300) 45%, #e7ebf2); }
+.escuro .text-red-800 { color: color-mix(in oklab, var(--color-red-300) 45%, #e7ebf2); }
+.escuro .text-red-900 { color: color-mix(in oklab, var(--color-red-300) 45%, #e7ebf2); }
+.escuro .text-rose-900 { color: color-mix(in oklab, var(--color-rose-300) 45%, #e7ebf2); }
+.escuro .text-sky-900 { color: color-mix(in oklab, var(--color-sky-300) 45%, #e7ebf2); }
+.escuro .text-teal-700 { color: color-mix(in oklab, var(--color-teal-300) 45%, #e7ebf2); }
+.escuro .text-teal-800 { color: color-mix(in oklab, var(--color-teal-300) 45%, #e7ebf2); }
+.escuro .text-teal-900 { color: color-mix(in oklab, var(--color-teal-300) 45%, #e7ebf2); }
+.escuro .text-violet-900 { color: color-mix(in oklab, var(--color-violet-300) 45%, #e7ebf2); }

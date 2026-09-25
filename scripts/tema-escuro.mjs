@@ -1,6 +1,15 @@
 import { readdirSync, readFileSync, writeFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 
+/**
+ * Gera o modo escuro do painel a partir das classes que o código usa.
+ *
+ * A régua aqui é sobriedade: no escuro, cor saturada sobre preto puro
+ * brilha e o painel vira brinquedo. Então o fundo é cinza levemente azulado
+ * (não preto), as manchas de cor são discretas e o texto colorido é
+ * dessaturado — a cor serve para separar, não para chamar atenção.
+ */
+
 // Famílias de sinal (verde = aprovado, vermelho = erro, etc.). O cinza, o
 // branco e o amarelo da marca são tratados à parte, trocando as variáveis.
 const FAMILIAS = [
@@ -40,37 +49,44 @@ for (const a of arquivos) {
   for (const m of texto.matchAll(re)) tokens.add(m[0])
 }
 
-// Fundo dos cartões no escuro: é sobre ele que as manchas de cor são feitas.
-const SUPERFICIE = '#121214'
+/** Fundo do cartão: é sobre ele que as manchas de cor são calculadas. */
+const SUPERFICIE = '#161a21'
+/** Texto claro de referência, usado para dessaturar as cores de texto. */
+const TINTA_CLARA = '#e7ebf2'
 
 function valor(util, familia, shade) {
   const n = Number(shade)
   const cor = (s) => `var(--color-${familia}-${s})`
   switch (util) {
     case 'bg':
-      // Mancha clara (chip) vira mancha escura da mesma cor; cor cheia
-      // (botão) clareia um pouco, porque o texto nela passa a ser escuro.
-      if (n <= 200) return `background-color: color-mix(in oklab, ${cor(500)} 20%, ${SUPERFICIE})`
-      if (n >= 600) return `background-color: ${cor(500)}`
+      // Etiqueta: mancha discreta, quase um cinza colorido. 12% é o ponto em
+      // que a cor se distingue sem virar néon.
+      if (n <= 200) return `background-color: color-mix(in oklab, ${cor(500)} 12%, ${SUPERFICIE})`
+      // Cor cheia (botão, etiqueta sólida): escurece um pouco, porque no
+      // escuro a mesma cor do tema claro salta e o texto branco enfraquece.
+      if (n >= 600) return `background-color: color-mix(in oklab, ${cor(700)} 82%, #000)`
       return null
     case 'text':
-      if (n >= 600) return `color: ${cor(300)}`
-      if (n === 500) return `color: ${cor(400)}`
+      // Texto colorido puxado para o claro: mantém a família reconhecível,
+      // sem o brilho de cor saturada sobre fundo escuro.
+      if (n >= 600) return `color: color-mix(in oklab, ${cor(300)} 45%, ${TINTA_CLARA})`
+      if (n === 500) return `color: color-mix(in oklab, ${cor(400)} 55%, ${TINTA_CLARA})`
       return null
     case 'placeholder':
       return `color: ${cor(400)}`
     case 'ring':
-      if (n >= 500) return `--tw-ring-color: ${cor(500)}`
-      return `--tw-ring-color: color-mix(in oklab, ${cor(400)} 45%, transparent)`
+      // Contorno: presença de fio, não de moldura colorida.
+      if (n >= 500) return `--tw-ring-color: color-mix(in oklab, ${cor(500)} 55%, transparent)`
+      return `--tw-ring-color: color-mix(in oklab, ${cor(400)} 26%, transparent)`
     case 'border':
-      if (n >= 500) return `border-color: ${cor(500)}`
-      return `border-color: color-mix(in oklab, ${cor(400)} 45%, transparent)`
+      if (n >= 500) return `border-color: color-mix(in oklab, ${cor(500)} 55%, transparent)`
+      return `border-color: color-mix(in oklab, ${cor(400)} 26%, transparent)`
     case 'divide':
-      return `border-color: color-mix(in oklab, ${cor(400)} 45%, transparent)`
+      return `border-color: color-mix(in oklab, ${cor(400)} 26%, transparent)`
     case 'accent':
       return `accent-color: ${cor(500)}`
     case 'decoration':
-      return `text-decoration-color: ${cor(400)}`
+      return `text-decoration-color: color-mix(in oklab, ${cor(400)} 60%, transparent)`
     case 'outline':
       return `outline-color: ${cor(500)}`
     default:
@@ -87,6 +103,7 @@ const PSEUDO = {
 }
 
 const regras = []
+const fundosCheios = new Set()
 for (const token of [...tokens].sort()) {
   const partes = token.split(':')
   const base = partes.pop()
@@ -95,28 +112,29 @@ for (const token of [...tokens].sort()) {
   const m = base.match(/^(\w+)-([a-z]+)-(\d{2,3})(\/\d{1,3})?$/)
   if (!m) continue
   const [, util, familia, shade] = m
+  if (util === 'bg' && Number(shade) >= 600 && !variantes.length) {
+    fundosCheios.add('.' + base)
+  }
   const decl = valor(util, familia, shade)
   if (!decl) continue
   const classe = '.' + token.replace(/([:/])/g, '\\$1')
   const sufixo = variantes.map((v) => PSEUDO[v]).join('')
   const alvo =
-    util === 'divide'
-      ? `${classe}${sufixo} > :not(:last-child)`
-      : `${classe}${sufixo}`
+    util === 'divide' ? `${classe}${sufixo} > :not(:last-child)` : `${classe}${sufixo}`
   regras.push(`.escuro ${alvo} { ${decl}; }`)
 }
 
 const css = `/* ---------------------------------------------------------------------------
    MODO ESCURO DO PAINEL OPERACIONAL
 
-   O tema claro é a referência: aqui só trocamos o valor das cores, nunca o
-   significado. Cinza e branco viram uma escala escura (variáveis abaixo), e
-   cada cor de sinal — verde aprovado, vermelho erro, âmbar aguardando —
-   vira a mesma cor sobre fundo escuro, com o texto clareado para continuar
-   legível.
+   Sobriedade é a régua. No escuro, cor saturada sobre preto puro brilha e o
+   painel fica com cara de brinquedo — então o fundo é cinza levemente
+   azulado, as etiquetas são manchas discretas e o texto colorido é
+   dessaturado. A cor continua servindo para separar (verde aprovado,
+   vermelho erro, âmbar aguardando), nunca para decorar.
 
    Este arquivo é GERADO por scripts/tema-escuro.mjs a partir das classes que
-   o código realmente usa. Classe nova de cor: rode o script de novo.
+   o código realmente usa. Classe de cor nova: rode o script de novo.
 
    A classe .escuro entra no <html> só enquanto o painel operacional está
    aberto — o formulário público e a consulta continuam claros.
@@ -127,43 +145,67 @@ const css = `/* ----------------------------------------------------------------
      escuros. Sem isto, o calendário do campo de data abre branco. */
   color-scheme: dark;
 
-  /* Superfícies: branco vira a cor do cartão; a escala de cinza inverte. */
+  /* Superfícies: cinza azulado, nunca preto. Preto puro endurece o contraste
+     e faz qualquer cor em cima dele vibrar. */
   --color-white: ${SUPERFICIE};
-  --color-neutral-50: #0b0b0d;
-  --color-neutral-100: #1a1a1e;
-  --color-neutral-200: #26262c;
-  --color-neutral-300: #3a3a42;
-  /* Textos secundários ficam mais claros do que a inversão pura daria:
-     no escuro, cinza médio sobre preto é o primeiro a sumir. */
-  --color-neutral-400: #8f8f9a;
-  --color-neutral-500: #a3a3ad;
-  --color-neutral-600: #bdbdc6;
-  --color-neutral-700: #d6d6dd;
-  --color-neutral-800: #e8e8ed;
-  --color-neutral-900: #f6f6f8;
+  --color-neutral-50: #0f1218;
+  --color-neutral-100: #1b1f27;
+  --color-neutral-200: #252a34;
+  --color-neutral-300: #333945;
+  /* Textos: mais claros do que a inversão pura daria. No escuro, cinza médio
+     sobre fundo escuro é a primeira coisa a sumir. */
+  --color-neutral-400: #8e96a5;
+  --color-neutral-500: #9ea6b5;
+  --color-neutral-600: #b7bfcc;
+  --color-neutral-700: #ced5e0;
+  --color-neutral-800: #e0e5ee;
+  --color-neutral-900: #eff2f7;
 
-  /* Amarelo da marca continua amarelo: é a identidade e o foco do teclado.
-     Só as manchas claras (fundo de etiqueta) escurecem. */
-  --color-marca-50: #221d00;
-  --color-marca-100: #2c2500;
-  --color-marca-200: #3b3200;
-  --color-marca-700: #ffe14d;
+  /* Amarelo da marca continua amarelo — é a identidade e o foco do teclado —
+     mas um tom abaixo, porque no escuro o amarelo claro estoura. */
+  --color-marca-50: #21200f;
+  --color-marca-100: #2a2812;
+  --color-marca-200: #3a3618;
+  --color-marca-300: #e8c53f;
+  --color-marca-400: #dbb62f;
+  --color-marca-500: #c9a521;
+  --color-marca-600: #ab8b16;
+  --color-marca-700: #f0d46a;
 }
 
 /* Texto propositalmente apagado (rodapés, "—"): fica apagado, não invisível. */
 .escuro .text-neutral-300 {
-  color: #7e7e89;
+  color: #7e8697;
 }
 
-/* Botão amarelo e etiquetas amarelas cheias: o texto nelas é preto no claro
-   e precisa continuar preto no escuro — o cinza-900 virou quase branco. */
+/* Botão e etiqueta amarelos cheios: o texto neles é preto no tema claro e
+   precisa continuar preto — o cinza-900 virou quase branco. */
 .escuro :is(.bg-marca-300, .bg-marca-400, .bg-marca-500, .bg-marca-600) {
   color: #14130a;
 }
 
-/* A sombra some no escuro; um contorno fino devolve o relevo dos cartões. */
+/* Fundo de cor cheia: o texto branco do tema claro viraria tinta escura,
+   porque o branco virou superfície. Aqui ele volta a ser claro. */
+.escuro :is(${[...fundosCheios].sort().join(', ')}) {
+  color: ${TINTA_CLARA};
+}
+
+/* Cinza-900 e cinza-800 como FUNDO (a etiqueta "Concluída", o hover do botão)
+   viravam um bloco branco no meio do painel: a coisa mais clara da tela para
+   dizer a mais banal. Vira ardósia, com o texto claro por cima. */
+.escuro :is(.bg-neutral-900, .bg-neutral-800, .hover\\:bg-neutral-900:hover) {
+  background-color: #2c333f;
+  color: ${TINTA_CLARA};
+}
+.escuro .ring-neutral-900 {
+  --tw-ring-color: #3c4453;
+}
+
+/* Sombra não aparece no escuro; o relevo do cartão vira um fio de luz. */
 .escuro :is(.shadow-sm, .shadow-lg) {
-  box-shadow: 0 1px 0 0 rgb(255 255 255 / 0.06), 0 8px 24px rgb(0 0 0 / 0.45);
+  box-shadow:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.04),
+    0 1px 2px rgb(0 0 0 / 0.4);
 }
 
 /* ---- Cores de sinal, geradas das classes em uso ---- */
@@ -171,4 +213,4 @@ ${regras.join('\n')}
 `
 
 writeFileSync('src/tema-escuro.css', css)
-console.log('regras:', regras.length)
+console.log('regras:', regras.length, '· fundos cheios:', [...fundosCheios].join(' '))
