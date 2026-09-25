@@ -266,7 +266,9 @@ Deno.serve(async (req) => {
       // Day use não aparecia na consulta: quem passa o dia no destino sem
       // dormir não tinha onde ver a data nem a reserva.
       sb.from('day_use_detalhe').select('*').in('colaborador_id', ids),
-      sb.from('locacao_carro').select('*').eq('solicitacao_id', s.id).maybeSingle(),
+      // Uma locação por condutor: com `maybeSingle`, duas locações viravam
+      // erro e o bloco de carro sumia inteiro da consulta.
+      sb.from('locacao_carro').select('*').eq('solicitacao_id', s.id),
       sb.from('locacao_van').select('*').eq('solicitacao_id', s.id).maybeSingle(),
       sb.from('solicitacao_carros').select('*').eq('solicitacao_id', s.id).order('ordem'),
       sb
@@ -290,7 +292,8 @@ Deno.serve(async (req) => {
       rodoviario: rodo.data ?? [],
       hospedagem: hosp.data ?? [],
       day_use: dayUse.data ?? [],
-      carro: carro.data ?? null,
+      carro: (carro.data ?? [])[0] ?? null,
+      carros: carro.data ?? [],
       van: van.data ?? null,
       carros_pedidos: carrosPedidos.data ?? [],
     })

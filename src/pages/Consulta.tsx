@@ -309,12 +309,30 @@ const temRodo = (r: any) =>
     r.local_embarque_volta
   )
 
+/**
+ * O que a operação escreveu no campo de observações.
+ *
+ * É recado para quem viaja — "o voo de volta não bate com o ônibus, procure
+ * outra saída" — e ficava só no painel: quem consultava não via nada.
+ */
+function Obs({ texto }: { texto?: string | null }) {
+  if (!texto?.trim()) return null
+  return (
+    <span className="mt-0.5 block whitespace-pre-wrap text-xs text-neutral-500">
+      Obs. da operação: {texto}
+    </span>
+  )
+}
+
 function DetalheConsulta({ dados }: { dados: any }) {
   const s = dados.solicitacao
   const voos = dados.voos ?? []
   const hosp = dados.hospedagem ?? []
   const rodo = dados.rodoviario ?? []
   const dayUse = dados.day_use ?? []
+  // `carro` (singular) é o que a versão anterior da função devolvia; vale
+  // enquanto ela não tiver subido em todo lugar.
+  const carros = dados.carros ?? (dados.carro ? [dados.carro] : [])
   /**
    * Os dias pedidos, mesmo antes de a operação reservar.
    *
@@ -405,6 +423,7 @@ function DetalheConsulta({ dados }: { dados: any }) {
                           </span>
                         </>
                       )}
+                      <Obs texto={v.observacoes} />
                     </p>
                   ))}
               </div>
@@ -444,11 +463,7 @@ function DetalheConsulta({ dados }: { dados: any }) {
                     {' · '}
                     {dataBR(h.check_in)} a {dataBR(h.check_out)}
                     {h.codigo_reserva && ` · reserva ${h.codigo_reserva}`}
-                    {h.observacoes && (
-                      <span className="block whitespace-pre-wrap text-xs text-neutral-500">
-                        Obs.: {h.observacoes}
-                      </span>
-                    )}
+                    <Obs texto={h.observacoes} />
                   </p>
                 ))}
               </div>
@@ -473,6 +488,7 @@ function DetalheConsulta({ dados }: { dados: any }) {
                       {dataBR(d.data)}
                       {d.hotel && ` · ${d.hotel}`}
                       {d.codigo_reserva && ` · reserva ${d.codigo_reserva}`}
+                      <Obs texto={d.observacoes} />
                     </p>
                   ))}
                 </div>
@@ -525,6 +541,7 @@ function DetalheConsulta({ dados }: { dados: any }) {
                     {r.local_embarque_volta && ` — ${r.local_embarque_volta}`}
                   </p>
                 )}
+                <Obs texto={r.observacoes} />
               </div>
             )
           })}
@@ -558,22 +575,35 @@ function DetalheConsulta({ dados }: { dados: any }) {
                   {dados.van.local_chegada && ` — ${dados.van.local_chegada}`}
                 </p>
               )}
+              <Obs texto={dados.van.observacoes} />
             </div>
           </Bloco>
         )}
 
-      {dados.carro?.locadora && (
+      {/* Uma locação por condutor. E as datas vêm dos pares data+hora: as
+          colunas `retirada_em`/`devolucao_em` são de antes dessa separação e
+          pararam de ser preenchidas — a consulta mostrava "—" nas duas. */}
+      {carros.some((c: any) => c.locadora || c.retirada_data) && (
         <Bloco titulo="Locação de carro">
-          <p className="text-neutral-700">
-            {dados.carro.locadora}
-            {dados.carro.categoria && ` · ${dados.carro.categoria}`}
-            <br />
-            Retirada {dataHoraBR(dados.carro.retirada_em)}
-            {dados.carro.retirada_local && ` — ${dados.carro.retirada_local}`}
-            <br />
-            Devolução {dataHoraBR(dados.carro.devolucao_em)}
-            {dados.carro.devolucao_local && ` — ${dados.carro.devolucao_local}`}
-          </p>
+          {carros.map((c: any, i: number) => (
+            <p key={i} className="mb-2 text-neutral-700">
+              {c.locadora}
+              {c.categoria && ` · ${c.categoria}`}
+              {c.codigo_reserva && (
+                <>
+                  {' · '}
+                  <span className="font-mono font-semibold">{c.codigo_reserva}</span>
+                </>
+              )}
+              <br />
+              Retirada {dataHora(c.retirada_data, c.retirada_hora)}
+              {c.retirada_local && ` — ${c.retirada_local}`}
+              <br />
+              Devolução {dataHora(c.devolucao_data, c.devolucao_hora)}
+              {c.devolucao_local && ` — ${c.devolucao_local}`}
+              <Obs texto={c.observacoes} />
+            </p>
+          ))}
         </Bloco>
       )}
 
