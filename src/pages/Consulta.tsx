@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { invocar } from '../lib/supabase'
 import {
   EQUIPES,
+  SERVICOS,
   STATUS_CLASS,
   STATUS_LABEL,
   aeroportoLabel,
@@ -59,6 +60,8 @@ export default function Consulta() {
   const [busca, setBusca] = useState('')
   const [fStatus, setFStatus] = useState('')
   const [fEquipe, setFEquipe] = useState('')
+  /** Serviço pedido: day use, hospedagem, aéreo… */
+  const [fServico, setFServico] = useState('')
   const [aberta, setAberta] = useState<string | null>(null)
   const [detalhe, setDetalhe] = useState<Record<string, unknown> | null>(null)
 
@@ -116,6 +119,7 @@ export default function Consulta() {
     return lista.filter((d) => {
       if (fStatus && d.status !== fStatus) return false
       if (fEquipe && d.equipe !== fEquipe) return false
+      if (fServico && !(d.servicos ?? []).includes(fServico)) return false
       if (!q) return true
       return (
         norm(d.protocolo).includes(q) ||
@@ -126,7 +130,7 @@ export default function Consulta() {
         (d.colaboradores ?? []).some((n) => norm(n).includes(q))
       )
     })
-  }, [lista, busca, fStatus, fEquipe])
+  }, [lista, busca, fStatus, fEquipe, fServico])
 
   // ---------- tela de senha ----------
   if (!autenticado)
@@ -188,13 +192,22 @@ export default function Consulta() {
 
       <main className="mx-auto max-w-6xl space-y-4 px-4 py-6">
         <Card>
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Input
               placeholder="Buscar por protocolo, destino, solicitante ou colaborador…"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="sm:col-span-2"
             />
+            {/* Mesma lista de serviços do formulário — day use incluído. */}
+            <Select value={fServico} onChange={(e) => setFServico(e.target.value)}>
+              <option value="">Todos os serviços</option>
+              {SERVICOS.map((sv) => (
+                <option key={sv.value} value={sv.value}>
+                  {servicoLabel(sv.value)}
+                </option>
+              ))}
+            </Select>
             {/* Mesma lista de equipes do formulário: o filtro precisa
                 oferecer exatamente o que o solicitante pôde escolher. */}
             <Select value={fEquipe} onChange={(e) => setFEquipe(e.target.value)}>

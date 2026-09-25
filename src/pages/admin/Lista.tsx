@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
-import type { Diretor, Edicao, Solicitacao } from '../../lib/types'
+import { supabase, invocar } from '../../lib/supabase'
+import type { Diretor, Edicao, Solicitacao, Status } from '../../lib/types'
 import {
   EQUIPES,
   SERVICOS,
@@ -111,6 +111,8 @@ export default function Lista() {
   const [fOperacao, setFOperacao] = useState(guardados.fOperacao ?? '')
   const [operacoesFiltro, setOperacoesFiltro] = useState<OperacaoFiltro[]>([])
   const [verLixeira, setVerLixeira] = useState(guardados.verLixeira ?? false)
+  /** Qual solicitação está sendo concluída agora, para travar só o botão dela. */
+  const [concluindo, setConcluindo] = useState<string | null>(null)
 
   // Guarda a cada mudança: é daqui que a lista se refaz na volta.
   useEffect(() => {
@@ -427,6 +429,56 @@ export default function Lista() {
       .eq('solicitacao_id', d.id)
   }
 
+  /**
+   * Conclui pela própria lista, sem abrir a solicitação.
+   *
+   * Concluir é concluir por qualquer caminho: o solicitante é avisado aqui
+   * do mesmo jeito que na tela da solicitação. Por isso pede confirmação —
+   * o clique manda mensagem para uma pessoa de verdade.
+   */
+  async function concluir(d: Linha) {
+    if (
+      !confirm(
+        `Concluir ${d.protocolo}?\n\n${d.solicitante_nome} será avisado por e-mail e no ` +
+          'Slack, com o link do portal de consulta.',
+      )
+    )
+      return
+    setConcluindo(d.id)
+    try {
+      const { error } = await supabase
+        .from('solicitacoes')
+        .update({ status: 'CONCLUIDA' })
+        .eq('id', d.id)
+      if (error) throw new Error(error.message)
+      await supabase.from('eventos_solicitacao').insert({
+        solicitacao_id: d.id,
+        tipo: 'STATUS',
+        autor_id: admin?.id ?? null,
+        autor_nome: admin?.nome ?? null,
+        descricao: 'Solicitação concluída pela lista',
+        payload: { status: 'CONCLUIDA' },
+      })
+      setDados((ds) =>
+        ds.map((x) => (x.id === d.id ? { ...x, status: 'CONCLUIDA' as Status } : x)),
+      )
+      try {
+        await invocar('enviar-confirmacao', { solicitacao_id: d.id })
+      } catch (e) {
+        // A conclusão vale; o que falhou foi o aviso — e isso precisa ser
+        // dito por extenso para alguém correr atrás por outro canal.
+        alert(
+          `${d.protocolo} concluída, mas o aviso ao solicitante não saiu: ` +
+            `${e instanceof Error ? e.message : 'falha'}. Avise ${d.solicitante_email}.`,
+        )
+      }
+    } catch (e) {
+      alert(`Não foi possível concluir: ${e instanceof Error ? e.message : 'falha'}`)
+    } finally {
+      setConcluindo(null)
+    }
+  }
+
   /** Devolve para a lista. */
   async function restaurar(d: Linha) {
     const { error } = await supabase
@@ -714,10 +766,23 @@ export default function Lista() {
                       todas as linhas, então a coluna inteira se lê de uma vez.
                       Junto do protocolo ele dançava conforme o tamanho do
                       número e do badge de operações. */}
-                  <div className="flex shrink-0 justify-center lg:w-44">
+                  <div className="flex shrink-0 flex-col items-center gap-1 lg:w-44">
                     <Etiqueta className={STATUS_CLASS[d.status]}>
                       {STATUS_LABEL[d.status]}
                     </Etiqueta>
+                    {/* Concluir sem abrir a solicitação: é o fim de linha mais
+                        repetido do dia, e abrir uma por uma só para clicar em
+                        concluir custava o dobro de cliques. */}
+                    {!verLixeira && !['CONCLUIDA', 'CANCELADA'].includes(d.status) && (
+                      <button
+                        onClick={() => concluir(d)}
+                        disabled={concluindo === d.id}
+                        className="rounded-full px-2 py-0.5 text-[11px] font-semibold text-neutral-500 ring-1 ring-inset ring-neutral-300 transition hover:bg-neutral-900 hover:text-white disabled:opacity-50"
+                        title="Marcar como concluída e avisar o solicitante"
+                      >
+                        {concluindo === d.id ? 'concluindo…' : 'marcar concluída'}
+                      </button>
+                    )}
                   </div>
 
                   {/* ---- Pessoas ---- */}

@@ -1,4 +1,5 @@
 @import 'tailwindcss';
+@import './tema-escuro.css';
 
 /* ---------------------------------------------------------------------------
    Paleta da marca: branco, cinza, preto e amarelo.

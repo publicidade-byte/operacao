@@ -8,6 +8,24 @@ import { Aviso, Botao, Marca } from '../../components/ui'
 const AdminCtx = createContext<AdminUser | null>(null)
 export const useAdmin = () => useContext(AdminCtx)
 
+const CHAVE_TEMA = 'cypher:tema'
+
+/**
+ * Tema escolhido, ou o do sistema operacional na primeira vez.
+ *
+ * Quem trabalha no escuro o dia inteiro já configurou isso no computador;
+ * abrir o painel branco na cara da pessoa é que seria a surpresa.
+ */
+function temaInicial(): 'claro' | 'escuro' {
+  try {
+    const guardado = localStorage.getItem(CHAVE_TEMA)
+    if (guardado === 'claro' || guardado === 'escuro') return guardado
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'escuro' : 'claro'
+  } catch {
+    return 'claro'
+  }
+}
+
 export default function AdminLayout() {
   const navigate = useNavigate()
   const [estado, setEstado] = useState<'carregando' | 'deslogado' | 'diretor' | 'negado' | 'ok'>(
@@ -16,6 +34,20 @@ export default function AdminLayout() {
   const [admin, setAdmin] = useState<AdminUser | null>(null)
   /** Também é diretor aprovador: ganha o atalho para a outra área. */
   const [ehDiretor, setEhDiretor] = useState(false)
+  const [tema, setTema] = useState<'claro' | 'escuro'>(temaInicial)
+
+  // A classe fica no <html> só enquanto o painel está aberto: o formulário
+  // público e o portal de consulta continuam claros para quem os usa.
+  useEffect(() => {
+    const raiz = document.documentElement
+    raiz.classList.toggle('escuro', tema === 'escuro')
+    try {
+      localStorage.setItem(CHAVE_TEMA, tema)
+    } catch {
+      /* navegador sem armazenamento: vale só para esta visita */
+    }
+    return () => raiz.classList.remove('escuro')
+  }, [tema])
 
   useEffect(() => {
     let vivo = true
@@ -132,6 +164,14 @@ export default function AdminLayout() {
                   Minhas aprovações
                 </NavLink>
               )}
+              <button
+                onClick={() => setTema(tema === 'escuro' ? 'claro' : 'escuro')}
+                title={tema === 'escuro' ? 'Voltar ao modo claro' : 'Usar o modo escuro'}
+                aria-label={tema === 'escuro' ? 'Voltar ao modo claro' : 'Usar o modo escuro'}
+                className="rounded px-2 py-1 text-xs font-semibold text-neutral-600 hover:bg-neutral-100"
+              >
+                {tema === 'escuro' ? '☀ Claro' : '☾ Escuro'}
+              </button>
               {/* Cada pessoa troca a própria senha — ninguém precisa pedir
                   isso para a operação. */}
               <NavLink
