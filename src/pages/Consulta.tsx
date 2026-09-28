@@ -47,6 +47,8 @@ type Resumo = {
   colaboradores?: string[]
   /** Marcado no painel quando a passagem é emitida. */
   aereo_emitido?: boolean
+  /** Marcado no painel quando as pessoas entram no rooming do hotel. */
+  rooming_ok?: boolean
 }
 
 const CHAVE = 'f9:consulta'
@@ -267,6 +269,16 @@ export default function Consulta() {
                           AÉREO EMITIDO
                         </span>
                       )}
+                      {/* Rooming: a pergunta que a operação mais recebe é "já
+                          me colocaram no hotel?". Agora responde sozinha. */}
+                      {d.rooming_ok &&
+                        (d.servicos ?? []).some((sv) =>
+                          ['HOSPEDAGEM', 'HOSPEDAGEM_FORA'].includes(sv),
+                        ) && (
+                          <span className="ml-2 whitespace-nowrap rounded bg-emerald-600 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-inset ring-emerald-700">
+                            INSERIDO NO ROOMING
+                          </span>
+                        )}
                     </p>
                   </div>
                   <span className="text-xs font-semibold text-neutral-600">
@@ -438,6 +450,31 @@ function DetalheConsulta({ dados }: { dados: any }) {
           verdade está em `hotel_hospedagem`; `hotel` é só a referência. */}
       {hosp.some((h: any) => h.hotel_hospedagem || h.hotel) && (
         <Bloco titulo="Hospedagem">
+          {s.rooming_ok && (
+            <p className="mb-2">
+              <span className="rounded bg-emerald-600 px-1.5 py-0.5 text-[11px] font-semibold text-white ring-1 ring-inset ring-emerald-700">
+                INSERIDO NO ROOMING
+              </span>
+              {s.rooming_em && (
+                <span className="ml-2 text-xs text-neutral-500">
+                  em {dataHoraBR(s.rooming_em)}
+                </span>
+              )}
+            </p>
+          )}
+          {/* Com várias datas, o rooming é feito uma data por vez: dizer só
+              "inserido" esconderia as que ainda faltam. */}
+          {!s.rooming_ok && operacoes.length > 1 && operacoes.some((o: any) => o.rooming_ok) && (
+            <p className="mb-2 text-xs text-neutral-600">
+              No rooming até aqui:{' '}
+              <span className="font-semibold text-emerald-700">
+                {operacoes
+                  .filter((o: any) => o.rooming_ok)
+                  .map((o: any) => `${dataBR(o.data_inicio)} a ${dataBR(o.data_fim)}`)
+                  .join(' · ')}
+              </span>
+            </p>
+          )}
           {(s.colaboradores ?? []).map((c: any) => {
             const minhas = hosp.filter(
               (x: any) => x.colaborador_id === c.id && (x.hotel_hospedagem || x.hotel),

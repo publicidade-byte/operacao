@@ -30,7 +30,7 @@ Deno.serve(async (req) => {
       const { data } = await sb
         .from('solicitacoes')
         .select(
-          'id, protocolo, status, servicos, aereo_emitido, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo)',
+          'id, protocolo, status, servicos, aereo_emitido, rooming_ok, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo)',
         )
         // A lixeira nao aparece na consulta publica.
         .is('excluida_em', null)
@@ -45,6 +45,9 @@ Deno.serve(async (req) => {
           // O mesmo campo que a caixa "Emitido" do painel grava. Não há
           // sincronização a fazer: é um dado só, lido nos dois lugares.
           aereo_emitido: s.aereo_emitido ?? false,
+          // Mesma ideia do aéreo emitido: quem consulta quer saber se já
+          // está resolvido, sem ter que perguntar para a operação.
+          rooming_ok: s.rooming_ok ?? false,
           equipe: s.equipe,
           equipe_outro: s.equipe_outro,
           data_entrada: s.data_entrada,
@@ -94,7 +97,7 @@ Deno.serve(async (req) => {
       sb.from('solicitacao_carros').select('*').eq('solicitacao_id', s.id).order('ordem'),
       sb
         .from('solicitacao_edicoes')
-        .select('edicoes(id, codigo, data_inicio, data_fim)')
+        .select('rooming_ok, rooming_em, edicoes(id, codigo, data_inicio, data_fim)')
         .eq('solicitacao_id', s.id),
     ])
 
@@ -105,8 +108,14 @@ Deno.serve(async (req) => {
         hotel: s.edicoes?.hotel,
         diretor: s.diretores?.nome,
         colaboradores: colabs,
+        // Cada data leva o seu rooming: numa solicitação de várias datas,
+        // uma pode estar no rooming do hotel e a outra ainda não.
         operacoes: (ops.data ?? [])
-          .map((o: { edicoes: unknown }) => o.edicoes)
+          .map((o: { edicoes: unknown; rooming_ok?: boolean; rooming_em?: string }) =>
+            o.edicoes
+              ? { ...(o.edicoes as object), rooming_ok: o.rooming_ok ?? false, rooming_em: o.rooming_em ?? null }
+              : null,
+          )
           .filter(Boolean),
       },
       voos: voos.data ?? [],
