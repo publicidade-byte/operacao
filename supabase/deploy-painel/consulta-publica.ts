@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
       const { data } = await sb
         .from('solicitacoes')
         .select(
-          'id, protocolo, status, servicos, aereo_emitido, rooming_ok, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo)',
+          'id, protocolo, status, servicos, aereo_emitido, rooming_ok, equipe, equipe_outro, data_entrada, data_saida, solicitante_nome, created_at, edicoes!solicitacoes_edicao_id_fkey(destino, hotel, data_inicio, data_fim), colaboradores(id, nome_completo), solicitacao_edicoes(edicao_id)',
         )
         // A lixeira nao aparece na consulta publica.
         .is('excluida_em', null)
@@ -227,6 +227,10 @@ Deno.serve(async (req) => {
           // Mesma ideia do aéreo emitido: quem consulta quer saber se já
           // está resolvido, sem ter que perguntar para a operação.
           rooming_ok: s.rooming_ok ?? false,
+          // Uma solicitação pode cobrir várias datas da mesma operação. Sem
+          // isto, a consulta mostrava só o período total e quem olhava
+          // achava que era uma viagem só.
+          qtd_operacoes: (s.solicitacao_edicoes ?? []).length,
           equipe: s.equipe,
           equipe_outro: s.equipe_outro,
           data_entrada: s.data_entrada,
@@ -276,7 +280,10 @@ Deno.serve(async (req) => {
       sb.from('solicitacao_carros').select('*').eq('solicitacao_id', s.id).order('ordem'),
       sb
         .from('solicitacao_edicoes')
-        .select('rooming_ok, rooming_em, edicoes(id, codigo, data_inicio, data_fim)')
+        .select(
+          'rooming_ok, rooming_em, rodoviario_ok, rodoviario_em, data_entrada, data_saida, ' +
+            'edicoes(id, codigo, data_inicio, data_fim)',
+        )
         .eq('solicitacao_id', s.id),
     ])
 
@@ -290,12 +297,34 @@ Deno.serve(async (req) => {
         // Cada data leva o seu rooming: numa solicitação de várias datas,
         // uma pode estar no rooming do hotel e a outra ainda não.
         operacoes: (ops.data ?? [])
-          .map((o: { edicoes: unknown; rooming_ok?: boolean; rooming_em?: string }) =>
-            o.edicoes
-              ? { ...(o.edicoes as object), rooming_ok: o.rooming_ok ?? false, rooming_em: o.rooming_em ?? null }
-              : null,
+          .map(
+            (o: {
+              edicoes: { data_inicio: string; data_fim: string } | null
+              rooming_ok?: boolean
+              rooming_em?: string
+              rodoviario_ok?: boolean
+              rodoviario_em?: string
+              data_entrada?: string
+              data_saida?: string
+            }) =>
+              o.edicoes
+                ? {
+                    ...o.edicoes,
+                    // O período pedido para ESTA data, quando o solicitante
+                    // informou um diferente do calendário da operação.
+                    entrada: o.data_entrada ?? o.edicoes.data_inicio,
+                    saida: o.data_saida ?? o.edicoes.data_fim,
+                    rooming_ok: o.rooming_ok ?? false,
+                    rooming_em: o.rooming_em ?? null,
+                    rodoviario_ok: o.rodoviario_ok ?? false,
+                    rodoviario_em: o.rodoviario_em ?? null,
+                  }
+                : null,
           )
-          .filter(Boolean),
+          .filter(Boolean)
+          .sort((a: { entrada: string }, b: { entrada: string }) =>
+            a.entrada.localeCompare(b.entrada),
+          ),
       },
       voos: voos.data ?? [],
       rodoviario: rodo.data ?? [],

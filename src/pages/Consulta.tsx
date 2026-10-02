@@ -49,6 +49,8 @@ type Resumo = {
   aereo_emitido?: boolean
   /** Marcado no painel quando as pessoas entram no rooming do hotel. */
   rooming_ok?: boolean
+  /** Quantas datas da operação esta solicitação cobre. */
+  qtd_operacoes?: number
 }
 
 const CHAVE = 'f9:consulta'
@@ -258,6 +260,14 @@ export default function Consulta() {
                     <p className="text-sm text-neutral-600">
                       {equipeLabel(d.equipe, d.equipe_outro)} · {d.qtd_pax} pax ·{' '}
                       {dataBR(d.data_entrada)} a {dataBR(d.data_saida)}
+                      {/* Várias datas da mesma operação num pedido só: o
+                          período acima é o total, e sozinho fazia parecer
+                          uma viagem contínua. */}
+                      {(d.qtd_operacoes ?? 0) > 1 && (
+                        <span className="ml-2 whitespace-nowrap rounded bg-marca-100 px-1.5 py-0.5 text-[11px] font-bold text-neutral-800 ring-1 ring-inset ring-marca-400">
+                          {d.qtd_operacoes} datas
+                        </span>
+                      )}
                     </p>
                     <p className="mt-0.5 text-xs text-neutral-500">
                       Solicitado por {d.solicitante_nome} ·{' '}
@@ -336,6 +346,37 @@ function Obs({ texto }: { texto?: string | null }) {
   )
 }
 
+/**
+ * Diz se uma etapa daquela data já foi feita.
+ *
+ * Verde é resposta pronta ("já está"); cinza é a pergunta que a pessoa faria
+ * à operação ("ainda não"). Os dois precisam aparecer: mostrar só o que está
+ * pronto faz o que falta sumir da tela.
+ */
+function Selo({
+  ok,
+  quando,
+  rotulo,
+}: {
+  ok?: boolean
+  quando?: string | null
+  rotulo: string
+}) {
+  return (
+    <span
+      title={ok && quando ? `Feito em ${dataHoraBR(quando)}` : undefined}
+      className={
+        'whitespace-nowrap rounded px-1.5 py-0.5 text-[11px] font-semibold ring-1 ring-inset ' +
+        (ok
+          ? 'bg-emerald-600 text-white ring-emerald-700'
+          : 'bg-white text-neutral-500 ring-neutral-300')
+      }
+    >
+      {ok ? `${rotulo} ok` : `${rotulo} pendente`}
+    </span>
+  )
+}
+
 function DetalheConsulta({ dados }: { dados: any }) {
   const s = dados.solicitacao
   const voos = dados.voos ?? []
@@ -363,8 +404,36 @@ function DetalheConsulta({ dados }: { dados: any }) {
   const codigoDaOperacao = (id: string) =>
     operacoes.find((o: any) => o.id === id)?.codigo ?? ''
 
+  const temHosp = (s.servicos ?? []).some((sv: string) =>
+    ['HOSPEDAGEM', 'HOSPEDAGEM_FORA'].includes(sv),
+  )
+  const temRodoviario = (s.servicos ?? []).includes('RODOVIARIO')
+
   return (
     <div className="space-y-5 text-sm">
+      {/* Uma solicitação pode cobrir várias datas da mesma operação, e cada
+          uma é resolvida na sua vez: o rooming de uma pode estar feito e o da
+          outra não. Mostrar só o período total escondia as duas coisas — que
+          são várias datas, e o que já saiu em cada uma. */}
+      {operacoes.length > 1 && (
+        <Bloco titulo={`Datas desta solicitação (${operacoes.length})`}>
+          <ul className="space-y-1.5">
+            {operacoes.map((o: any) => (
+              <li key={o.id} className="flex flex-wrap items-center gap-2 text-neutral-700">
+                <span className="font-medium text-neutral-900">
+                  {dataBR(o.entrada ?? o.data_inicio)} a {dataBR(o.saida ?? o.data_fim)}
+                </span>
+                <span className="font-mono text-xs text-neutral-500">{o.codigo}</span>
+                {temHosp && <Selo ok={o.rooming_ok} quando={o.rooming_em} rotulo="rooming" />}
+                {temRodoviario && (
+                  <Selo ok={o.rodoviario_ok} quando={o.rodoviario_em} rotulo="rodoviário" />
+                )}
+              </li>
+            ))}
+          </ul>
+        </Bloco>
+      )}
+
       <Bloco titulo="Pessoas">
         <ul className="space-y-1">
           {(s.colaboradores ?? []).map((c: any) => (
@@ -462,19 +531,8 @@ function DetalheConsulta({ dados }: { dados: any }) {
               )}
             </p>
           )}
-          {/* Com várias datas, o rooming é feito uma data por vez: dizer só
-              "inserido" esconderia as que ainda faltam. */}
-          {!s.rooming_ok && operacoes.length > 1 && operacoes.some((o: any) => o.rooming_ok) && (
-            <p className="mb-2 text-xs text-neutral-600">
-              No rooming até aqui:{' '}
-              <span className="font-semibold text-emerald-700">
-                {operacoes
-                  .filter((o: any) => o.rooming_ok)
-                  .map((o: any) => `${dataBR(o.data_inicio)} a ${dataBR(o.data_fim)}`)
-                  .join(' · ')}
-              </span>
-            </p>
-          )}
+          {/* Com várias datas, quem responde data por data é o bloco
+              "Datas desta solicitação", no topo do detalhe. */}
           {(s.colaboradores ?? []).map((c: any) => {
             const minhas = hosp.filter(
               (x: any) => x.colaborador_id === c.id && (x.hotel_hospedagem || x.hotel),
