@@ -67,6 +67,7 @@ export type Status =
   | 'AGUARDANDO_APROVACAO'
   | 'APROVADA'
   | 'REPROVADA'
+  | 'REFAZER'
   | 'CONCLUIDA'
   | 'CANCELADA'
 

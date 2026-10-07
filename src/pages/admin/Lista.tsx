@@ -50,6 +50,7 @@ const FAIXA_STATUS: Record<string, string> = {
   AGUARDANDO_APROVACAO: 'bg-marca-400',
   APROVADA: 'bg-emerald-400',
   REPROVADA: 'bg-red-400',
+  REFAZER: 'bg-orange-400',
   CONCLUIDA: 'bg-neutral-800',
   CANCELADA: 'bg-red-600',
 }
@@ -60,6 +61,7 @@ const STATUS_FILTROS = [
   'AGUARDANDO_APROVACAO',
   'APROVADA',
   'REPROVADA',
+  'REFAZER',
   'CONCLUIDA',
   'CANCELADA',
 ]
@@ -862,7 +864,7 @@ export default function Lista() {
               dados
                 .filter(
                   (d) =>
-                    !['CONCLUIDA', 'CANCELADA', 'REPROVADA'].includes(d.status) &&
+                    !['CONCLUIDA', 'CANCELADA', 'REPROVADA', 'REFAZER'].includes(d.status) &&
                     d.edicoes,
                 )
                 .sort((a, b) =>

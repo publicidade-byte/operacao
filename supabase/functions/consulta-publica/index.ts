@@ -147,8 +147,17 @@ Deno.serve(async (req) => {
             a.entrada.localeCompare(b.entrada),
           ),
       },
-      voos: voos.data ?? [],
+      voos: (voos.data ?? []).map((v: Record<string, unknown>) =>
+        s.aereo_emitido === true || s.status === 'CONCLUIDA'
+          ? v
+          : { ...v, localizador: null },
+      ),
       rodoviario: rodo.data ?? [],
+      // O localizador é o que permite mexer na reserva. Antes de emitida,
+      // ele ainda muda — e mostrar um código que vai mudar faz a pessoa
+      // guardar o errado. Sai só quando a passagem está emitida ou a
+      // solicitação concluída.
+      voos_com_localizador: s.aereo_emitido === true || s.status === 'CONCLUIDA',
       hospedagem: hosp.data ?? [],
       day_use: dayUse.data ?? [],
       carro: (carro.data ?? [])[0] ?? null,

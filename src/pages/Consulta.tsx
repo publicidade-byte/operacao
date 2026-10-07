@@ -510,6 +510,13 @@ function DetalheConsulta({ dados }: { dados: any }) {
               </div>
             )
           })}
+          {/* O localizador só sai depois de emitida: antes disso ele ainda
+              muda, e quem anota o código errado descobre no aeroporto. */}
+          {!dados.voos_com_localizador && (
+            <p className="mt-1 text-xs text-neutral-500">
+              O localizador aparece aqui quando a passagem for emitida.
+            </p>
+          )}
         </Bloco>
       )}
 

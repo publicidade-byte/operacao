@@ -33,6 +33,7 @@ export const STATUS_LABEL: Record<string, string> = {
   AGUARDANDO_APROVACAO: 'Aguardando aprovação',
   APROVADA: 'Aprovada',
   REPROVADA: 'Reprovada',
+  REFAZER: 'Refazer',
   CONCLUIDA: 'Concluída',
   CANCELADA: 'Cancelada',
 }
@@ -48,6 +49,9 @@ export const STATUS_CLASS: Record<string, string> = {
   AGUARDANDO_APROVACAO: 'bg-amber-100 text-amber-900 ring-amber-400',
   APROVADA: 'bg-emerald-100 text-emerald-800 ring-emerald-400',
   REPROVADA: 'bg-red-100 text-red-800 ring-red-300',
+  // Laranja, não vermelho: refazer não é "não vai acontecer", é "volte e
+  // conserte". A cor separa as duas coisas de longe, na lista.
+  REFAZER: 'bg-orange-100 text-orange-900 ring-orange-300',
   CONCLUIDA: 'bg-neutral-900 text-white ring-neutral-900',
   CANCELADA: 'bg-red-600 text-white ring-red-700',
 }

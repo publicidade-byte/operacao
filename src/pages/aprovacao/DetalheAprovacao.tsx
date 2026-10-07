@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
-import { supabase } from '../../lib/supabase'
+import { supabase, invocar } from '../../lib/supabase'
 import {
   STATUS_CLASS,
   STATUS_LABEL,
@@ -125,6 +125,8 @@ type Operacao = {
 type Decisao = {
   id: string
   aprovado: boolean
+  /** O que foi decidido por extenso. Nulo nas decisões anteriores ao REFAZER. */
+  decisao?: string | null
   decidido_em: string
   observacao: string | null
 }
@@ -145,7 +147,7 @@ export default function DetalheAprovacao() {
   /** Pessoa cuja reprovação está sendo escrita, e o motivo. */
   const [reprovandoPessoa, setReprovandoPessoa] = useState<string | null>(null)
   const [motivoPessoa, setMotivoPessoa] = useState('')
-  const [acao, setAcao] = useState<'APROVAR' | 'REPROVAR' | null>(null)
+  const [acao, setAcao] = useState<'APROVAR' | 'REPROVAR' | 'REFAZER' | null>(null)
   const [enviando, setEnviando] = useState(false)
   const [erro, setErro] = useState('')
 
@@ -206,26 +208,71 @@ export default function DetalheAprovacao() {
     }
     setReprovandoPessoa(null)
     setMotivoPessoa('')
+    // Decidir a última pessoa fecha a rodada no banco: se o desfecho foi
+    // negativo, a operação precisa saber disso aqui também.
+    const { data: atual } = await supabase
+      .from('solicitacoes')
+      .select('status')
+      .eq('id', id)
+      .maybeSingle()
+    if (atual && ['REPROVADA', 'REFAZER'].includes(atual.status)) {
+      try {
+        await invocar('notificar-decisao', { solicitacao_id: id })
+      } catch (e) {
+        setErro(
+          `Decisão registrada, mas a operação não foi avisada no Slack: ${
+            e instanceof Error ? e.message : 'falha'
+          }.`,
+        )
+      }
+    }
     await carregar()
   }
 
-  async function decidir(aprovado: boolean) {
-    if (!aprovado && !obs.trim()) {
-      setErro('Informe o motivo da reprovação.')
+  /**
+   * Registra a decisão e, no "não", avisa a operação.
+   *
+   * O aviso é o ponto: a reprovação ficava só no painel, esperando alguém
+   * abrir. Um aéreo reprovado por prazo vencido ficou uma semana parado
+   * porque ninguém soube. Aprovação não avisa — ela segue o fluxo normal.
+   */
+  async function decidir(decisao: 'APROVADA' | 'REPROVADA' | 'REFAZER') {
+    if (decisao !== 'APROVADA' && !obs.trim()) {
+      setErro(
+        decisao === 'REFAZER'
+          ? 'Diga o que precisa ser refeito.'
+          : 'Informe o motivo da reprovação.',
+      )
       return
     }
     setEnviando(true)
     setErro('')
-    const { error } = await supabase.rpc('aprovar_solicitacao', {
+    const { error } = await supabase.rpc('decidir_solicitacao', {
       p_solicitacao: id,
-      p_aprovado: aprovado,
+      p_decisao: decisao,
       p_observacao: obs.trim() || null,
     })
-    setEnviando(false)
     if (error) {
+      setEnviando(false)
       setErro(error.message)
       return
     }
+    if (decisao !== 'APROVADA') {
+      // Se o aviso falhar, a decisão vale do mesmo jeito — mas quem decidiu
+      // precisa saber que a operação não foi avisada.
+      try {
+        await invocar('notificar-decisao', { solicitacao_id: id })
+      } catch (e) {
+        setEnviando(false)
+        setErro(
+          `Decisão registrada, mas a operação não foi avisada no Slack: ${
+            e instanceof Error ? e.message : 'falha'
+          }. Avise por outro canal.`,
+        )
+        return
+      }
+    }
+    setEnviando(false)
     navigate('/aprovacao', { replace: true })
   }
 
@@ -696,6 +743,18 @@ export default function DetalheAprovacao() {
               >
                 {parcial ? `Aprovar ${escopoTexto.toLowerCase()}` : 'Aprovar solicitação'}
               </Botao>
+              {/* Refazer fica entre aprovar e reprovar porque é o caso mais
+                  comum do "não": a cotação caiu, o horário não serve. */}
+              <Botao
+                variante="secundario"
+                className="flex-1"
+                onClick={() => {
+                  setAcao('REFAZER')
+                  setErro('')
+                }}
+              >
+                Devolver para refazer
+              </Botao>
               <Botao
                 variante="secundario"
                 className="flex-1"
@@ -709,7 +768,7 @@ export default function DetalheAprovacao() {
             </div>
           ) : (
             <div className="space-y-3">
-              <Aviso tom={acao === 'APROVAR' ? 'sucesso' : 'erro'}>
+              <Aviso tom={acao === 'APROVAR' ? 'sucesso' : acao === 'REFAZER' ? 'destaque' : 'erro'}>
                 {acao === 'APROVAR' ? (
                   parcial ? (
                     <>
@@ -724,11 +783,19 @@ export default function DetalheAprovacao() {
                       enviará a confirmação ao solicitante.
                     </>
                   )
+                ) : acao === 'REFAZER' ? (
+                  <>
+                    Você vai <strong>devolver para refazer</strong>{' '}
+                    {parcial ? <>a cotação de {escopoTexto}</> : 'esta solicitação'}. A
+                    operação é avisada no Slack com o que você escrever, corrige e
+                    reenvia para você.
+                  </>
                 ) : (
                   <>
                     Você vai <strong>reprovar</strong>{' '}
                     {parcial ? <>a aprovação de {escopoTexto}</> : 'esta solicitação'}. O
-                    motivo é obrigatório e será registrado.
+                    motivo é obrigatório, será registrado e a operação é avisada no
+                    Slack.
                   </>
                 )}
               </Aviso>
@@ -739,18 +806,35 @@ export default function DetalheAprovacao() {
                 placeholder={
                   acao === 'APROVAR'
                     ? 'Observação (opcional)'
-                    : 'Motivo da reprovação (obrigatório)'
+                    : acao === 'REFAZER'
+                      ? 'O que precisa ser refeito (obrigatório)'
+                      : 'Motivo da reprovação (obrigatório)'
                 }
-                erro={acao === 'REPROVAR' && !!erro && !obs.trim()}
+                erro={acao !== 'APROVAR' && !!erro && !obs.trim()}
               />
               {erro && <Aviso tom="erro">{erro}</Aviso>}
               <div className="flex gap-2">
                 <Botao
-                  variante={acao === 'APROVAR' ? 'sucesso' : 'perigo'}
+                  variante={
+                    acao === 'APROVAR' ? 'sucesso' : acao === 'REFAZER' ? 'primario' : 'perigo'
+                  }
                   carregando={enviando}
-                  onClick={() => decidir(acao === 'APROVAR')}
+                  onClick={() =>
+                    decidir(
+                      acao === 'APROVAR'
+                        ? 'APROVADA'
+                        : acao === 'REFAZER'
+                          ? 'REFAZER'
+                          : 'REPROVADA',
+                    )
+                  }
                 >
-                  Confirmar {acao === 'APROVAR' ? 'aprovação' : 'reprovação'}
+                  Confirmar{' '}
+                  {acao === 'APROVAR'
+                    ? 'aprovação'
+                    : acao === 'REFAZER'
+                      ? 'devolução'
+                      : 'reprovação'}
                 </Botao>
                 <Botao
                   variante="fantasma"
@@ -775,10 +859,16 @@ export default function DetalheAprovacao() {
                     className={
                       d.aprovado
                         ? 'bg-emerald-50 text-emerald-800 ring-emerald-300'
-                        : 'bg-red-50 text-red-800 ring-red-300'
+                        : d.decisao === 'REFAZER'
+                          ? 'bg-orange-50 text-orange-900 ring-orange-300'
+                          : 'bg-red-50 text-red-800 ring-red-300'
                     }
                   >
-                    {d.aprovado ? 'Aprovado' : 'Reprovado'}
+                    {d.aprovado
+                      ? 'Aprovado'
+                      : d.decisao === 'REFAZER'
+                        ? 'Devolvido para refazer'
+                        : 'Reprovado'}
                   </Etiqueta>
                   <p className="mt-1.5 text-xs text-neutral-500">
                     {dataHoraBR(d.decidido_em)}
