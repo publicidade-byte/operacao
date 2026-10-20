@@ -2592,6 +2592,20 @@ export default function Detalhe() {
       }
       return n
     })
+    // O rodoviário ficava de fora, e a tela dizia "Dados replicados" do
+    // mesmo jeito: quem replicava achava que tinha copiado e só descobria
+    // depois, com os outros cards vazios. Ônibus, horário e embarque são os
+    // mesmos para o grupo inteiro — é justamente o que vale copiar.
+    setRodo((p) => {
+      const base = p[origemId]
+      if (!base) return p
+      const n = { ...p }
+      alvos.forEach((c) => {
+        const { id: _i, ...resto } = base as Rodoviario
+        n[c.id] = { ...resto, colaborador_id: c.id }
+      })
+      return n
+    })
     setHosp((p) => {
       const n = { ...p }
       // Replica cada tipo de hospedagem no seu par: a estadia no hotel da
