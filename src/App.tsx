@@ -9,6 +9,7 @@ import AdminLayout from './pages/admin/AdminLayout'
 import Lista from './pages/admin/Lista'
 import Detalhe from './pages/admin/Detalhe'
 import Usuarios from './pages/admin/Usuarios'
+import Operacoes from './pages/admin/Operacoes'
 import AprovacaoLayout from './pages/aprovacao/AprovacaoLayout'
 import Pendentes from './pages/aprovacao/Pendentes'
 import DetalheAprovacao from './pages/aprovacao/DetalheAprovacao'
@@ -36,6 +37,7 @@ export default function App() {
             A tela continua em pages/admin/Painel.tsx para quem for levá-la. */}
         <Route path="solicitacoes/:id" element={<Detalhe />} />
         <Route path="usuarios" element={<Usuarios />} />
+        <Route path="operacoes" element={<Operacoes />} />
       </Route>
 
       {/* Diretores aprovadores */}

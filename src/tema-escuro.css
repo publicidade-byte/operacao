@@ -97,6 +97,7 @@
 .escuro .bg-fuchsia-50 { background-color: color-mix(in oklab, var(--color-fuchsia-500) 12%, #161a21); }
 .escuro .bg-lime-100 { background-color: color-mix(in oklab, var(--color-lime-500) 12%, #161a21); }
 .escuro .bg-orange-100 { background-color: color-mix(in oklab, var(--color-orange-500) 12%, #161a21); }
+.escuro .bg-orange-50 { background-color: color-mix(in oklab, var(--color-orange-500) 12%, #161a21); }
 .escuro .bg-purple-100 { background-color: color-mix(in oklab, var(--color-purple-500) 12%, #161a21); }
 .escuro .bg-red-100 { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }
 .escuro .bg-red-50 { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }
@@ -114,6 +115,7 @@
 .escuro .focus\:border-red-500:focus { border-color: color-mix(in oklab, var(--color-red-500) 55%, transparent); }
 .escuro .focus\:ring-red-500\/20:focus { --tw-ring-color: color-mix(in oklab, var(--color-red-500) 55%, transparent); }
 .escuro .hover\:bg-amber-100\/70:hover { background-color: color-mix(in oklab, var(--color-amber-500) 12%, #161a21); }
+.escuro .hover\:bg-emerald-200:hover { background-color: color-mix(in oklab, var(--color-emerald-500) 12%, #161a21); }
 .escuro .hover\:bg-emerald-50:hover { background-color: color-mix(in oklab, var(--color-emerald-500) 12%, #161a21); }
 .escuro .hover\:bg-emerald-700:hover { background-color: color-mix(in oklab, var(--color-emerald-700) 82%, #000); }
 .escuro .hover\:bg-red-50:hover { background-color: color-mix(in oklab, var(--color-red-500) 12%, #161a21); }

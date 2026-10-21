@@ -135,6 +135,21 @@ export default function AdminLayout() {
                 >
                   Solicitações
                 </NavLink>
+                {/* Quem abre e fecha as datas do formulário é a gestão: é
+                    decisão de quando a operação para de aceitar pedido. */}
+                {admin?.role === 'GESTOR' && (
+                  <NavLink
+                    to="/admin/operacoes"
+                    className={({ isActive }) =>
+                      'rounded px-2.5 py-1.5 transition ' +
+                      (isActive
+                        ? 'bg-neutral-900 text-white'
+                        : 'text-neutral-600 hover:bg-neutral-100')
+                    }
+                  >
+                    Operações
+                  </NavLink>
+                )}
                 {admin?.role === 'GESTOR' && (
                   <NavLink
                     to="/admin/usuarios"
