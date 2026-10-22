@@ -222,6 +222,20 @@ export default function Detalhe() {
       .single()
     if (!data) return
     const sol = data as Cheia
+    // Rede de segurança: se a operação principal não vier (data fechada e
+    // leitura negada, operação removida do catálogo), a tela mostra "—" em
+    // vez de quebrar em `edicoes.avulsa`. A solicitação continua inteira.
+    if (!sol.edicoes)
+      sol.edicoes = {
+        id: sol.edicao_id,
+        codigo: "—",
+        destino: "—",
+        hotel: "",
+        data_inicio: sol.data_entrada,
+        data_fim: sol.data_saida,
+        noites: 0,
+        ativa: false,
+      }
     sol.colaboradores.sort((a, b) => a.ordem - b.ordem)
     setS(sol)
 
