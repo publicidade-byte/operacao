@@ -13,6 +13,7 @@ export const EQUIPES = [
   { value: 'SALVA_VIDAS', label: 'Salva-Vidas' },
   { value: 'DJ', label: 'DJ' },
   { value: 'OPERACIONAL', label: 'Operacional' },
+  { value: 'COLEGIO', label: 'Colégio — informar qual' },
   { value: 'OUTROS', label: 'Outros — informar a área' },
 ] as const
 
@@ -23,6 +24,9 @@ export type EquipeValue = (typeof EQUIPES)[number]['value']
  * informação útil; "Outros" sozinho não diz nada a quem lê depois.
  */
 export const equipeLabel = (v: string, outro?: string | null) => {
+  // Colégio e Outros guardam o complemento no mesmo campo: o que muda é a
+  // pergunta. "Colégio Dom Bosco" diz mais do que "Colégio" sozinho.
+  if (v === 'COLEGIO') return outro?.trim() ? `Colégio ${outro.trim()}` : 'Colégio'
   if (v === 'OUTROS') return outro?.trim() ? `Outros — ${outro.trim()}` : 'Outros'
   return EQUIPES.find((e) => e.value === v)?.label ?? v
 }

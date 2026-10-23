@@ -255,6 +255,8 @@ export type Solicitacao = {
   day_use_data: string | null
   /** Todos os dias pedidos: a mesma pessoa faz vários na mesma operação. */
   day_use_datas: string[]
+  /** Veículo que leva o grupo ao day use — a portaria do hotel cobra isso. */
+  day_use_veiculo: string | null
   /** Datas pedidas para cada hospedagem — podem ser estadias diferentes. */
   hosp_op_entrada: string | null
   hosp_op_saida: string | null

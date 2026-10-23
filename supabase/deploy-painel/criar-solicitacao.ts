@@ -58,6 +58,7 @@ export const EQUIPE_LABEL: Record<string, string> = {
   MONITORIA: 'Monitoria',
   SEGURANCA: 'Segurança',
   SALVA_VIDAS: 'Salva-Vidas',
+  COLEGIO: 'Colégio',
   OUTROS: 'Outros',
   DJ: 'DJ',
   OPERACIONAL: 'Operacional',
@@ -281,6 +282,8 @@ Deno.serve(async (req) => {
     if (!EQUIPE_LABEL[b.equipe]) return erro('Equipe inválida.')
     if (b.equipe === 'OUTROS' && !String(b.equipe_outro ?? '').trim())
       return erro('Informe qual é a área quando escolher "Outros".')
+    if (b.equipe === 'COLEGIO' && !String(b.equipe_outro ?? '').trim())
+      return erro('Informe o nome do colégio.')
     if (servicos.includes('AEREO') && (!b.aeroporto_saida || !b.aeroporto_chegada))
       return erro('Informe os aeroportos de saída e chegada.')
 
@@ -353,6 +356,10 @@ Deno.serve(async (req) => {
       : []
     if (servicos.includes('DAY_USE') && !diasDayUse.length)
       return erro('Informe o dia do day use.')
+    // A portaria do hotel pede o veículo para liberar a entrada; sem isso o
+    // grupo fica parado no portão.
+    if (servicos.includes('DAY_USE') && !String(b.day_use_veiculo ?? '').trim())
+      return erro('Informe o veículo que vai levar o grupo ao day use.')
 
     if (servicos.includes('RODOVIARIO')) {
       if (!String(b.rodo_regiao_saida ?? '').trim())
@@ -484,6 +491,9 @@ Deno.serve(async (req) => {
         // mensagens anteriores leem, e deixá-la vazia as quebraria.
         day_use_data: diasDayUse[0] ?? null,
         day_use_datas: diasDayUse,
+        day_use_veiculo: servicos.includes('DAY_USE')
+          ? String(b.day_use_veiculo).trim()
+          : null,
         // Cada hospedagem com as suas datas. Um par só (a estadia) não descreve
         // quem dorme fora antes da operação e no hotel dela depois.
         hosp_op_entrada: servicos.includes('HOSPEDAGEM') ? b.hosp_op_entrada || null : null,

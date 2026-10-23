@@ -79,6 +79,8 @@ type Form = {
    * só, e os outros não tinham onde ser pedidos.
    */
   day_use_datas: string[]
+  /** Veículo que leva o grupo ao day use: a portaria do hotel cobra isso. */
+  day_use_veiculo: string
   data_saida: string
   tipo_hospedagem: string
   hosp_externa_operacao: string
@@ -134,6 +136,7 @@ const VAZIO: Form = {
   data_entrada: '',
   data_saida: '',
   day_use_datas: [],
+  day_use_veiculo: '',
   tipo_hospedagem: '',
   hosp_externa_operacao: '',
   hosp_externa_obs: '',
@@ -860,6 +863,8 @@ export default function Solicitar() {
           e.operacoes_datas =
             'Confira a entrada e a saída de cada operação: a saída não pode ser antes da entrada.'
       }
+      if (form.servicos.includes('DAY_USE') && !form.day_use_veiculo.trim())
+        e.day_use_veiculo = 'Informe o veículo que vai levar o grupo.'
       if (form.servicos.includes('DAY_USE')) {
         const dias = form.day_use_datas.filter(Boolean)
         if (!dias.length) e.day_use_datas = 'Informe ao menos um dia de day use.'
@@ -1010,6 +1015,8 @@ export default function Solicitar() {
       if (!form.equipe) e.equipe = 'Selecione a equipe.'
       if (form.equipe === 'OUTROS' && !form.equipe_outro.trim())
         e.equipe_outro = 'Informe qual é a sua área ou departamento.'
+      if (form.equipe === 'COLEGIO' && !form.equipe_outro.trim())
+        e.equipe_outro = 'Informe o nome do colégio.'
       // Só carro: os condutores são as pessoas, já validadas no passo 1.
       const cpfs = new Set<string>()
       if (!soCarro) form.colaboradores.forEach((c, i) => {
@@ -1086,7 +1093,11 @@ export default function Solicitar() {
             data_saida: form.operacoes_datas[id]?.saida || null,
           })),
           equipe: form.equipe,
-          equipe_outro: form.equipe === 'OUTROS' ? form.equipe_outro.trim() : null,
+          // Colégio usa o mesmo campo do "Outros": nos dois a equipe tem nome
+          // próprio, e duplicar coluna por causa do rótulo não ajudaria ninguém.
+          equipe_outro: ['OUTROS', 'COLEGIO'].includes(form.equipe)
+            ? form.equipe_outro.trim()
+            : null,
           diretor_id: form.diretor_id,
           solicitante_nome: form.solicitante_nome.trim(),
           solicitante_email: form.solicitante_email.trim().toLowerCase(),
@@ -1095,6 +1106,9 @@ export default function Solicitar() {
           // em branco e quem responde são as datas dos serviços.
           data_entrada: form.data_entrada || periodoDosServicos?.inicio || '',
           day_use_datas: form.servicos.includes('DAY_USE') ? form.day_use_datas : [],
+          day_use_veiculo: form.servicos.includes('DAY_USE')
+            ? form.day_use_veiculo.trim()
+            : null,
           hosp_op_entrada: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_entrada : null,
           hosp_op_saida: form.servicos.includes('HOSPEDAGEM') ? form.hosp_op_saida : null,
           hosp_fora_entrada: form.servicos.includes('HOSPEDAGEM_FORA')
@@ -1275,6 +1289,7 @@ export default function Solicitar() {
           'operacoes_datas',
           'tipo_hospedagem',
           'day_use_datas',
+          'day_use_veiculo',
           'hosp_op_entrada',
           'hosp_op_saida',
           'hosp_fora_entrada',
@@ -1791,6 +1806,26 @@ export default function Solicitar() {
                                         + Adicionar outro dia
                                       </button>
                                     </Campo>
+                                    {/* Quem chega de day use chega de carro ou
+                                        ônibus, e a portaria do hotel precisa
+                                        saber o que vai entrar — placa, modelo
+                                        ou a empresa do fretado. */}
+                                    <div className="mt-3">
+                                      <Campo
+                                        label="Qual veículo vai levar o grupo?"
+                                        erro={erros.day_use_veiculo}
+                                        dica="Ex.: ônibus da Viação X, van placa ABC-1D23, carro próprio."
+                                      >
+                                        <Input
+                                          value={form.day_use_veiculo}
+                                          erro={!!erros.day_use_veiculo}
+                                          maxLength={160}
+                                          onChange={(e) =>
+                                            set('day_use_veiculo', e.target.value)
+                                          }
+                                        />
+                                      </Campo>
+                                    </div>
                                   </div>
                                 )}
 
@@ -2662,19 +2697,31 @@ export default function Solicitar() {
                   </Select>
                 </Campo>
 
-                {form.equipe === 'OUTROS' && (
+                {['OUTROS', 'COLEGIO'].includes(form.equipe) && (
                   <div className="mt-4">
                     <Campo
-                      label="Qual é a sua área ou departamento?"
+                      label={
+                        form.equipe === 'COLEGIO'
+                          ? 'Qual é o colégio?'
+                          : 'Qual é a sua área ou departamento?'
+                      }
                       erro={erros.equipe_outro}
-                      dica="Ex.: Operacional, Financeiro, T.I., Jurídico."
+                      dica={
+                        form.equipe === 'COLEGIO'
+                          ? 'Nome do colégio, como ele é conhecido.'
+                          : 'Ex.: Operacional, Financeiro, T.I., Jurídico.'
+                      }
                     >
                       <Input
                         value={form.equipe_outro}
                         erro={!!erros.equipe_outro}
                         maxLength={60}
                         onChange={(e) => set('equipe_outro', e.target.value)}
-                        placeholder="Escreva o nome da área"
+                        placeholder={
+                          form.equipe === 'COLEGIO'
+                            ? 'Escreva o nome do colégio'
+                            : 'Escreva o nome da área'
+                        }
                       />
                     </Campo>
                   </div>
@@ -2908,6 +2955,11 @@ export default function Solicitar() {
                   {form.servicos.includes('DAY_USE') && (
                     <Linha rotulo="Day use" onEditar={() => setPasso(1)}>
                       {form.day_use_datas.filter(Boolean).map(dataBR).join(' · ')}
+                      {form.day_use_veiculo.trim() && (
+                        <span className="block text-neutral-600">
+                          Veículo: {form.day_use_veiculo.trim()}
+                        </span>
+                      )}
                     </Linha>
                   )}
                   {/* Sem hospedagem pedida não há o que mostrar. Com as duas,

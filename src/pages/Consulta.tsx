@@ -576,6 +576,13 @@ function DetalheConsulta({ dados }: { dados: any }) {
 
       {(s.servicos ?? []).includes('DAY_USE') && (
         <Bloco titulo="Day use">
+          {/* O veículo é o que a portaria do hotel pede na entrada: quem vai
+              no grupo precisa ver isso sem ligar para a operação. */}
+          {s.day_use_veiculo && (
+            <p className="mb-2 text-neutral-700">
+              <span className="text-neutral-500">Veículo:</span> {s.day_use_veiculo}
+            </p>
+          )}
           {dayUse.length > 0 ? (
             (s.colaboradores ?? []).map((c: any) => {
               const meus = dayUse

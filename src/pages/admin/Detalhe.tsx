@@ -1886,6 +1886,12 @@ export default function Detalhe() {
               {tem(s, 'DAY_USE') && (
                 <L t="Day use solicitado">
                   {diasDeDayUse(s).map(dataBR).join(' · ') || '—'}
+                  {/* A portaria do hotel pede o veiculo para liberar a entrada. */}
+                  {s.day_use_veiculo && (
+                    <span className="mt-0.5 block text-neutral-600">
+                      Veículo: {s.day_use_veiculo}
+                    </span>
+                  )}
                 </L>
               )}
               {!(tem(s, 'DAY_USE') && (s.servicos ?? []).length === 1) && (
